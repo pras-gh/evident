@@ -4,7 +4,13 @@
     {
       "name": "ellivate",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4321", "--directory", "/Users/prasoonpathak/Projects/ellivate"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "4321",
+        "--directory",
+        "/Users/prasoonpathak/Projects/ellivate"
+      ],
       "port": 4321
     }
   ]

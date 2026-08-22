@@ -1,6 +1,6 @@
-/* Ellivate — the flight and the reveals are CSS scroll-driven animations
-   wherever the browser supports them. Everything below is a UI control, a
-   low-frequency typewriter, or a fallback. No persistent rAF loop. */
+/* Ellivate — the parallax world and the reveals are CSS scroll-driven
+   animations wherever the browser supports them. Everything below is a UI
+   control, a low-frequency typewriter, or a fallback. No per-frame loop. */
 (function () {
   'use strict';
 
@@ -140,8 +140,7 @@
       queued = false;
       var max = document.documentElement.scrollHeight - window.innerHeight;
       var p = max > 0 ? Math.min(1, Math.max(0, window.scrollY / max)) : 0;
-      root.style.setProperty('--sp', p);
-      root.style.setProperty('--dz', (p * 20000).toFixed(1) + 'px');
+      root.style.setProperty('--sp', p.toFixed(4));
       root.style.setProperty('--depth', Math.round(p * 2400));
       root.classList.toggle('docked', p > 0.08 && p < 0.88);
     };

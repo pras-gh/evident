@@ -1,67 +1,106 @@
 # Ellivate — landing page
 
-Evidence-backed company research. A static, dependency-free landing page built to
-convert: search-first hero, an illustrated evidence panel, and a scroll experience
-that flies the visitor down through a vortex of filings toward a single CTA.
+Evidence-backed company research. A static, dependency-free landing page: a
+search-first hero over a pixel-art world you travel down through — sky, meadow,
+the buried archive, and back up into the light at the CTA.
 
 ```bash
 python3 -m http.server 4321
 ```
 
-Then open <http://localhost:4321>. There is no build step — three files, no packages.
+Then open <http://localhost:4321>. No build step, no packages.
+
+## The two-layer idea
+
+The pixel art is **scenery**. The interface is **crisp modern sans on paper-white
+cards** floating over it. That contrast is deliberate and it is what keeps this
+reading as a research tool rather than a game — pixel type everywhere would sink
+it. Silkscreen appears only on micro-labels, badges and the depth readout.
 
 | File | What's in it |
 | --- | --- |
-| `index.html` | Page content, plus a generated block of decorative 3D geometry (rings + vortex motes) |
-| `styles.css` | Everything visual, including the scroll-driven flight |
-| `main.js` | Motion toggle, the self-typing search box, click-to-fill, and fallbacks |
+| `index.html` | Page content + a generated parallax world (do not hand-edit between the `WORLD:` markers) |
+| `styles.css` | The whole visual system, including the scroll choreography |
+| `main.js` | Motion toggle, the self-typing search box, click-to-fill, fallbacks |
+| `tools/sprites.py` | **The pixel art itself**, as editable ASCII grids |
+| `tools/scene.py` | Composes the world and splices it into `index.html` |
+| `assets/*.svg` | Compiled sprites — 14 files, ~21KB total |
+
+## Editing the art
+
+Sprites are ASCII grids with a colour key, compiled to SVG `<rect>` runs. SVG
+rather than PNG means they stay perfectly crisp at any size with no
+`image-rendering` hacks, and the whole set is 21KB.
+
+```bash
+python3 tools/sprites.py   # ASCII grids  -> assets/*.svg
+python3 tools/scene.py     # scatter them -> index.html
+```
+
+To change a cloud, edit the grid in `tools/sprites.py` and re-run both. To change
+how many sunflowers grow in the field, edit the loop counts in `tools/scene.py`.
 
 ## How the motion works
 
-The dive is **one composited transform**. `.flight` holds every ring and mote inside a
-`transform-style: preserve-3d` scene, and a single CSS scroll-driven animation pushes it
-20,000px toward the camera as the document scrolls:
+Six parallax layers, each one taller than the viewport, each panning by
+`(its height − 100vh)` across the page scroll. A taller layer travels further and
+therefore reads as nearer. One CSS scroll-driven animation per layer:
 
 ```css
-.flight { animation: dive linear both; animation-timeline: scroll(root block); }
+@keyframes pan { to { transform: translate3d(0, calc(100vh - var(--h)), 0) } }
+.layer { animation: pan linear both; animation-timeline: scroll(root block) }
 ```
 
-Nothing runs on a per-frame JavaScript loop. The depth readout, progress bar, HUD cues,
-sticky CTA and section reveals are all scroll- or view-timeline animations too. Browsers
-without `animation-timeline` fall back to a passive, rAF-coalesced scroll listener in
-`main.js` that sets a couple of custom properties — same visual result, slightly more work.
+Sky colour is four hard-banded gradient panes cross-faded by scroll position, and
+each layer fades in and out of its own chapter. Every one of those is a single
+animation spanning the whole scroll with keyframe percentages — **not** several
+range-limited animations stacked, which silently leaks each animation's fill
+state outside its own range.
 
-Measured in-browser during a full-page fast scroll: ~118fps, zero frames over 16.9ms.
+Sprites that stand on a horizon are anchored by their feet inside a `.standing`
+wrapper, so a tall tree and a tuft of grass share one ground line that a single
+`--line` value controls.
 
-The typewriter in the search box is a low-frequency `setTimeout` chain. It pauses when the
-hero leaves the viewport, when the tab is hidden, when motion is switched off, and the
-moment a human focuses or types into the field.
+Nothing runs on a per-frame JavaScript loop. Browsers without `animation-timeline`
+fall back to a passive, rAF-coalesced scroll listener that sets one custom
+property, `--sp`, which the same rules read through `calc()` and `clamp()`.
 
-`Motion on/off` in the top-right kills all of it and persists the choice to `localStorage`.
+Measured in-browser over a full-page fast scroll at 1280×800: **120fps, worst
+frame 9.4ms, zero frames over 16.9ms** — with 241 sprites, 116 specks and 152
+ridge columns on the page. It is cheap because only six elements actually
+animate; everything else is a static child along for the ride.
+
+`Motion on/off` in the header stops all of it and persists to `localStorage`.
 `prefers-reduced-motion: reduce` defaults it to off.
+
+The typewriter in the search box is a low-frequency `setTimeout` chain. It pauses
+when the hero scrolls out of view, when the tab is hidden, when motion is off, and
+the instant a human focuses or types into the field.
+
+## Scroll choreography
+
+| Scroll | What you see |
+| --- | --- |
+| 0 – 12% | Sky. Clouds, sun, birds. The hero. |
+| 12 – 26% | The treeline rises; the meadow horizon comes up to meet you |
+| 26 – 44% | You pass through the ground; soil closes over |
+| 44 – 80% | The archive: buried filings, roots, lantern light |
+| 80 – 100% | You surface into a sunflower field. The CTA. |
+
+Retiming a chapter means moving one `--line` value and the matching keyframe
+percentages together — the layer's `--h` sets its speed, the `--line` sets where
+its horizon sits, and they interact.
 
 ## Before you launch — placeholders to replace
 
-Everything below is written to look finished but is **not** real. Search the source for
-these before shipping:
+Everything below is written to look finished but is **not** real:
 
-1. **Coverage numbers** — `5,000+ companies`, `20 yrs`, `<60s` in the `#coverage` band and
-   repeated in the hero and FAQ. Marked with an HTML comment.
-2. **Form endpoints** — both search forms `GET` to `https://app.ellivate.com/ask`. Point
-   them at the real app (search `TODO` in `index.html`).
+1. **Coverage numbers** — `5,000+ companies`, `20 yrs`, `<60s` in the `#coverage`
+   band, repeated in the hero and FAQ. Marked with an HTML comment.
+2. **Form endpoints** — both search forms `GET` to `https://app.ellivate.com/ask`.
+   Search `TODO` in `index.html`.
 3. **Email / domain** — `hello@ellivate.com` does not exist yet.
-4. **The evidence panel** (`#evidence`) is labelled *Illustrative* on purpose. The source
-   excerpts are descriptive paraphrase, not verbatim filing text, and the visible caption
-   says so. If you swap in real filing quotes, keep them verbatim and attributed — don't
-   quietly drop the caption and leave invented text in place.
-
-## Editing the vortex
-
-The rings and motes are generated markup, not hand-written. Regeneration script lives in
-the commit history; the knobs that matter are in `styles.css`:
-
-- `--dive` — total Z travel (higher = faster rush per unit of scroll)
-- `.scene { perspective }` — 800px; lower is a wider, more aggressive tunnel
-- `.fog` — the black core, the green annulus, and the outer vignette, in that order
-
-Mobile halves the geometry (`.ring:nth-child(2n)`) and shortens the perspective.
+4. **The evidence panel** (`#evidence`) is labelled *Illustrative* on purpose. Its
+   source excerpts are descriptive paraphrase, not verbatim filing text, and the
+   caption under it says so. If you swap in real filing quotes, keep them verbatim
+   and attributed — don't drop the caption and leave invented text behind it.
