@@ -133,6 +133,26 @@
     });
   });
 
+  /* ---- the filing reel: how far it must travel is a layout question ----
+     The cited paragraph has to land in the middle of the viewer, and that
+     distance depends on the rendered height of the text above it. Measured
+     once (and on resize / after webfonts settle), never per frame. */
+  var measureReel = function () {
+    var vp = document.querySelector('.pdf-viewport');
+    var tgt = document.querySelector('.pg-target');
+    if (!vp || !tgt) return;
+    var y = tgt.offsetTop + tgt.offsetHeight / 2 - vp.clientHeight * 0.46;
+    root.style.setProperty('--reelY', (-Math.max(0, Math.round(y))) + 'px');
+  };
+  measureReel();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(measureReel);
+  window.addEventListener('load', measureReel);
+  var reelTimer;
+  window.addEventListener('resize', function () {
+    clearTimeout(reelTimer);
+    reelTimer = setTimeout(measureReel, 150);
+  });
+
   /* ---- fallback: drive the flight from scroll (coalesced, passive) ------ */
   if (!hasScrollTL) {
     var queued = false;
