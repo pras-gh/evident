@@ -25,6 +25,7 @@ it. Silkscreen appears only on micro-labels, badges and the depth readout.
 | `tools/sprites.py` | **The pixel art itself**, as editable ASCII grids |
 | `tools/scene.py` | Composes the world and splices it into `index.html` |
 | `tools/demo.py` | Builds section 3 — the evidence demo — and splices it in |
+| `tools/memory.py` | Builds section 4 — company memory — graph, timeline and explorer |
 | `assets/*.svg` | Compiled sprites — 14 files, ~21KB total |
 
 ## Editing the art
@@ -66,9 +67,10 @@ Nothing runs on a per-frame JavaScript loop. Browsers without `animation-timelin
 fall back to a passive, rAF-coalesced scroll listener that sets one custom
 property, `--sp`, which the same rules read through `calc()` and `clamp()`.
 
-Measured in-browser over a full-page fast scroll at 1280×800: **120fps, worst
-frame 9.4ms, zero frames over 16.9ms** — with 241 sprites, 116 specks, 152 ridge
-columns and 102 live animations on the page, the demo section included. It is
+Measured in-browser over a full-page fast scroll at 1280×800: **118fps, worst
+frame 17ms and one frame over 16.9ms out of 201** — with 241 sprites, 116 specks,
+152 ridge columns and 158 live animations on the page, both dark sections
+included. The single slow frame is first-paint rasterisation of the glass. It is
 cheap because the work is on the compositor and most elements are static
 children along for the ride.
 
@@ -115,6 +117,39 @@ Below 1000px the section unpins, stacks to one column, drops the connector line
 and shows the finished composition. Same for `Motion off` and for browsers
 without scroll-driven animations: a complete still, never a broken half-state.
 
+## Section 4 — Company Memory
+
+Act two of the dark chapter, pinned for ~340vh. Six stages: an empty orb →
+documents flying in → they wire themselves into a graph → the graph makes room
+for a dated timeline → a topic explorer → a replay button.
+
+Node positions are computed on two ellipses in `tools/memory.py` and the edge
+paths are derived from them, so moving a node moves its wires too.
+
+Two things here are genuinely interactive rather than scrubbed, and they are
+built differently on purpose:
+
+- **The topic explorer has no JavaScript at all.** Five hidden radio inputs sit
+  ahead of the panel; the topic nodes are their `<label>`s. `:checked ~` swaps the
+  mention list, sets the panel title through `::after`, lights the selected node
+  and thickens its wires. Clicking a node is a form interaction, so let the form
+  primitives do it.
+- **Replay is the one timed sequence on the whole page.** It is a button, so it
+  plays rather than scrubs. JS adds a class, CSS runs the staggered event
+  animation, and JS only narrates the beats and cleans up after 6.6s.
+
+### Two traps worth knowing
+
+`calc()` inside `animation-range` is **not honoured** — it silently falls back to
+the full timeline, which showed all six stages at once. Every stagger is written
+out as a literal `contain X% contain Y%` by the generator. The same applies to the
+per-word streaming in section 3.
+
+Wrapping both dark sections in `.dark-chapter` (so the page chrome could invert
+across both) is `position: relative`, which changes what `offsetTop` is measured
+against. Any script that positions against these sections must use
+`getBoundingClientRect().top + scrollY`, not `offsetTop`.
+
 ## Scroll choreography
 
 | Scroll | What you see |
@@ -122,7 +157,7 @@ without scroll-driven animations: a complete still, never a broken half-state.
 | 0 – 12% | Sky. Clouds, sun, birds. The hero. |
 | 12 – 26% | The treeline rises; the meadow horizon comes up to meet you |
 | 26 – 44% | You pass through the ground; soil closes over |
-| 44 – 80% | The archive: buried filings, roots, lantern light |
+| 44 – 80% | The archive: buried filings, roots, lantern light — and the dark chapter (sections 3 + 4) sits over it |
 | 80 – 100% | You surface into a sunflower field. The CTA. |
 
 Retiming a chapter means moving one `--line` value and the matching keyframe

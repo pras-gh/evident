@@ -153,6 +153,42 @@
     reelTimer = setTimeout(measureReel, 150);
   });
 
+  /* ---- Replay: the one thing on this page that is genuinely timed -------
+     Everything else is scrubbed by scroll. This is a button, so it plays.
+     A class toggle hands it to CSS; JS only narrates and cleans up. */
+  (function () {
+    var cm = document.querySelector('.cm');
+    var btn = document.querySelector('[data-replay]');
+    var line = document.querySelector('.cm-narration span');
+    if (!cm || !btn || !line) return;
+
+    var BEATS = [
+      [0,    '2022 — AI infrastructure appears for the first time, buried in a 10-K.'],
+      [1700, '2023 — CUDA becomes the argument, not the footnote.'],
+      [3000, '2024 — Blackwell arrives, and export risk arrives with it.'],
+      [4300, '2025 — The architecture stops being a roadmap and becomes revenue.'],
+      [5400, '2026 — Four years, one topic, every claim still traceable.']
+    ];
+    var timers = [];
+
+    btn.addEventListener('click', function () {
+      if (cm.classList.contains('replaying')) return;
+      if (root.dataset.motion === 'off') return;
+      timers.forEach(clearTimeout);
+      timers = [];
+      cm.classList.remove('replaying');
+      void cm.offsetWidth;                       // restart the CSS sequence
+      cm.classList.add('replaying');
+      BEATS.forEach(function (b) {
+        timers.push(setTimeout(function () { line.textContent = b[1]; }, b[0]));
+      });
+      timers.push(setTimeout(function () {
+        cm.classList.remove('replaying');
+        line.textContent = '';
+      }, 6600));
+    });
+  })();
+
   /* ---- fallback: drive the flight from scroll (coalesced, passive) ------ */
   if (!hasScrollTL) {
     var queued = false;
