@@ -28,9 +28,21 @@ segment"*, *"what did they promise in 2024 and did they deliver."* No amount of
 similarity search over layer 1 produces those — they need resolved entities and
 dates.
 
-The invariant across both layers: **nothing enters memory without a paragraph
-that asserts it.** Every typed row references `evidence`, which points at a
-document, a page and a paragraph id.
+**Layer 3 — cards** (`sql/003_memory_cards.sql`) is the read model. Cards are what
+a person reads; entities are what the system stores.
+
+| Memory Card | Updates From |
+| --- | --- |
+| Revenue | 10-Q / 10-K |
+| Products | Earnings Call |
+| Guidance | CEO statements |
+| Risks | Risk section |
+| CapEx | Cash Flow section |
+| Litigation | Legal section |
+
+The invariant across all three layers: **nothing enters memory without a
+paragraph that asserts it.** Every typed row references `evidence`, which points
+at a document, a page and a paragraph id.
 
 ## Status
 
@@ -71,6 +83,66 @@ re-fetching, and a re-embed does not require a re-parse.
 | `products[]` | Lifecycle from first mention through shipping |
 | `events[]` | Discrete dated occurrences |
 | `timeline[]` | A materialised spine over all of the above — one indexed read, not a nine-way union |
+
+## On cards
+
+A card is **not a current value**. It is an append-only series of revisions —
+one per filing that touched it, each carrying a diff against the one before.
+
+```
+CapEx  ── Updates from: Cash Flow section        4 revisions, 3 material
+  ● rev 1  2023-02-01  FY2023 10-K   1 new item: CapEx.
+  ● rev 2  2024-02-01  FY2024 10-K   CapEx rose from 8,100 to 10,922.
+  ○ rev 3  2024-08-01  Q3 10-Q       Restated without change.
+  ● rev 4  2025-02-01  FY2025 10-K   CapEx rose from 10,922 to 14,602.
+```
+
+`"CapEx: $14.6B"` is a number. The block above is a card, and it only exists
+because revision 1 was kept.
+
+Three properties the implementation holds:
+
+- **Append-only.** Nothing is updated in place — an in-place update would
+  destroy the history that is the point.
+- **Idempotent per filing.** Re-ingesting a document does not add a second
+  revision. Duplicating history is worse than missing an update.
+- **Materiality is tracked.** A filing that touches a card without moving
+  anything is recorded but marked immaterial, so the UI can say "4 updates,
+  3 material" rather than implying every filing mattered.
+
+### Routing binds at three granularities
+
+The six bindings are not the same kind of rule, which is why routing is a
+predicate over `(document, section, speaker)` rather than a lookup:
+
+| Card | Binds on | Rule |
+| --- | --- | --- |
+| Revenue | form type | `10-K`, `10-Q` |
+| Products | document kind | `earnings_call` |
+| Guidance | **speaker role** | `CEO` |
+| Risks | section | `item 1a\|risk factors` |
+| CapEx | section | `cash flow\|capital expend` |
+| Litigation | section | `item 3\|legal proceedings` |
+
+A `NULL` predicate means "don't care", so one filing can update several cards —
+a 10-K's Item 1A updates both Revenue and Risks. Rules live in `card_sources`
+as **data, not code**, so adding "Segment Margins ← MD&A" is an insert. A test
+asserts the Python defaults and the SQL seed agree, because a silent drift means
+a filing quietly stops updating a card.
+
+### What the diff surfaces
+
+The most valuable line a card produces is usually a *removal*:
+
+```
+Risks  ── Updates from: Risk section
+  ● rev 3  2025-02-01  FY2025 10-K   1 no longer disclosed: China export controls.
+```
+
+Guidance is worth noting too: it reads `promises[]`. Guidance **is** a promise —
+same entity, read differently — so a guidance card inherits the promise
+lifecycle for free, including the refusal to call anything `broken` without
+evidence.
 
 ## On promises
 
