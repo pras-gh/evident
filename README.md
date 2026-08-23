@@ -1,4 +1,4 @@
-# Ellivate — landing page
+# Elevate — landing page
 
 Evidence-backed company research. A static, dependency-free landing page: a
 search-first hero over a pixel-art world you travel down through — sky, meadow,
@@ -135,13 +135,13 @@ Everything below is written to look finished but is **not** real:
 
 1. **Coverage numbers** — `5,000+ companies`, `20 yrs`, `<60s` in the `#coverage`
    band, repeated in the hero and FAQ. Marked with an HTML comment.
-2. **Form endpoints** — both search forms `GET` to `https://app.ellivate.com/ask`.
+2. **Form endpoints** — both search forms `GET` to `https://app.elevate.com/ask`.
    Search `TODO` in `index.html`.
-3. **Email / domain** — `hello@ellivate.com` does not exist yet.
+3. **Email / domain** — `hello@elevate.com` does not exist yet.
 4. **The filing in section 3 is written, not quoted.** The viewer chrome is
    labelled *Demo document* for exactly that reason. The page reads like real
    MD&A and the numbers are plausible, but Apple did not write any of it. Before
    launch, either swap in a real page 87 excerpt (verbatim, attributed) or keep
    the marker. Do not remove the marker and leave the invented text behind it.
-5. **Brand name.** The section 3 brief called the product *Evident*; the rest of
-   the site is *Ellivate*. The site name won.
+5. **Domain.** `elevate.com` is a placeholder and is almost certainly already
+   owned by someone else. Pick the real domain before wiring up the forms.

@@ -1,4 +1,4 @@
-/* Ellivate — the parallax world and the reveals are CSS scroll-driven
+/* Elevate — the parallax world and the reveals are CSS scroll-driven
    animations wherever the browser supports them. Everything below is a UI
    control, a low-frequency typewriter, or a fallback. No per-frame loop. */
 (function () {
@@ -10,7 +10,7 @@
   var hasViewTL   = !!supports && CSS.supports('animation-timeline', 'view()');
 
   /* ---- motion toggle ---------------------------------------------------- */
-  var KEY = 'ellivate:motion';
+  var KEY = 'elevate:motion';
   var toggle = document.querySelector('[data-motion-toggle]');
   var stored = null;
   try { stored = localStorage.getItem(KEY); } catch (e) {}

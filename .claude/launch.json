@@ -2,14 +2,14 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "ellivate",
+      "name": "elevate",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
         "-m",
         "http.server",
         "4321",
         "--directory",
-        "/Users/prasoonpathak/Projects/ellivate"
+        "/Users/prasoonpathak/Projects/elevate"
       ],
       "port": 4321
     }
