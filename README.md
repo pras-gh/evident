@@ -1,182 +1,57 @@
-# Elevate — landing page
+# Evident
 
-Evidence-backed company research. A static, dependency-free landing page: a
-search-first hero over a pixel-art world you travel down through — sky, meadow,
-the buried archive, and back up into the light at the CTA.
+Structured company intelligence from SEC filings. Every answer cites a page and
+a paragraph.
+
+**This is not a vector database.** The unit of value is the company, not the
+chunk. See [docs/architecture.md](docs/architecture.md) for why that distinction
+drives the whole design, and [docs/PRD.md](docs/PRD.md) for what the product is.
+
+```
+apps/
+  web/          Next.js frontend
+  api/          FastAPI backend
+  marketing/    static landing site
+packages/
+  parser/       HTML + PDF parsing, chunking, stable paragraph ids
+  memory/       CompanyMemory, cross-document resolution, memory cards
+  retrieval/    embeddings, vector search, Postgres writes
+  graph/        topic graph construction
+  ai/           Claude prompts and entity extraction
+workers/
+  ingest_worker.py   fetch → parse → chunk → store
+  memory_worker.py   extract → resolve → memory
+  diff_worker.py     memory → card revisions
+db/
+  schema.sql         apply to a fresh database
+  migrations/        apply individually to an existing one
+docs/
+  PRD.md  architecture.md  api.md  ingestion.md
+```
+
+## Running
 
 ```bash
-python3 -m http.server 4321
+# database — needs pgvector for chunk_embeddings; the other 27 tables do not
+psql "$DATABASE_URL" -f db/schema.sql
+
+# tests: the core is standard-library only and runs on a clean checkout
+python3 -m unittest discover -s tests
+
+# api
+cd apps/api && uv sync && uvicorn main:app --reload
+
+# web
+cd apps/web && npm install && npm run dev
 ```
 
-Then open <http://localhost:4321>. No build step, no packages.
+## Layers
 
-## The two-layer idea
+| Layer | Stores | Answers |
+| --- | --- | --- |
+| substrate | what was *filed* — documents, sections, paragraphs, tables | "what does page 87 say" |
+| memory | what we *know* — resolved entities with a time axis | "when did they first mention Blackwell" |
+| cards | what a person *reads* — projections with history | "what changed, and when" |
 
-The pixel art is **scenery**. The interface is **crisp modern sans on paper-white
-cards** floating over it. That contrast is deliberate and it is what keeps this
-reading as a research tool rather than a game — pixel type everywhere would sink
-it. Silkscreen appears only on micro-labels, badges and the depth readout.
-
-| File | What's in it |
-| --- | --- |
-| `index.html` | Page content + a generated parallax world (do not hand-edit between the `WORLD:` markers) |
-| `styles.css` | The whole visual system, including the scroll choreography |
-| `main.js` | Motion toggle, the self-typing search box, click-to-fill, fallbacks |
-| `tools/sprites.py` | **The pixel art itself**, as editable ASCII grids |
-| `tools/scene.py` | Composes the world and splices it into `index.html` |
-| `tools/demo.py` | Builds section 3 — the evidence demo — and splices it in |
-| `tools/memory.py` | Builds section 4 — company memory — graph, timeline and explorer |
-| `assets/*.svg` | Compiled sprites — 14 files, ~21KB total |
-
-## Editing the art
-
-Sprites are ASCII grids with a colour key, compiled to SVG `<rect>` runs. SVG
-rather than PNG means they stay perfectly crisp at any size with no
-`image-rendering` hacks, and the whole set is 21KB.
-
-```bash
-python3 tools/sprites.py   # ASCII grids  -> assets/*.svg
-python3 tools/scene.py     # scatter them -> index.html
-```
-
-To change a cloud, edit the grid in `tools/sprites.py` and re-run both. To change
-how many sunflowers grow in the field, edit the loop counts in `tools/scene.py`.
-
-## How the motion works
-
-Six parallax layers, each one taller than the viewport, each panning by
-`(its height − 100vh)` across the page scroll. A taller layer travels further and
-therefore reads as nearer. One CSS scroll-driven animation per layer:
-
-```css
-@keyframes pan { to { transform: translate3d(0, calc(100vh - var(--h)), 0) } }
-.layer { animation: pan linear both; animation-timeline: scroll(root block) }
-```
-
-Sky colour is four hard-banded gradient panes cross-faded by scroll position, and
-each layer fades in and out of its own chapter. Every one of those is a single
-animation spanning the whole scroll with keyframe percentages — **not** several
-range-limited animations stacked, which silently leaks each animation's fill
-state outside its own range.
-
-Sprites that stand on a horizon are anchored by their feet inside a `.standing`
-wrapper, so a tall tree and a tuft of grass share one ground line that a single
-`--line` value controls.
-
-Nothing runs on a per-frame JavaScript loop. Browsers without `animation-timeline`
-fall back to a passive, rAF-coalesced scroll listener that sets one custom
-property, `--sp`, which the same rules read through `calc()` and `clamp()`.
-
-Measured in-browser over a full-page fast scroll at 1280×800: **118fps, worst
-frame 17ms and one frame over 16.9ms out of 201** — with 241 sprites, 116 specks,
-152 ridge columns and 158 live animations on the page, both dark sections
-included. The single slow frame is first-paint rasterisation of the glass. It is
-cheap because the work is on the compositor and most elements are static
-children along for the ride.
-
-`Motion on/off` in the header stops all of it and persists to `localStorage`.
-`prefers-reduced-motion: reduce` defaults it to off.
-
-The typewriter in the search box is a low-frequency `setTimeout` chain. It pauses
-when the hero scrolls out of view, when the tab is hidden, when motion is off, and
-the instant a human focuses or types into the field.
-
-## Section 3 — the evidence demo
-
-The one place the page goes dark. It is pinned for ~240vh and every step is
-**scrubbed by scroll position**, not played by a timer: question → streamed
-answer → evidence card → the filing scrolls itself → the highlight sweeps →
-camera pulls back.
-
-Two deliberate departures from the brief:
-
-- **No Framer Motion.** It would mean React, a build step and a framework for one
-  section, and it animates from JavaScript every frame. CSS scroll-driven
-  animations give frame-perfect scrubbing on the compositor instead, which is
-  what a pinned scroll-story actually wants. The motion language is unchanged —
-  spring-ish easing, opacity and translate over scale, ~900ms of scroll for the
-  highlight sweep.
-- **The section is dark, the rest of the page is not.** Rather than let that read
-  as a theme break, `.demo` is transparent at both ends, so the pixel world fades
-  down into black on the way in and comes back up on the far side. The fixed
-  header and page chrome invert across the same range via registered `<color>`
-  custom properties, driven by the section's own view timeline through
-  `timeline-scope`.
-
-The streaming answer is one `<span>` per word, each carrying its own slice of the
-pinned range — generated by `tools/demo.py`, so editing the sentence re-times it
-automatically. How far the filing must scroll to bring the cited paragraph into
-view is a layout question that depends on rendered text height, so `main.js`
-measures it once (and on resize, and after webfonts settle) into `--reelY`; the
-keyframes read that variable. Nothing measures per frame.
-
-Hover behaviour is pure CSS via `:has()` — hovering the evidence card pulses the
-highlighted paragraph, hovering the paragraph pulses the citation bubble.
-
-Below 1000px the section unpins, stacks to one column, drops the connector line
-and shows the finished composition. Same for `Motion off` and for browsers
-without scroll-driven animations: a complete still, never a broken half-state.
-
-## Section 4 — Company Memory
-
-Act two of the dark chapter, pinned for ~340vh. Six stages: an empty orb →
-documents flying in → they wire themselves into a graph → the graph makes room
-for a dated timeline → a topic explorer → a replay button.
-
-Node positions are computed on two ellipses in `tools/memory.py` and the edge
-paths are derived from them, so moving a node moves its wires too.
-
-Two things here are genuinely interactive rather than scrubbed, and they are
-built differently on purpose:
-
-- **The topic explorer has no JavaScript at all.** Five hidden radio inputs sit
-  ahead of the panel; the topic nodes are their `<label>`s. `:checked ~` swaps the
-  mention list, sets the panel title through `::after`, lights the selected node
-  and thickens its wires. Clicking a node is a form interaction, so let the form
-  primitives do it.
-- **Replay is the one timed sequence on the whole page.** It is a button, so it
-  plays rather than scrubs. JS adds a class, CSS runs the staggered event
-  animation, and JS only narrates the beats and cleans up after 6.6s.
-
-### Two traps worth knowing
-
-`calc()` inside `animation-range` is **not honoured** — it silently falls back to
-the full timeline, which showed all six stages at once. Every stagger is written
-out as a literal `contain X% contain Y%` by the generator. The same applies to the
-per-word streaming in section 3.
-
-Wrapping both dark sections in `.dark-chapter` (so the page chrome could invert
-across both) is `position: relative`, which changes what `offsetTop` is measured
-against. Any script that positions against these sections must use
-`getBoundingClientRect().top + scrollY`, not `offsetTop`.
-
-## Scroll choreography
-
-| Scroll | What you see |
-| --- | --- |
-| 0 – 12% | Sky. Clouds, sun, birds. The hero. |
-| 12 – 26% | The treeline rises; the meadow horizon comes up to meet you |
-| 26 – 44% | You pass through the ground; soil closes over |
-| 44 – 80% | The archive: buried filings, roots, lantern light — and the dark chapter (sections 3 + 4) sits over it |
-| 80 – 100% | You surface into a sunflower field. The CTA. |
-
-Retiming a chapter means moving one `--line` value and the matching keyframe
-percentages together — the layer's `--h` sets its speed, the `--line` sets where
-its horizon sits, and they interact.
-
-## Before you launch — placeholders to replace
-
-Everything below is written to look finished but is **not** real:
-
-1. **Coverage numbers** — `5,000+ companies`, `20 yrs`, `<60s` in the `#coverage`
-   band, repeated in the hero and FAQ. Marked with an HTML comment.
-2. **Form endpoints** — both search forms `GET` to `https://app.elevate.com/ask`.
-   Search `TODO` in `index.html`.
-3. **Email / domain** — `hello@elevate.com` does not exist yet.
-4. **The filing in section 3 is written, not quoted.** The viewer chrome is
-   labelled *Demo document* for exactly that reason. The page reads like real
-   MD&A and the numbers are plausible, but Apple did not write any of it. Before
-   launch, either swap in a real page 87 excerpt (verbatim, attributed) or keep
-   the marker. Do not remove the marker and leave the invented text behind it.
-5. **Domain.** `elevate.com` is a placeholder and is almost certainly already
-   owned by someone else. Pick the real domain before wiring up the forms.
+**The invariant across all three: nothing enters memory without a paragraph that
+asserts it.**

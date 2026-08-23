@@ -10,7 +10,7 @@ sample stays honest about what the backend would actually produce.
 import os
 
 HERE = os.path.dirname(__file__)
-OUT = os.path.join(HERE, "..", "app", "index.html")
+OUT = os.path.join(HERE, "..", "apps", "web", "reference", "static-sample.html")
 
 NAV = [("home", "Home"), ("watchlist", "Watchlist"), ("ask", "Ask Elevate"),
        ("memory", "Company Memory"), ("pulse", "Market Pulse"),

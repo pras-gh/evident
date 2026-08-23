@@ -11,7 +11,7 @@ import random, re, os
 
 random.seed(5)
 HERE = os.path.dirname(__file__)
-HTML = os.path.join(HERE, '..', 'index.html')
+HTML = os.path.join(HERE, '..', 'apps', 'marketing', 'index.html')
 S = '    '
 
 

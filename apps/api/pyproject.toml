@@ -1,0 +1,18 @@
+[project]
+name = "evident-api"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "pydantic>=2.9",
+  "psycopg[binary,pool]>=3.2",
+  "evident-memory",
+  "evident-graph",
+  "evident-retrieval",
+]
+
+[tool.uv.sources]
+evident-memory    = { path = "../../packages/memory",    editable = true }
+evident-graph     = { path = "../../packages/graph",     editable = true }
+evident-retrieval = { path = "../../packages/retrieval", editable = true }

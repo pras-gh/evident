@@ -10,7 +10,7 @@ by the scrollbar rather than played by a timer.
 import re, os
 
 HERE = os.path.dirname(__file__)
-HTML = os.path.join(HERE, '..', 'index.html')
+HTML = os.path.join(HERE, '..', 'apps', 'marketing', 'index.html')
 
 ANSWER = ("Apple increased infrastructure spending primarily to expand "
           "<em>AI compute capacity</em> across data centers and support "
