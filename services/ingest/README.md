@@ -48,6 +48,39 @@ real provider before this serves anything.
 
 ```bash
 pip install -r requirements.txt
-psql "$DATABASE_URL" -f sql/001_schema.sql
-python -m elevate_ingest.cli ingest --accession 0000320193-25-000073
+psql "$DATABASE_URL" -f sql/001_schema.sql      # needs pgvector on the server
+export SEC_USER_AGENT="Elevate ingest (you@example.com)"   # SEC refuses anonymous traffic
+
+python -m elevate_ingest.cli ingest --cik 320193 --accession 0000320193-25-000073
 ```
+
+Parse a local file with no network and no database — useful for checking a
+parser change against a filing you already have:
+
+```bash
+python -m elevate_ingest.cli parse --file filing.htm --accession 0000320193-25-000073
+```
+
+## Tests
+
+The core is dependency-free, so the suite runs with nothing installed:
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+22 tests cover paragraph-id stability, section/page/table extraction, the
+chunker's two invariants, and embedding determinism. The EDGAR, PDF and
+Postgres paths are excluded on purpose — they are thin adapters over
+third-party libraries, and the logic worth protecting is not in them.
+
+## Known gaps
+
+- **PDF tables** return `[]`. Extracting cells from a PDF needs layout
+  analysis that `pypdf` does not do; returning nothing is honest, returning
+  garbled cells would not be. Wire in `pdfplumber` or Camelot when the PDF
+  path matters.
+- **`HashingEmbedder` carries no semantics.** It exists so the pipeline runs
+  without credentials. Replace it before serving a real query.
+- **Section detection is heuristic**, tuned for `Part`/`Item` headings in
+  10-K/10-Q. Other form types will produce a flatter section tree.
