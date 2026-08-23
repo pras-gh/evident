@@ -3,10 +3,34 @@
 Automated ingestion for SEC filings. Takes an EDGAR accession number, produces
 structured, citable entities in PostgreSQL.
 
-The product promise is "every answer cites a page and a paragraph." That is an
-**ingestion** guarantee, not a retrieval one — if provenance is lost while
-parsing, no amount of clever retrieval gets it back. Everything below is
-organised around not losing it.
+**This is not a vector database.** It is structured intelligence.
+
+The unit of value is the *company*, not the chunk. Two layers:
+
+**Layer 1 — substrate** (`sql/001_schema.sql`) stores what was filed: documents,
+sections, paragraphs, tables. Chunks and embeddings live here too, as an index
+over evidence. This layer answers *"what does page 87 say."*
+
+**Layer 2 — memory** (`sql/002_company_memory.sql`) stores what we know: resolved,
+typed entities with a time axis, accumulated across every filing a company has
+ever made.
+
+```
+CompanyMemory {
+  companyId, ticker,
+  documents[], timeline[], topics[], people[],
+  metrics[], risks[], promises[], products[], events[]
+}
+```
+
+This layer answers *"when did they first mention Blackwell"*, *"who has run this
+segment"*, *"what did they promise in 2024 and did they deliver."* No amount of
+similarity search over layer 1 produces those — they need resolved entities and
+dates.
+
+The invariant across both layers: **nothing enters memory without a paragraph
+that asserts it.** Every typed row references `evidence`, which points at a
+document, a page and a paragraph id.
 
 ## Status
 
@@ -24,6 +48,8 @@ re-fetching, and a re-embed does not require a re-parse.
 
 ## What gets preserved
 
+### Layer 1 — what gets preserved
+
 | Requirement | How |
 | --- | --- |
 | Page numbers | PDF: real page index. HTML: SEC page-break markers, carried as a running counter |
@@ -32,6 +58,40 @@ re-fetching, and a re-embed does not require a re-parse.
 | Paragraph IDs | Deterministic and content-addressed, so the same input yields the same ID on every run |
 | Document metadata | CIK, ticker, form type, accession, fiscal period, source URL |
 | Publication timestamp | EDGAR acceptance datetime (when it hit the wire), not the fetch time |
+
+### Layer 2 — what gets resolved
+
+| Entity | What resolution buys |
+| --- | --- |
+| `topics[]` | One topic across every document that discusses it, with first/last seen |
+| `people[]` | One person across spelling variants, with **dated roles** — "the CFO" means someone different in 2019 |
+| `metrics[]` | One series across label drift (`CapEx` = `Capital Expenditures`); a revised figure is flagged as a restatement, not deduplicated |
+| `risks[]` | A risk that stops being disclosed is marked `dropped`, not deleted — the disappearance is the signal |
+| `promises[]` | Forward-looking commitments carried until something settles them |
+| `products[]` | Lifecycle from first mention through shipping |
+| `events[]` | Discrete dated occurrences |
+| `timeline[]` | A materialised spine over all of the above — one indexed read, not a nine-way union |
+
+## On promises
+
+The entity a vector database cannot represent. A forward-looking statement is
+not a fact; it is an open obligation with a lifecycle.
+
+`resolve.py` will **never mark a promise `broken` on its own.** A company going
+quiet about a commitment is suggestive, not probative, and asserting failure
+without evidence would be the same error as inventing a filing quote. Silence
+past the horizon becomes `unclear` — and an unresolved promise past its due
+date is itself the finding, surfaced by `overdue_promises()`. `broken` requires
+a resolution signal that carries evidence.
+
+## On extraction
+
+Turning prose into typed entities is the one place a language model belongs.
+The model receives paragraphs that already carry ids and must cite one for
+every entity it returns. Anything citing an id we did not supply is **dropped,
+not stored** (`extract.drop_uncited`), and the drop count is reported — a rising
+drop rate is the signal that a prompt or model change has started inventing
+citations. Without that check, "every answer is backed by evidence" is a slogan.
 
 ## On embeddings
 
