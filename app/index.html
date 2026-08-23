@@ -1,0 +1,722 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Company Memory — Elevate</title>
+<meta name="theme-color" content="#0a0a0b">
+<link rel="icon" href="../assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<!-- tabs and the revision drawer are radio inputs; this page runs no JavaScript -->
+<input class="sr" type="radio" name="open" id="open-none" checked>
+<input class="sr" type="radio" name="open" id="open-revenue">
+<input class="sr" type="radio" name="open" id="open-ai">
+<input class="sr" type="radio" name="open" id="open-products">
+<input class="sr" type="radio" name="open" id="open-guidance">
+<input class="sr" type="radio" name="open" id="open-risks">
+<input class="sr" type="radio" name="open" id="open-capital">
+<input class="sr" type="radio" name="open" id="open-promises">
+<input class="sr" type="radio" name="open" id="open-headcount">
+<input class="sr" type="radio" name="open" id="open-rd">
+<input class="sr" type="radio" name="tab" id="tab-0" checked>
+<input class="sr" type="radio" name="tab" id="tab-1">
+<input class="sr" type="radio" name="tab" id="tab-2">
+<input class="sr" type="radio" name="tab" id="tab-3">
+<input class="sr" type="radio" name="tab" id="tab-4">
+<input class="sr" type="radio" name="tab" id="tab-5">
+<input class="sr" type="radio" name="tab" id="tab-6">
+<input class="sr" type="radio" name="tab" id="tab-7">
+
+<div class="shell">
+  <nav class="side" aria-label="Primary">
+    <a class="brand" href="../index.html">
+      <span class="brand-mark"></span> elevate
+    </a>
+    <div class="nav"><a class="nav-item" href="#"><span class="nav-dot"></span>Home</a>
+<a class="nav-item" href="#"><span class="nav-dot"></span>Watchlist</a>
+<a class="nav-item" href="#"><span class="nav-dot"></span>Ask Elevate</a>
+<a class="nav-item is-on" href="#"><span class="nav-dot"></span>Company Memory</a>
+<a class="nav-item" href="#"><span class="nav-dot"></span>Market Pulse</a>
+<a class="nav-item" href="#"><span class="nav-dot"></span>Screeners</a>
+<a class="nav-item" href="#"><span class="nav-dot"></span>Alerts</a>
+<a class="nav-item" href="#"><span class="nav-dot"></span>Notebook</a></div>
+    <div class="promo">
+      <p class="promo-t">Upgrade to Pro</p>
+      <p class="promo-b">Unlimited memory history, cross-company compare, and alerting.</p>
+      <span class="promo-btn">Upgrade now</span>
+    </div>
+  </nav>
+
+  <main class="main">
+    <header class="head">
+      <span class="tickmark">AAPL</span>
+      <div class="head-id">
+        <h1>Apple Inc. <span class="tick-chip">AAPL</span></h1>
+        <p class="head-sub">Company Memory</p>
+        <p class="head-meta">Memory built from <b>1,248 documents</b> · earliest filing Oct 2014</p>
+      </div>
+      <div class="head-actions">
+        <span class="search"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg> Search memory<kbd>/</kbd></span>
+        <span class="btn btn-ghost">Compare</span>
+        <span class="btn btn-go">Add note</span>
+      </div>
+    </header>
+
+    <div class="tabs" role="tablist"><label class="tab" for="tab-0">Memory Cards</label>
+<label class="tab" for="tab-1">Timeline</label>
+<label class="tab" for="tab-2">Topics</label>
+<label class="tab" for="tab-3">Promises</label>
+<label class="tab" for="tab-4">Risks</label>
+<label class="tab" for="tab-5">Financials</label>
+<label class="tab" for="tab-6">People</label>
+<label class="tab" for="tab-7">Documents</label><span class="tabs-right">All time</span></div>
+
+    <div class="stage">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Memory cards</h2>
+            <p class="panel-sub">Every filing updates the cards it touches. Each card keeps its history.</p>
+          </div>
+          <span class="demo-chip">Demo data</span>
+        </div>
+        <div class="grid">
+        <label class="card t-emerald" for="open-revenue">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+            <span class="card-title">Revenue</span>
+            
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">$394.3B</p><span class="delta d-up">&#8599; 2.1% YoY</span></div><p class="sub">FY 2024</p><svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none" aria-hidden="true"><polyline points="0.00,26.57 5.88,25.49 11.76,28.00 17.65,24.24 23.53,22.63 29.41,23.88 35.29,21.37 41.18,19.94 47.06,21.01 52.94,17.61 58.82,15.46 64.71,16.18 70.59,13.49 76.47,10.99 82.35,12.06 88.24,8.66 94.12,6.33 100.00,4.00"/></svg></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Oct 28, 2022 · material"></i><i class="tick tick-material" title="rev 2 · Nov 3, 2023 · material"></i><i class="tick" title="rev 3 · Aug 2, 2024 · no change"></i><i class="tick tick-material" title="rev 4 · Nov 1, 2024 · material"></i></div><span class="rail-n">4 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 2d ago</span>
+            <span class="src">from <b>10-K</b></span>
+          </div>
+          <p class="card-foot-note"></p>
+        </label>
+        <label class="card t-indigo" for="open-ai">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span>
+            <span class="card-title">AI Strategy</span>
+            <span class="chev"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
+          </div>
+          <div class="card-body"><p class="headline">Apple Intelligence</p><p class="body">Enterprise AI focus, on-device processing, privacy-first approach.</p></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Nov 3, 2023 · material"></i><i class="tick tick-material" title="rev 2 · Feb 1, 2024 · material"></i><i class="tick tick-material" title="rev 3 · May 7, 2024 · material"></i></div><span class="rail-n">3 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 5d ago</span>
+            <span class="src">from <b>Q2 2024 Call</b></span>
+          </div>
+          <p class="card-foot-note">Latest mention in <b>Q2 2024 Call</b></p>
+        </label>
+        <label class="card t-orange" for="open-products">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5Z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg></span>
+            <span class="card-title">Products</span>
+            <span class="chev"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">7</p></div><p class="sub">Active Categories</p><ul class="chips"><li>iPhone</li><li>Mac</li><li>iPad</li><li>Wearables</li><li>Services</li><li>Vision</li><li>Accessories</li></ul></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Oct 28, 2022 · material"></i><i class="tick tick-material" title="rev 2 · Jun 5, 2023 · material"></i><i class="tick tick-material" title="rev 3 · Feb 2, 2024 · material"></i></div><span class="rail-n">3 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 5d ago</span>
+            <span class="src">from <b>Earnings Call</b></span>
+          </div>
+          <p class="card-foot-note">Latest: <b>Vision Pro</b> launch</p>
+        </label>
+        <label class="card t-teal" for="open-guidance">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+            <span class="card-title">Guidance</span>
+            
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">$117B – $126B</p></div><p class="sub">Q1 2025 revenue</p></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Aug 1, 2024 · material"></i><i class="tick tick-material" title="rev 2 · Oct 31, 2024 · material"></i><i class="tick tick-material" title="rev 3 · Jan 30, 2025 · material"></i></div><span class="rail-n">3 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 3w ago</span>
+            <span class="src">from <b>Earnings Call</b></span>
+          </div>
+          <p class="card-foot-note">Issued Jan 30, 2025</p>
+        </label>
+        <label class="card t-red" for="open-risks">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg></span>
+            <span class="card-title">Risks</span>
+            <span class="chev"><svg class="ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></span>
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">12</p></div><p class="sub">Active Risk Factors</p><p class="alert"><svg class="ic-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg> 1 no longer disclosed</p></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Oct 28, 2022 · material"></i><i class="tick" title="rev 2 · Aug 3, 2023 · no change"></i><i class="tick tick-material" title="rev 3 · Nov 3, 2023 · material"></i><i class="tick tick-material" title="rev 4 · Nov 1, 2024 · material"></i></div><span class="rail-n">4 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 2d ago</span>
+            <span class="src">from <b>Risk section</b></span>
+          </div>
+          <p class="card-foot-note">Top: <b>Regulatory</b>, <b>Competition</b>, <b>Supply chain</b></p>
+        </label>
+        <label class="card t-cyan" for="open-capital">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v12M15 9H10a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H9"/></svg></span>
+            <span class="card-title">Capital Allocation</span>
+            
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">$110B</p></div><p class="sub">Share buybacks (FY 2024)</p></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Nov 3, 2023 · material"></i><i class="tick tick-material" title="rev 2 · Apr 19, 2024 · material"></i><i class="tick tick-material" title="rev 3 · Nov 1, 2024 · material"></i></div><span class="rail-n">3 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 2d ago</span>
+            <span class="src">from <b>Cash Flow</b></span>
+          </div>
+          <p class="card-foot-note">Total returned to shareholders <b>$124B</b> in FY 2024</p>
+        </label>
+        <label class="card t-amber" for="open-promises">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 3 6.5 7 .9-5 4.8 1.3 7L12 18l-6.3 3.2L7 14.2l-5-4.8 7-.9L12 2Z"/></svg></span>
+            <span class="card-title">Promises</span>
+            
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">5</p></div><p class="sub">Active promises</p><ul class="pills"><li class="p-ok"><b>2</b> on track</li><li class="p-warn"><b>3</b> in progress</li><li class="p-mute"><b>1</b> unclear</li></ul></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Feb 1, 2024 · material"></i><i class="tick tick-material" title="rev 2 · May 2, 2024 · material"></i><i class="tick tick-material" title="rev 3 · Oct 31, 2024 · material"></i><i class="tick tick-material" title="rev 4 · Jan 30, 2025 · material"></i></div><span class="rail-n">4 revisions · 4 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 3w ago</span>
+            <span class="src">from <b>CEO statements</b></span>
+          </div>
+          <p class="card-foot-note"></p>
+        </label>
+        <label class="card t-blue" for="open-headcount">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg></span>
+            <span class="card-title">Headcount</span>
+            
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">161K</p><span class="delta d-up">&#8599; 3.2% YoY</span></div><p class="sub">Total employees</p></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Oct 28, 2022 · material"></i><i class="tick tick-material" title="rev 2 · Nov 3, 2023 · material"></i><i class="tick tick-material" title="rev 3 · Nov 1, 2024 · material"></i></div><span class="rail-n">3 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 2d ago</span>
+            <span class="src">from <b>10-K</b></span>
+          </div>
+          <p class="card-foot-note">As of Sep 28, 2024</p>
+        </label>
+        <label class="card t-violet" for="open-rd">
+          <div class="card-top">
+            <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6L4.6 17a2 2 0 0 0 1.8 3h11.2a2 2 0 0 0 1.8-3L15 8V2"/><path d="M9 2h6M7.5 13h9"/></svg></span>
+            <span class="card-title">R&D</span>
+            
+          </div>
+          <div class="card-body"><div class="val-row"><p class="val">$31.4B</p><span class="delta d-up">&#8599; 6.7% YoY</span></div><p class="sub">Spend in FY 2024</p></div>
+          <div class="rail"><div class="ticks"><i class="tick tick-material" title="rev 1 · Oct 28, 2022 · material"></i><i class="tick tick-material" title="rev 2 · Nov 3, 2023 · material"></i><i class="tick tick-material" title="rev 3 · Nov 1, 2024 · material"></i></div><span class="rail-n">3 revisions · 3 material</span></div>
+          <div class="card-foot">
+            <span class="upd">Updated 2d ago</span>
+            <span class="src">from <b>10-K</b></span>
+          </div>
+          <p class="card-foot-note"><b>7.9%</b> of revenue</p>
+        </label></div>
+        <label class="view-all" for="open-revenue">Open a card to see its revision history &rarr;</label>
+      </section>
+
+      <aside class="rails">
+        <section class="rail-card">
+          <h3>Recent timeline</h3>
+          <ol class="tl">
+            <li class="tl-item tone-emerald">
+              <span class="tl-dot"></span>
+              <p class="tl-date">May 7, 2024</p>
+              <p class="tl-title">Q2 2024 Earnings Call</p>
+              <p class="tl-sub">Revenue $90.8B, EPS $1.53</p>
+            </li>
+
+            <li class="tl-item tone-cyan">
+              <span class="tl-dot"></span>
+              <p class="tl-date">Apr 19, 2024</p>
+              <p class="tl-title">Share buyback announcement</p>
+              <p class="tl-sub">$110B repurchase authorisation</p>
+            </li>
+
+            <li class="tl-item tone-emerald">
+              <span class="tl-dot"></span>
+              <p class="tl-date">Feb 2, 2024</p>
+              <p class="tl-title">Q1 2024 Earnings Call</p>
+              <p class="tl-sub">Revenue $119.6B, EPS $2.18</p>
+            </li>
+
+            <li class="tl-item tone-indigo">
+              <span class="tl-dot"></span>
+              <p class="tl-date">Jan 30, 2024</p>
+              <p class="tl-title">Services revenue record</p>
+              <p class="tl-sub">$23.1B, all-time quarterly high</p>
+            </li>
+
+            <li class="tl-item tone-orange">
+              <span class="tl-dot"></span>
+              <p class="tl-date">Dec 22, 2023</p>
+              <p class="tl-title">Vision Pro launch</p>
+              <p class="tl-sub">Available in US markets</p>
+            </li></ol>
+          <p class="rail-more">View full timeline &rarr;</p>
+        </section>
+        <section class="rail-card">
+          <h3>Memory health</h3>
+          <div class="health">
+            <svg class="ring" viewBox="0 0 72 72" aria-hidden="true">
+              <circle class="ring-bg" cx="36" cy="36" r="31"/>
+              <circle class="ring-fg" cx="36" cy="36" r="31"/>
+            </svg>
+            <div>
+              <p class="health-n">98%</p>
+              <p class="health-l">Completeness</p>
+            </div>
+          </div>
+          <ul class="health-rows">
+            <li><span>Documents parsed</span><b>1,248</b></li>
+            <li><span>Cards with history</span><b>9 / 9</b></li>
+            <li><span>Claims without evidence</span><b class="ok">0</b></li>
+          </ul>
+        </section>
+      </aside>
+
+      
+      <aside class="drawer d-revenue t-emerald" aria-label="Revenue revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+          <div>
+            <p class="drawer-title">Revenue</p>
+            <p class="drawer-src">Updates from <b>10-K</b> ·
+               4 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 4</span>
+                <span class="rev-date">Nov 1, 2024</span>
+                <span class="rev-doc">FY2024 10-K</span>
+                
+              </div>
+              <p class="rev-sum">Revenue rose from $383.3B to $394.3B.</p>
+              <ul class="rev-facts"><li>Revenue FY2024 — $394,328M</li><li>Revenue FY2023 — $383,285M</li></ul>
+              <p class="rev-ev">p. 31 · Item 7 MD&A</p>
+            </li>
+            <li class="rev">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Aug 2, 2024</span>
+                <span class="rev-doc">Q3 2024 10-Q</span>
+                <span class="rev-tag">no change</span>
+              </div>
+              <p class="rev-sum">Restated without change.</p>
+              <ul class="rev-facts"><li>Revenue FY2023 — $383,285M</li></ul>
+              <p class="rev-ev">p. 12 · Condensed statements</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Nov 3, 2023</span>
+                <span class="rev-doc">FY2023 10-K</span>
+                
+              </div>
+              <p class="rev-sum">Revenue fell from $394.3B to $383.3B.</p>
+              <ul class="rev-facts"><li>Revenue FY2023 — $383,285M</li></ul>
+              <p class="rev-ev">p. 29 · Item 7 MD&A</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Oct 28, 2022</span>
+                <span class="rev-doc">FY2022 10-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: Revenue.</p>
+              <ul class="rev-facts"><li>Revenue FY2022 — $394,328M</li></ul>
+              <p class="rev-ev">p. 28 · Item 7 MD&A</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-ai t-indigo" aria-label="AI Strategy revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2"/></svg></span>
+          <div>
+            <p class="drawer-title">AI Strategy</p>
+            <p class="drawer-src">Updates from <b>Q2 2024 Call</b> ·
+               3 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">May 7, 2024</span>
+                <span class="rev-doc">Q2 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">Positioning shifted from “machine learning” to on-device “Apple Intelligence”.</p>
+              <ul class="rev-facts"><li>Topic — Apple Intelligence</li><li>Topic — on-device inference</li></ul>
+              <p class="rev-ev">CEO prepared remarks</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Feb 1, 2024</span>
+                <span class="rev-doc">Q1 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: generative AI investment.</p>
+              <ul class="rev-facts"><li>Topic — generative AI</li></ul>
+              <p class="rev-ev">Q&A, analyst question 4</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Nov 3, 2023</span>
+                <span class="rev-doc">FY2023 10-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: machine learning R&D.</p>
+              <ul class="rev-facts"><li>Topic — machine learning</li></ul>
+              <p class="rev-ev">p. 6 · Item 1 Business</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-products t-orange" aria-label="Products revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5Z"/><path d="M3 12l9 5 9-5"/><path d="M3 16l9 5 9-5"/></svg></span>
+          <div>
+            <p class="drawer-title">Products</p>
+            <p class="drawer-src">Updates from <b>Earnings Call</b> ·
+               3 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Feb 2, 2024</span>
+                <span class="rev-doc">Q1 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: Vision Pro. Now shipping.</p>
+              <ul class="rev-facts"><li>Vision Pro — shipping</li><li>iPhone — shipping</li></ul>
+              <p class="rev-ev">CEO prepared remarks</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Jun 5, 2023</span>
+                <span class="rev-doc">Investor Day</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: Vision Pro. Announced.</p>
+              <ul class="rev-facts"><li>Vision Pro — announced</li></ul>
+              <p class="rev-ev">Slide 12</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Oct 28, 2022</span>
+                <span class="rev-doc">FY2022 10-K</span>
+                
+              </div>
+              <p class="rev-sum">6 new items: iPhone, Mac, iPad, Wearables, Services, Accessories.</p>
+              <ul class="rev-facts"><li>6 categories</li></ul>
+              <p class="rev-ev">p. 4 · Item 1 Business</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-guidance t-teal" aria-label="Guidance revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>
+          <div>
+            <p class="drawer-title">Guidance</p>
+            <p class="drawer-src">Updates from <b>Earnings Call</b> ·
+               3 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Jan 30, 2025</span>
+                <span class="rev-doc">Q1 2025 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">Range widened from $121–126B to $117–126B.</p>
+              <ul class="rev-facts"><li>Q1 2025 revenue — $117B–$126B [open]</li></ul>
+              <p class="rev-ev">CFO prepared remarks</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Oct 31, 2024</span>
+                <span class="rev-doc">Q4 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: Q1 2025 revenue guidance.</p>
+              <ul class="rev-facts"><li>Q1 2025 revenue — $121B–$126B [open]</li></ul>
+              <p class="rev-ev">CFO prepared remarks</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Aug 1, 2024</span>
+                <span class="rev-doc">Q3 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">Kept: Q4 2024 revenue guidance met.</p>
+              <ul class="rev-facts"><li>Q4 2024 revenue — met [kept]</li></ul>
+              <p class="rev-ev">CFO prepared remarks</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-risks t-red" aria-label="Risks revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/></svg></span>
+          <div>
+            <p class="drawer-title">Risks</p>
+            <p class="drawer-src">Updates from <b>Risk section</b> ·
+               4 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 4</span>
+                <span class="rev-date">Nov 1, 2024</span>
+                <span class="rev-doc">FY2024 10-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new risk factor: AI regulation; 1 no longer disclosed: COVID-19 disruption.</p>
+              <ul class="rev-facts"><li>AI regulation</li><li>Regulatory</li><li>Competition</li><li>Supply concentration</li></ul>
+              <p class="rev-ev">p. 12 · Item 1A</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Nov 3, 2023</span>
+                <span class="rev-doc">FY2023 10-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new risk factor: Supply concentration.</p>
+              <ul class="rev-facts"><li>Supply concentration</li><li>Regulatory</li><li>Competition</li><li>COVID-19 disruption</li></ul>
+              <p class="rev-ev">p. 11 · Item 1A</p>
+            </li>
+            <li class="rev">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Aug 3, 2023</span>
+                <span class="rev-doc">Q3 2023 10-Q</span>
+                <span class="rev-tag">no change</span>
+              </div>
+              <p class="rev-sum">Restated without change.</p>
+              <ul class="rev-facts"><li>No change to risk factors</li></ul>
+              <p class="rev-ev">p. 22 · Part II Item 1A</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Oct 28, 2022</span>
+                <span class="rev-doc">FY2022 10-K</span>
+                
+              </div>
+              <p class="rev-sum">11 new risk factors.</p>
+              <ul class="rev-facts"><li>11 factors disclosed</li></ul>
+              <p class="rev-ev">p. 10 · Item 1A</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-capital t-cyan" aria-label="Capital Allocation revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 6v12M15 9H10a2 2 0 0 0 0 4h4a2 2 0 0 1 0 4H9"/></svg></span>
+          <div>
+            <p class="drawer-title">Capital Allocation</p>
+            <p class="drawer-src">Updates from <b>Cash Flow</b> ·
+               3 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Nov 1, 2024</span>
+                <span class="rev-doc">FY2024 10-K</span>
+                
+              </div>
+              <p class="rev-sum">Share buybacks rose from $77.5B to $110B.</p>
+              <ul class="rev-facts"><li>Buybacks FY2024 — $110,000M</li><li>Dividends FY2024 — $15,234M</li></ul>
+              <p class="rev-ev">p. 34 · Consolidated statements of cash flows</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Apr 19, 2024</span>
+                <span class="rev-doc">8-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: $110B repurchase authorisation.</p>
+              <ul class="rev-facts"><li>Authorisation — $110,000M</li></ul>
+              <p class="rev-ev">Item 8.01</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Nov 3, 2023</span>
+                <span class="rev-doc">FY2023 10-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: Share buybacks.</p>
+              <ul class="rev-facts"><li>Buybacks FY2023 — $77,550M</li></ul>
+              <p class="rev-ev">p. 33 · Cash flows</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-promises t-amber" aria-label="Promises revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 3 6.5 7 .9-5 4.8 1.3 7L12 18l-6.3 3.2L7 14.2l-5-4.8 7-.9L12 2Z"/></svg></span>
+          <div>
+            <p class="drawer-title">Promises</p>
+            <p class="drawer-src">Updates from <b>CEO statements</b> ·
+               4 revisions, 4 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 4</span>
+                <span class="rev-date">Jan 30, 2025</span>
+                <span class="rev-doc">Q1 2025 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: expand Apple Intelligence to more languages in 2025.</p>
+              <ul class="rev-facts"><li>Apple Intelligence languages — 2025 [open]</li></ul>
+              <p class="rev-ev">CEO prepared remarks</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Oct 31, 2024</span>
+                <span class="rev-doc">Q4 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">Kept: Apple Intelligence ships in US English in 2024.</p>
+              <ul class="rev-facts"><li>US English rollout — [kept]</li></ul>
+              <p class="rev-ev">CEO prepared remarks</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">May 2, 2024</span>
+                <span class="rev-doc">Q2 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: on-device processing for most requests.</p>
+              <ul class="rev-facts"><li>On-device processing — [open]</li></ul>
+              <p class="rev-ev">Q&A, analyst question 2</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Feb 1, 2024</span>
+                <span class="rev-doc">Q1 2024 Earnings Call</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: Vision Pro availability outside the US in 2024.</p>
+              <ul class="rev-facts"><li>Vision Pro international — [unclear]</li></ul>
+              <p class="rev-ev">CEO prepared remarks</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-headcount t-blue" aria-label="Headcount revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg></span>
+          <div>
+            <p class="drawer-title">Headcount</p>
+            <p class="drawer-src">Updates from <b>10-K</b> ·
+               3 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Nov 1, 2024</span>
+                <span class="rev-doc">FY2024 10-K</span>
+                
+              </div>
+              <p class="rev-sum">Headcount rose from 161,000 to 164,000.</p>
+              <ul class="rev-facts"><li>Employees FY2024 — 164,000</li></ul>
+              <p class="rev-ev">p. 8 · Item 1 Human capital</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Nov 3, 2023</span>
+                <span class="rev-doc">FY2023 10-K</span>
+                
+              </div>
+              <p class="rev-sum">Headcount fell from 164,000 to 161,000.</p>
+              <ul class="rev-facts"><li>Employees FY2023 — 161,000</li></ul>
+              <p class="rev-ev">p. 7 · Item 1 Human capital</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Oct 28, 2022</span>
+                <span class="rev-doc">FY2022 10-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: Headcount.</p>
+              <ul class="rev-facts"><li>Employees FY2022 — 164,000</li></ul>
+              <p class="rev-ev">p. 7 · Item 1 Human capital</p>
+            </li></ol>
+      </aside>
+      <aside class="drawer d-rd t-violet" aria-label="R&D revision history">
+        <header class="drawer-top">
+          <span class="badge"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v6L4.6 17a2 2 0 0 0 1.8 3h11.2a2 2 0 0 0 1.8-3L15 8V2"/><path d="M9 2h6M7.5 13h9"/></svg></span>
+          <div>
+            <p class="drawer-title">R&D</p>
+            <p class="drawer-src">Updates from <b>10-K</b> ·
+               3 revisions, 3 material</p>
+          </div>
+          <label class="drawer-x" for="open-none" aria-label="Close">&#10005;</label>
+        </header>
+        <ol class="revs">
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 3</span>
+                <span class="rev-date">Nov 1, 2024</span>
+                <span class="rev-doc">FY2024 10-K</span>
+                
+              </div>
+              <p class="rev-sum">R&D rose from $29,915M to $31,370M.</p>
+              <ul class="rev-facts"><li>R&D FY2024 — $31,370M</li></ul>
+              <p class="rev-ev">p. 32 · Item 7 MD&A</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 2</span>
+                <span class="rev-date">Nov 3, 2023</span>
+                <span class="rev-doc">FY2023 10-K</span>
+                
+              </div>
+              <p class="rev-sum">R&D rose from $26,251M to $29,915M.</p>
+              <ul class="rev-facts"><li>R&D FY2023 — $29,915M</li></ul>
+              <p class="rev-ev">p. 30 · Item 7 MD&A</p>
+            </li>
+            <li class="rev rev-material">
+              <div class="rev-head">
+                <span class="rev-n">rev 1</span>
+                <span class="rev-date">Oct 28, 2022</span>
+                <span class="rev-doc">FY2022 10-K</span>
+                
+              </div>
+              <p class="rev-sum">1 new item: R&D.</p>
+              <ul class="rev-facts"><li>R&D FY2022 — $26,251M</li></ul>
+              <p class="rev-ev">p. 30 · Item 7 MD&A</p>
+            </li></ol>
+      </aside>
+      <label class="scrim" for="open-none" aria-hidden="true"></label>
+    </div>
+  </main>
+</div>
+</body>
+</html>
