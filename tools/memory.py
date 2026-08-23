@@ -116,7 +116,7 @@ def build():
         x, y = DPOS[k]
         fx, fy = (x - 50) * 2.6, (y - 50) * 2.6          # where it flies in from
         L.append(f'{A}  <div class="cm-doc d-{k}" style="--x:{x}%;--y:{y}%;'
-                 f'--fx:{fx:.0f}%;--fy:{fy:.0f}%;--i:{i};{rng(14 + i * 2.2, 30 + i * 2.2)}">'
+                 f'--fx:{fx:.0f}%;--fy:{fy:.0f}%;{rng(14 + i * 2.2, 30 + i * 2.2)}">'
                  f'<span class="cm-doc-ico"></span>{label}</div>')
     L.append(f'{A}</div>')
 
@@ -179,7 +179,7 @@ def build():
             L.append(f'{A}    <li style="--i:{j}"><div class="cm-m-top"><span class="cm-m-doc">{doc}</span>'
                      f'<span class="cm-m-date">{date}</span><span class="cm-m-page">{page}</span></div>'
                      f'<p class="cm-m-q">{quote}</p>'
-                     f'<button class="cm-m-btn" type="button">View evidence &rarr;</button></li>')
+                     f'<a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>')
         L.append(f'{A}  </ul>')
     L.append(f'{A}</div>')
     return '\n'.join(L)

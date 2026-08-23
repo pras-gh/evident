@@ -135,7 +135,7 @@ SECTION = f'''
             <span class="ev-conf">98%</span>
           </div>
           <p class="ev-where">Source found inside Management Discussion &amp; Analysis.</p>
-          <button class="ev-btn" type="button">View evidence <span aria-hidden="true">&rarr;</span></button>
+          <button class="ev-btn" type="button" tabindex="-1" aria-hidden="true">View evidence <span>&rarr;</span></button>
         </article>
       </div>
 

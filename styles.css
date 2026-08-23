@@ -59,7 +59,11 @@ h1,h2,h3,p,ul,ol,figure,blockquote{margin:0}
 ul,ol{list-style:none;padding:0}
 img{display:block;max-width:100%}
 ::selection{background:var(--sun);color:#231d09}
+/* The page default is near-black, which is invisible on the dark chapter.
+   Both sections there get their own ring. */
 :focus-visible{outline:3px solid var(--ink);outline-offset:2px;border-radius:2px}
+.dark-chapter{--focus:#7aa9ff}
+.dark-chapter :focus-visible{outline:3px solid var(--focus);outline-offset:3px}
 
 .pix{font-family:var(--pix);letter-spacing:.02em;text-transform:uppercase;font-size:10px;line-height:1}
 
@@ -995,7 +999,7 @@ html[data-motion="off"] .demo .caret{display:none}
 .cm-m-date{font-size:10px;color:var(--sec)}
 .cm-m-page{margin-left:auto;font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280}
 .cm-m-q{margin-top:6px;font-size:11px;line-height:1.5;color:var(--sec)}
-.cm-m-btn{margin-top:8px;cursor:pointer;padding:6px 10px;border-radius:8px;
+.cm-m-btn{display:inline-block;margin-top:8px;cursor:pointer;padding:6px 10px;border-radius:8px;
   border:1px solid rgba(52,211,153,.32);background:rgba(52,211,153,.10);color:#a7f3d0;
   font:500 10px/1 "Geist",var(--sans);transition:background .2s,border-color .2s}
 .cm-m-btn:hover{background:rgba(52,211,153,.2);border-color:rgba(52,211,153,.6)}
@@ -1017,6 +1021,15 @@ html[data-motion="off"] .demo .caret{display:none}
 #cm-cuda:checked      ~ .cm-explorer .cm-exp-n::after,
 #cm-china:checked     ~ .cm-explorer .cm-exp-n::after,
 #cm-gaming:checked    ~ .cm-explorer .cm-exp-n::after{content:"3 mentions"}
+/* the radios are visually hidden, so keyboard focus has to surface on the
+   label the reader can actually see */
+#cm-ai:focus-visible        ~ .cm-topics .cm-topic[data-topic="ai"],
+#cm-blackwell:focus-visible ~ .cm-topics .cm-topic[data-topic="blackwell"],
+#cm-cuda:focus-visible      ~ .cm-topics .cm-topic[data-topic="cuda"],
+#cm-china:focus-visible     ~ .cm-topics .cm-topic[data-topic="china"],
+#cm-gaming:focus-visible    ~ .cm-topics .cm-topic[data-topic="gaming"]{
+  outline:3px solid var(--focus);outline-offset:3px}
+
 /* the selected node stays lit */
 #cm-ai:checked        ~ .cm-topics .cm-topic[data-topic="ai"],
 #cm-blackwell:checked ~ .cm-topics .cm-topic[data-topic="blackwell"],
@@ -1163,3 +1176,55 @@ html[data-motion="off"] .cm-field{transform:translate3d(-17%,-16%,0) scale(.7)!i
 html[data-motion="off"] .cm-step{opacity:0!important}
 html[data-motion="off"] .cm-step.s06{opacity:1!important}
 html[data-motion="off"] .cm-progress i{transform:scaleX(1)!important}
+
+/* ==========================================================================
+   12. Reduced motion, with no JavaScript involved
+   main.js already defaults the motion toggle to off when the OS asks for
+   reduced motion, but that needs JS to run. This unpins both cinematic
+   sections and shows their finished composition instead — the same
+   treatment they already get at narrow widths. An explicit 'motion on'
+   still wins, because that is a deliberate choice by the reader.
+   Generated from the max-width:1000px blocks so the two cannot drift.
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce){
+  html:not([data-motion="on"]) .demo{height:auto}
+  html:not([data-motion="on"]) .demo-stage{position:relative;top:auto;height:auto;min-height:0;padding:clamp(48px,8vh,90px) 5vw}
+  html:not([data-motion="on"]) .demo-panels{grid-template-columns:1fr;transform:none!important;animation:none!important}
+  html:not([data-motion="on"]) .chat{min-height:420px}
+  html:not([data-motion="on"]) .pdf{min-height:520px}
+  html:not([data-motion="on"]) .connector{display:none}
+  html:not([data-motion="on"]) .cite-bubble{width:min(200px,54%)}
+  html:not([data-motion="on"]) .demo .anim,
+  html:not([data-motion="on"]) .demo .stream .w{animation-timeline:auto!important;animation-range:normal!important;
+    animation-duration:1ms!important;animation-delay:0ms!important}
+  html:not([data-motion="on"]) .stream .w,
+  html:not([data-motion="on"]) .answer-note,
+  html:not([data-motion="on"]) .ev,
+  html:not([data-motion="on"]) .cite-bubble,
+  html:not([data-motion="on"]) .chat,
+  html:not([data-motion="on"]) .pdf,
+  html:not([data-motion="on"]) .bubble-user,
+  html:not([data-motion="on"]) .demo-eyebrow,
+  html:not([data-motion="on"]) .demo-h2,
+  html:not([data-motion="on"]) .demo-sub{opacity:1}
+  html:not([data-motion="on"]) .hl{animation:none!important;background-size:100% 100%}
+  html:not([data-motion="on"]) .pdf-reel{animation:none!important;transform:translate3d(0,var(--reelY,-650px),0)}
+  html:not([data-motion="on"]) .caret{display:none}
+  html:not([data-motion="on"]) .cm{height:auto}
+  html:not([data-motion="on"]) .cm-stage{position:relative;top:auto;height:auto;min-height:0;padding:clamp(48px,8vh,90px) 5vw}
+  html:not([data-motion="on"]) .cm-cols{grid-template-columns:1fr;gap:28px;align-items:start}
+  html:not([data-motion="on"]) .cm-copy{position:static;height:auto;display:grid;gap:24px}
+  html:not([data-motion="on"]) .cm-step{position:static;inset:auto;opacity:1;animation:none!important}
+  html:not([data-motion="on"]) .cm-progress{display:none}
+  html:not([data-motion="on"]) .cm-canvas{height:min(560px,74vh)}
+  html:not([data-motion="on"]) .cm-field{transform:translate3d(-17%,-16%,0) scale(.7)!important;animation:none!important}
+  html:not([data-motion="on"]) .cm-doc,
+  html:not([data-motion="on"]) .cm-topic,
+  html:not([data-motion="on"]) .cm-rail,
+  html:not([data-motion="on"]) .cm-year,
+  html:not([data-motion="on"]) .cm-ev,
+  html:not([data-motion="on"]) .cm-replay,
+  html:not([data-motion="on"]) .cm-explorer{opacity:1!important;transform:none!important;animation:none!important}
+  html:not([data-motion="on"]) .cm-topic{transform:translate(-50%,-50%)!important}
+  html:not([data-motion="on"]) .cm-wires .w{stroke-dashoffset:0!important;animation:none!important}
+}

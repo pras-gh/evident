@@ -736,7 +736,7 @@
             <span class="ev-conf">98%</span>
           </div>
           <p class="ev-where">Source found inside Management Discussion &amp; Analysis.</p>
-          <button class="ev-btn" type="button">View evidence <span aria-hidden="true">&rarr;</span></button>
+          <button class="ev-btn" type="button" tabindex="-1" aria-hidden="true">View evidence <span>&rarr;</span></button>
         </article>
       </div>
 
@@ -781,6 +781,7 @@
 </section>
 
 
+
 <!-- DEMO:END -->
 <!-- MEMORY:START -->
 
@@ -816,12 +817,12 @@
           <input class="sr-only tpick" type="radio" name="cm-topic" id="cm-china">
           <input class="sr-only tpick" type="radio" name="cm-topic" id="cm-gaming">
           <div class="cm-docs">
-            <div class="cm-doc d-k22" style="--x:69.5%;--y:14.49%;--fx:51%;--fy:-92%;--i:0;animation-range:contain 14.00% contain 30.00%"><span class="cm-doc-ico"></span>10-K FY2022</div>
-            <div class="cm-doc d-q1" style="--x:89.0%;--y:50.0%;--fx:101%;--fy:0%;--i:1;animation-range:contain 16.20% contain 32.20%"><span class="cm-doc-ico"></span>Q1 Earnings</div>
-            <div class="cm-doc d-q2" style="--x:69.5%;--y:85.51%;--fx:51%;--fy:92%;--i:2;animation-range:contain 18.40% contain 34.40%"><span class="cm-doc-ico"></span>Q2 Earnings</div>
-            <div class="cm-doc d-inv" style="--x:30.5%;--y:85.51%;--fx:-51%;--fy:92%;--i:3;animation-range:contain 20.60% contain 36.60%"><span class="cm-doc-ico"></span>Investor Day</div>
-            <div class="cm-doc d-pr" style="--x:11.0%;--y:50.0%;--fx:-101%;--fy:0%;--i:4;animation-range:contain 22.80% contain 38.80%"><span class="cm-doc-ico"></span>Press Release</div>
-            <div class="cm-doc d-ceo" style="--x:30.5%;--y:14.49%;--fx:-51%;--fy:-92%;--i:5;animation-range:contain 25.00% contain 41.00%"><span class="cm-doc-ico"></span>CEO Letter</div>
+            <div class="cm-doc d-k22" style="--x:69.5%;--y:14.49%;--fx:51%;--fy:-92%;animation-range:contain 14.00% contain 30.00%"><span class="cm-doc-ico"></span>10-K FY2022</div>
+            <div class="cm-doc d-q1" style="--x:89.0%;--y:50.0%;--fx:101%;--fy:0%;animation-range:contain 16.20% contain 32.20%"><span class="cm-doc-ico"></span>Q1 Earnings</div>
+            <div class="cm-doc d-q2" style="--x:69.5%;--y:85.51%;--fx:51%;--fy:92%;animation-range:contain 18.40% contain 34.40%"><span class="cm-doc-ico"></span>Q2 Earnings</div>
+            <div class="cm-doc d-inv" style="--x:30.5%;--y:85.51%;--fx:-51%;--fy:92%;animation-range:contain 20.60% contain 36.60%"><span class="cm-doc-ico"></span>Investor Day</div>
+            <div class="cm-doc d-pr" style="--x:11.0%;--y:50.0%;--fx:-101%;--fy:0%;animation-range:contain 22.80% contain 38.80%"><span class="cm-doc-ico"></span>Press Release</div>
+            <div class="cm-doc d-ceo" style="--x:30.5%;--y:14.49%;--fx:-51%;--fy:-92%;animation-range:contain 25.00% contain 41.00%"><span class="cm-doc-ico"></span>CEO Letter</div>
           </div>
           <svg class="cm-wires" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
             <path class="w w-ai" style="animation-range:contain 33.00% contain 46.00%" d="M50 50 L50.0 23.0" vector-effect="non-scaling-stroke"/>
@@ -877,30 +878,30 @@
           <div class="cm-explorer">
             <div class="cm-exp-top"><span class="cm-exp-t"></span><span class="cm-exp-n"></span></div>
             <ul class="cm-mentions m-ai">
-              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2022</span><span class="cm-m-date">Item 1 · p.6</span><span class="cm-m-page">Business</span></div><p class="cm-m-q">Data-centre segment framed around accelerated computing.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Investor Day</span><span class="cm-m-date">Jun 2023</span><span class="cm-m-page">Slide 31</span></div><p class="cm-m-q">Multi-year infrastructure build-out laid out by region.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">CEO Letter</span><span class="cm-m-date">Apr 2025</span><span class="cm-m-page">p.2</span></div><p class="cm-m-q">Compute capacity described as the binding constraint on growth.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
+              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2022</span><span class="cm-m-date">Item 1 · p.6</span><span class="cm-m-page">Business</span></div><p class="cm-m-q">Data-centre segment framed around accelerated computing.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Investor Day</span><span class="cm-m-date">Jun 2023</span><span class="cm-m-page">Slide 31</span></div><p class="cm-m-q">Multi-year infrastructure build-out laid out by region.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">CEO Letter</span><span class="cm-m-date">Apr 2025</span><span class="cm-m-page">p.2</span></div><p class="cm-m-q">Compute capacity described as the binding constraint on growth.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
             </ul>
             <ul class="cm-mentions m-blackwell">
-              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">Investor Day</span><span class="cm-m-date">Mar 2024</span><span class="cm-m-page">Slide 12</span></div><p class="cm-m-q">Architecture introduced alongside a multi-year data-centre roadmap.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Q3 Earnings call</span><span class="cm-m-date">Nov 2024</span><span class="cm-m-page">CFO remarks</span></div><p class="cm-m-q">Ramp described as supply-constrained into the following year.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2025</span><span class="cm-m-date">Item 7 · p.44</span><span class="cm-m-page">MD&A</span></div><p class="cm-m-q">Revenue attributed to the architecture reported for the first time.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:3"><div class="cm-m-top"><span class="cm-m-doc">Q1 Earnings call</span><span class="cm-m-date">Feb 2026</span><span class="cm-m-page">Q&A</span></div><p class="cm-m-q">Commentary on capacity reservations made ahead of demand.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
+              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">Investor Day</span><span class="cm-m-date">Mar 2024</span><span class="cm-m-page">Slide 12</span></div><p class="cm-m-q">Architecture introduced alongside a multi-year data-centre roadmap.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Q3 Earnings call</span><span class="cm-m-date">Nov 2024</span><span class="cm-m-page">CFO remarks</span></div><p class="cm-m-q">Ramp described as supply-constrained into the following year.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2025</span><span class="cm-m-date">Item 7 · p.44</span><span class="cm-m-page">MD&A</span></div><p class="cm-m-q">Revenue attributed to the architecture reported for the first time.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:3"><div class="cm-m-top"><span class="cm-m-doc">Q1 Earnings call</span><span class="cm-m-date">Feb 2026</span><span class="cm-m-page">Q&A</span></div><p class="cm-m-q">Commentary on capacity reservations made ahead of demand.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
             </ul>
             <ul class="cm-mentions m-cuda">
-              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2022</span><span class="cm-m-date">Item 1A · p.19</span><span class="cm-m-page">Risk factors</span></div><p class="cm-m-q">Developer ecosystem named as a competitive advantage.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Q2 Earnings call</span><span class="cm-m-date">Aug 2023</span><span class="cm-m-page">Prepared remarks</span></div><p class="cm-m-q">Installed base and toolchain lock-in discussed.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">Investor Day</span><span class="cm-m-date">Jun 2023</span><span class="cm-m-page">Slide 44</span></div><p class="cm-m-q">Library and framework coverage presented as a moat.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
+              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2022</span><span class="cm-m-date">Item 1A · p.19</span><span class="cm-m-page">Risk factors</span></div><p class="cm-m-q">Developer ecosystem named as a competitive advantage.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Q2 Earnings call</span><span class="cm-m-date">Aug 2023</span><span class="cm-m-page">Prepared remarks</span></div><p class="cm-m-q">Installed base and toolchain lock-in discussed.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">Investor Day</span><span class="cm-m-date">Jun 2023</span><span class="cm-m-page">Slide 44</span></div><p class="cm-m-q">Library and framework coverage presented as a moat.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
             </ul>
             <ul class="cm-mentions m-china">
-              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">8-K</span><span class="cm-m-date">Oct 2024</span><span class="cm-m-page">Item 8.01</span></div><p class="cm-m-q">Licence requirements for certain products disclosed.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2025</span><span class="cm-m-date">Item 1A · p.22</span><span class="cm-m-page">Risk factors</span></div><p class="cm-m-q">Revenue exposure to the region quantified.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">Press Release</span><span class="cm-m-date">Jan 2026</span><span class="cm-m-page">—</span></div><p class="cm-m-q">Compliant product variant announced for the region.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
+              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">8-K</span><span class="cm-m-date">Oct 2024</span><span class="cm-m-page">Item 8.01</span></div><p class="cm-m-q">Licence requirements for certain products disclosed.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2025</span><span class="cm-m-date">Item 1A · p.22</span><span class="cm-m-page">Risk factors</span></div><p class="cm-m-q">Revenue exposure to the region quantified.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">Press Release</span><span class="cm-m-date">Jan 2026</span><span class="cm-m-page">—</span></div><p class="cm-m-q">Compliant product variant announced for the region.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
             </ul>
             <ul class="cm-mentions m-gaming">
-              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">Q1 Earnings</span><span class="cm-m-date">May 2024</span><span class="cm-m-page">Segment detail</span></div><p class="cm-m-q">Channel inventory normalisation described.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Press Release</span><span class="cm-m-date">Sep 2025</span><span class="cm-m-page">—</span></div><p class="cm-m-q">Segment reporting boundaries restated.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
-              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2025</span><span class="cm-m-date">Item 7 · p.51</span><span class="cm-m-page">MD&A</span></div><p class="cm-m-q">Year-over-year change decomposed by driver.</p><button class="cm-m-btn" type="button">View evidence &rarr;</button></li>
+              <li style="--i:0"><div class="cm-m-top"><span class="cm-m-doc">Q1 Earnings</span><span class="cm-m-date">May 2024</span><span class="cm-m-page">Segment detail</span></div><p class="cm-m-q">Channel inventory normalisation described.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:1"><div class="cm-m-top"><span class="cm-m-doc">Press Release</span><span class="cm-m-date">Sep 2025</span><span class="cm-m-page">—</span></div><p class="cm-m-q">Segment reporting boundaries restated.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
+              <li style="--i:2"><div class="cm-m-top"><span class="cm-m-doc">10-K FY2025</span><span class="cm-m-date">Item 7 · p.51</span><span class="cm-m-page">MD&A</span></div><p class="cm-m-q">Year-over-year change decomposed by driver.</p><a class="cm-m-btn" href="#evidence">View evidence &rarr;</a></li>
             </ul>
           </div>
         </div>
@@ -909,6 +910,7 @@
     </div>
   </div>
 </section>
+
 
 <!-- MEMORY:END -->
 </div><!-- /dark-chapter -->
