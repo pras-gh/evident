@@ -123,68 +123,109 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(n, 1)
         self.assertEqual(name, "NVIDIA Corporation")
 
-    def test_topic_upsert_never_duplicates_and_widens_its_span(self):
-        """The requirement, verified at the database rather than in code."""
-        from sqlalchemy import func, select
-        from evident_db import Topic, session_scope
-        from evident_db.repositories import upsert_topic
+    def test_entity_upsert_never_duplicates_and_widens_its_span(self):
+        """The requirement, verified at the database rather than in code.
+
+        Now covers every kind through one path instead of being re-stated per
+        table."""
+        from sqlalchemy import select
+        from evident_db import Entity, session_scope
+        from evident_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
-            upsert_topic(db, company_id=self.company_id, slug="blackwell",
-                         label="Blackwell", observed_at=date(2024, 5, 1))
-            upsert_topic(db, company_id=self.company_id, slug="blackwell",
-                         label="Blackwell architecture", observed_at=date(2023, 2, 1))
-            upsert_topic(db, company_id=self.company_id, slug="blackwell",
-                         label="Blackwell", observed_at=date(2025, 2, 26))
+            for kind, label, when in (("topic", "Blackwell", date(2024, 5, 1)),
+                                      ("topic", "Blackwell", date(2023, 2, 1)),
+                                      ("topic", "Blackwell", date(2025, 2, 26))):
+                upsert_entity(db, company_id=self.company_id, kind=kind,
+                              key="blackwell", label=label, observed_at=when)
             db.flush()
-            rows = list(db.execute(select(Topic).where(
-                Topic.company_id == self.company_id, Topic.slug == "blackwell")).scalars())
+            rows = list(db.execute(select(Entity).where(
+                Entity.company_id == self.company_id,
+                Entity.key == "blackwell")).scalars())
 
-        self.assertEqual(len(rows), 1, "three ingests created more than one topic")
+        self.assertEqual(len(rows), 1, "three ingests created more than one entity")
         self.assertEqual(rows[0].first_seen_at, date(2023, 2, 1),
                          "first_seen_at must move earlier, even out of order")
         self.assertEqual(rows[0].last_seen_at, date(2025, 2, 26))
 
-    def test_mention_count_does_not_inflate_on_rerun(self):
+    def test_same_key_under_different_kinds_stays_distinct(self):
+        """A product and a topic can share a name and are not the same thing."""
         from sqlalchemy import select
-        from evident_db import Chunk, Topic, session_scope
-        from evident_db.repositories import add_topic_mention, upsert_topic
+        from evident_db import Entity, session_scope
+        from evident_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
-            topic = upsert_topic(db, company_id=self.company_id, slug="capex",
-                                 label="CapEx", observed_at=date(2025, 2, 26))
+            upsert_entity(db, company_id=self.company_id, kind="topic",
+                          key="blackwell", label="Blackwell",
+                          observed_at=date(2025, 1, 1))
+            upsert_entity(db, company_id=self.company_id, kind="product",
+                          key="blackwell", label="Blackwell",
+                          observed_at=date(2025, 1, 1))
+            db.flush()
+            rows = list(db.execute(select(Entity).where(
+                Entity.key == "blackwell")).scalars())
+        self.assertEqual(len(rows), 2)
+
+    def test_attributes_merge_rather_than_overwrite(self):
+        """A later filing that omits a risk's category must not erase it."""
+        from sqlalchemy import select
+        from evident_db import Entity, session_scope
+        from evident_db.repositories import upsert_entity
+
+        with session_scope(DSN) as db:
+            upsert_entity(db, company_id=self.company_id, kind="risk",
+                          key="export", label="Export controls",
+                          observed_at=date(2024, 1, 1),
+                          attributes={"category": "regulatory"})
+            upsert_entity(db, company_id=self.company_id, kind="risk",
+                          key="export", label="Export controls",
+                          observed_at=date(2025, 1, 1), attributes={})
+            db.flush()
+            row = db.execute(select(Entity).where(
+                Entity.key == "export")).scalar_one()
+        self.assertEqual(row.attributes.get("category"), "regulatory")
+
+    def test_mention_count_does_not_inflate_on_rerun(self):
+        from sqlalchemy import select
+        from evident_db import Chunk, Entity, session_scope
+        from evident_db.repositories import add_entity_mention, upsert_entity
+
+        with session_scope(DSN) as db:
+            entity = upsert_entity(db, company_id=self.company_id, kind="metric",
+                                   key="capex", label="CapEx",
+                                   observed_at=date(2025, 2, 26))
             db.flush()
             chunk = db.execute(select(Chunk).where(
                 Chunk.document_id == self.document_id).limit(1)).scalar_one()
-            first = add_topic_mention(db, topic_id=topic.id, chunk_id=chunk.id,
-                                      document_id=self.document_id,
-                                      observed_at=date(2025, 2, 26), quote="q")
-            second = add_topic_mention(db, topic_id=topic.id, chunk_id=chunk.id,
-                                       document_id=self.document_id,
-                                       observed_at=date(2025, 2, 26), quote="q")
+            args = dict(entity_id=entity.id, chunk_id=chunk.id,
+                        document_id=self.document_id,
+                        observed_at=date(2025, 2, 26), quote="q")
+            first = add_entity_mention(db, **args)
+            second = add_entity_mention(db, **args)
             db.flush()
-            count = db.execute(select(Topic.mention_count)
-                               .where(Topic.id == topic.id)).scalar_one()
+            count = db.execute(select(Entity.mention_count)
+                               .where(Entity.id == entity.id)).scalar_one()
         self.assertTrue(first)
         self.assertFalse(second, "re-running the builder re-counted a mention")
         self.assertEqual(count, 1)
 
     def test_dropped_risk_is_marked_not_deleted(self):
         from sqlalchemy import select
-        from evident_db import Risk, session_scope
-        from evident_db.repositories import mark_dropped_risks, upsert_risk
+        from evident_db import Entity, session_scope
+        from evident_db.repositories import mark_dropped_entities, upsert_entity
 
         with session_scope(DSN) as db:
-            upsert_risk(db, company_id=self.company_id, slug="covid",
-                        label="COVID-19 disruption", observed_at=date(2023, 2, 1))
-            upsert_risk(db, company_id=self.company_id, slug="export",
-                        label="Export controls", observed_at=date(2025, 2, 26))
+            upsert_entity(db, company_id=self.company_id, kind="risk", key="covid",
+                          label="COVID-19 disruption", observed_at=date(2023, 2, 1))
+            upsert_entity(db, company_id=self.company_id, kind="risk", key="export",
+                          label="Export controls", observed_at=date(2025, 2, 26))
             db.flush()
-            mark_dropped_risks(db, company_id=self.company_id,
-                               latest_filing_at=date(2025, 2, 26))
+            mark_dropped_entities(db, company_id=self.company_id, kind="risk",
+                                  latest_filing_at=date(2025, 2, 26))
             db.flush()
-            rows = {r.slug: r.status for r in db.execute(
-                select(Risk).where(Risk.company_id == self.company_id)).scalars()}
+            rows = {r.key: r.status for r in db.execute(
+                select(Entity).where(Entity.company_id == self.company_id,
+                                     Entity.kind == "risk")).scalars()}
         self.assertEqual(rows["covid"], "dropped")
         self.assertEqual(rows["export"], "active")
 
@@ -229,7 +270,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         body = r.json()
         self.assertEqual(body["ticker"], "NVDA")
         self.assertEqual(body["document_count"], 1)
-        self.assertIn("topics", body["counts"])
+        self.assertIsInstance(body["counts"], dict)
 
     async def test_unknown_company_is_404_not_empty_200(self):
         async with await self._client() as c:
@@ -237,26 +278,27 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status_code, 404)
         self.assertIn("ZZZZ", r.json()["detail"])
 
-    async def test_topic_endpoint_returns_mentions_with_citations(self):
-        from evident_db import session_scope
-        from evident_db.repositories import add_topic_mention, upsert_topic
+    async def test_entity_endpoint_returns_mentions_with_citations(self):
+        from evident_db import Chunk, session_scope
+        from evident_db.repositories import add_entity_mention, upsert_entity
         from sqlalchemy import select
-        from evident_db import Chunk
 
         with session_scope(DSN) as db:
-            topic = upsert_topic(db, company_id=self.company_id, slug="export-controls",
-                                 label="Export controls", observed_at=date(2025, 2, 26))
+            entity = upsert_entity(db, company_id=self.company_id, kind="topic",
+                                   key="export_controls", label="Export controls",
+                                   observed_at=date(2025, 2, 26))
             db.flush()
             chunk = db.execute(select(Chunk).where(
                 Chunk.document_id == self.document_id,
                 Chunk.page_number == 12)).scalar_one()
-            add_topic_mention(db, topic_id=topic.id, chunk_id=chunk.id,
-                              document_id=self.document_id,
-                              observed_at=date(2025, 2, 26),
-                              quote="Export controls on advanced computing products")
+            add_entity_mention(db, entity_id=entity.id, chunk_id=chunk.id,
+                               document_id=self.document_id,
+                               observed_at=date(2025, 2, 26), page_number=12,
+                               paragraph_id="12_1", chunk_hash=chunk.chunk_hash,
+                               quote="Export controls on advanced computing products")
 
         async with await self._client() as c:
-            r = await c.get("/v1/companies/nvda/topics/export-controls")
+            r = await c.get("/v1/companies/nvda/entities/export_controls")
         self.assertEqual(r.status_code, 200)
         mention = r.json()["mentions"][0]
         self.assertEqual(mention["form_type"], "10-K")

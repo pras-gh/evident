@@ -11,10 +11,13 @@ from datetime import date
 from pydantic import BaseModel, Field
 
 
-class TopicOut(BaseModel):
+class EntityOut(BaseModel):
     id: int
-    slug: str
+    kind: str
+    key: str
     label: str
+    attributes: dict = Field(default_factory=dict)
+    status: str
     first_seen_at: date | None = None
     last_seen_at: date | None = None
     mention_count: int
@@ -42,7 +45,7 @@ class MentionOut(BaseModel):
     provenance: Provenance
 
 
-class TopicDetailOut(TopicOut):
+class EntityDetailOut(EntityOut):
     mentions: list[MentionOut]
 
 
@@ -52,17 +55,7 @@ class TimelineEventOut(BaseModel):
     detail: str | None = None
     occurred_at: date
     ref: str
-    topic_id: int | None = None
-
-
-class RiskOut(BaseModel):
-    slug: str
-    label: str
-    category: str | None = None
-    severity: str | None = None
-    status: str = Field(description="'dropped' means it stopped being disclosed")
-    first_seen_at: date | None = None
-    last_seen_at: date | None = None
+    entity_id: int | None = None
 
 
 class CompanyMemoryOut(BaseModel):
@@ -74,7 +67,7 @@ class CompanyMemoryOut(BaseModel):
     earliest_filing: date | None = None
     latest_filing: date | None = None
     counts: dict[str, int]
-    top_topics: list[TopicOut]
+    top_entities: list[EntityOut]
 
 
 class SearchRequest(BaseModel):
@@ -104,3 +97,36 @@ class SearchResponse(BaseModel):
     hits: list[SearchHitOut]
     took_ms: float
     embedder: str
+
+
+# ---------------------------------------------------------------- graph
+# Frozen contract. Field names and meanings do not change; new fields may be
+# added. See apps/api/routers/graph.py and tests/test_graph_contract.py.
+class GraphNode(BaseModel):
+    id: str = Field(description="entity key — stable across rebuilds, safe to cache")
+    label: str
+    type: str = Field(description="topic | strategy | person | product | metric "
+                                  "| risk | event | segment")
+    importance: int = Field(ge=0, le=100)
+    mentions: int = Field(ge=0)
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    relationship: str
+    strength: float = Field(ge=0, le=1)
+
+
+class GraphOut(BaseModel):
+    company: str
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+
+
+class ImportanceExplanation(BaseModel):
+    """Behind the bare number in the contract."""
+    id: str
+    importance: int
+    components: dict[str, float]
+    signals: dict

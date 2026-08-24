@@ -31,17 +31,12 @@ from .base import Base, created_at, str16, str64, str255, updated_at
 EMBEDDING_DIM = 1536
 
 
-class Provenance:
-    """Mixin: where an extracted claim came from.
-
-    Every extracted object carries these. `confidence` is the extractor's own
-    reported score — a self-report, not a calibrated probability — so it is
-    useful for ranking and for triage thresholds, and should not be presented to
-    a reader as a likelihood that the claim is true.
-    """
-    page_number: Mapped[Optional[int]]
-    paragraph_id: Mapped[Optional[str64]]
-    confidence: Mapped[Optional[float]] = mapped_column(Float)
+# `strategy` is in the graph contract's node types, so it is a first-class kind
+# rather than a topic wearing a label.
+ENTITY_KINDS = ("topic", "strategy", "person", "product", "metric", "risk",
+                "event", "segment")
+RELATIONSHIP_KINDS = ("co_occurs", "mentioned_with", "holds_role", "affects",
+                      "supersedes", "part_of")
 
 
 class Company(Base):
@@ -57,7 +52,7 @@ class Company(Base):
 
     documents: Mapped[list["Document"]] = relationship(
         back_populates="company", cascade="all, delete-orphan")
-    topics: Mapped[list["Topic"]] = relationship(
+    entities: Mapped[list["Entity"]] = relationship(
         back_populates="company", cascade="all, delete-orphan")
 
 
@@ -143,56 +138,6 @@ class Chunk(Base):
         return f"{page}{' · ' + self.section_title if self.section_title else ''}"
 
 
-class Topic(Base):
-    """Unique per company by slug — that is what makes the builder update.
-
-    The constraint is the mechanism, not a safety net. Without it, "update
-    existing memory instead of duplicating topics" would be an application-level
-    convention that one careless insert breaks silently.
-    """
-    __tablename__ = "topics"
-    __table_args__ = (
-        UniqueConstraint("company_id", "slug", name="uq_topics_company_id_slug"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    company_id: Mapped[int] = mapped_column(
-        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    slug: Mapped[str255]
-    label: Mapped[str255]
-    first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    mention_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
-    created_at: Mapped[created_at]
-    updated_at: Mapped[updated_at]
-
-    company: Mapped["Company"] = relationship(back_populates="topics")
-    mentions: Mapped[list["TopicMention"]] = relationship(
-        back_populates="topic", cascade="all, delete-orphan")
-
-
-class TopicMention(Base):
-    __tablename__ = "topic_mentions"
-    __table_args__ = (
-        UniqueConstraint("topic_id", "chunk_id",
-                         name="uq_topic_mentions_topic_id_chunk_id"),
-        Index("ix_topic_mentions_topic_id_observed_at", "topic_id", "observed_at"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    topic_id: Mapped[int] = mapped_column(
-        ForeignKey("topics.id", ondelete="CASCADE"), index=True)
-    chunk_id: Mapped[int] = mapped_column(
-        ForeignKey("chunks.id", ondelete="CASCADE"), index=True)
-    document_id: Mapped[int] = mapped_column(
-        ForeignKey("documents.id", ondelete="CASCADE"))
-    observed_at: Mapped[date] = mapped_column(Date)
-    quote: Mapped[str] = mapped_column(Text)
-    page_number: Mapped[Optional[int]]
-    paragraph_id: Mapped[Optional[str64]]
-    confidence: Mapped[Optional[float]] = mapped_column(Float)
-
-    topic: Mapped["Topic"] = relationship(back_populates="mentions")
 
 
 class TimelineEvent(Base):
@@ -212,8 +157,8 @@ class TimelineEvent(Base):
         ForeignKey("documents.id", ondelete="CASCADE"))
     chunk_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey("chunks.id", ondelete="SET NULL"))
-    topic_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("topics.id", ondelete="SET NULL"), index=True)
+    entity_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("entities.id", ondelete="SET NULL"), index=True)
     kind: Mapped[str64] = mapped_column(index=True)
     headline: Mapped[str] = mapped_column(Text)
     detail: Mapped[Optional[str]] = mapped_column(Text)
@@ -225,90 +170,7 @@ class TimelineEvent(Base):
     created_at: Mapped[created_at]
 
 
-class Risk(Base):
-    """A risk that stops being disclosed is marked, not deleted.
 
-    The disappearance of a risk factor between two 10-Ks is one of the more
-    informative things in the corpus, so `status` changes and the history stays
-    queryable.
-    """
-    __tablename__ = "risks"
-    __table_args__ = (
-        UniqueConstraint("company_id", "slug", name="uq_risks_company_id_slug"),
-        CheckConstraint("status in ('active','dropped')", name="status"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    company_id: Mapped[int] = mapped_column(
-        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    chunk_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chunks.id", ondelete="SET NULL"))
-    slug: Mapped[str255]
-    label: Mapped[str] = mapped_column(Text)
-    category: Mapped[Optional[str64]]
-    severity: Mapped[Optional[str64]]
-    page_number: Mapped[Optional[int]]
-    paragraph_id: Mapped[Optional[str64]]
-    confidence: Mapped[Optional[float]] = mapped_column(Float)
-    status: Mapped[str16] = mapped_column(default="active", server_default="active")
-    first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    created_at: Mapped[created_at]
-    updated_at: Mapped[updated_at]
-
-
-class Person(Base):
-    """`normalised` is the identity; `full_name` is the display.
-
-    'Mr. Jensen Huang', 'JENSEN HUANG' and 'Huang, Jensen' are one person, and
-    the unique constraint on the normalised form is what makes that true at the
-    database level rather than by convention.
-    """
-    __tablename__ = "people"
-    __table_args__ = (
-        UniqueConstraint("company_id", "normalised",
-                         name="uq_people_company_id_normalised"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    company_id: Mapped[int] = mapped_column(
-        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    chunk_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("chunks.id", ondelete="SET NULL"))
-    full_name: Mapped[str255]
-    normalised: Mapped[str255] = mapped_column(index=True)
-    # dated because executives change jobs, and "the CFO said" means a
-    # different person depending on the year
-    roles: Mapped[Optional[dict]] = mapped_column(JSONB)
-    page_number: Mapped[Optional[int]]
-    paragraph_id: Mapped[Optional[str64]]
-    confidence: Mapped[Optional[float]] = mapped_column(Float)
-    first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    created_at: Mapped[created_at]
-    updated_at: Mapped[updated_at]
-
-
-class Metric(Base):
-    """Not in the V1 table list, but deliverable 4 extracts metrics and they
-    need a home. Normalised so label drift (`CapEx` / `Capital Expenditures`)
-    stays one series."""
-    __tablename__ = "metrics"
-    __table_args__ = (
-        UniqueConstraint("company_id", "normalised",
-                         name="uq_metrics_company_id_normalised"),
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    company_id: Mapped[int] = mapped_column(
-        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    name: Mapped[str255]
-    normalised: Mapped[str255]
-    unit: Mapped[Optional[str64]]
-    created_at: Mapped[created_at]
-
-    observations: Mapped[list["MetricObservation"]] = relationship(
-        back_populates="metric", cascade="all, delete-orphan")
 
 
 class MetricObservation(Base):
@@ -320,13 +182,13 @@ class MetricObservation(Base):
     """
     __tablename__ = "metric_observations"
     __table_args__ = (
-        UniqueConstraint("metric_id", "period", "document_id",
-                         name="uq_metric_observations_metric_id_period_document_id"),
+        UniqueConstraint("entity_id", "period", "document_id",
+                         name="uq_metric_observations_entity_id_period_document_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    metric_id: Mapped[int] = mapped_column(
-        ForeignKey("metrics.id", ondelete="CASCADE"), index=True)
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True)
     document_id: Mapped[int] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"))
     chunk_id: Mapped[Optional[int]] = mapped_column(
@@ -341,8 +203,127 @@ class MetricObservation(Base):
     is_restated: Mapped[bool] = mapped_column(Boolean, default=False,
                                               server_default="false")
 
-    metric: Mapped["Metric"] = relationship(back_populates="observations")
 
 
-ALL_TABLES = (Company, Document, Chunk, Topic, TopicMention, TimelineEvent,
-              Risk, Person, Metric, MetricObservation)
+
+class Entity(Base):
+    """Canonical topics, people, products, metrics and risks in one table.
+
+    Identity is `(company_id, kind, key)` where `key` is the normalised form —
+    a slug for a topic, a folded name for a person. The unique constraint is
+    what makes the builder update rather than duplicate, and it now covers
+    every kind instead of being re-stated per table.
+
+    Type-specific data lives in `attributes`: a person's dated roles, a risk's
+    category, a metric's unit. `status` is deliberately a real column rather
+    than an attribute, because a risk that stops being disclosed is a finding
+    people query for.
+    """
+    __tablename__ = "entities"
+    __table_args__ = (
+        UniqueConstraint("company_id", "kind", "key",
+                         name="uq_entities_company_id_kind_key"),
+        CheckConstraint(
+            "kind in ('topic','strategy','person','product','metric','risk',"
+            "'event','segment')",
+            name="kind"),
+        CheckConstraint("status in ('active','dropped','superseded')",
+                        name="status"),
+        Index("ix_entities_company_id_kind", "company_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str16] = mapped_column(index=True)
+    key: Mapped[str255]
+    label: Mapped[str255]
+    attributes: Mapped[dict] = mapped_column(JSONB, default=dict,
+                                             server_default="{}")
+    status: Mapped[str16] = mapped_column(default="active",
+                                          server_default="active")
+    first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
+    last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
+    mention_count: Mapped[int] = mapped_column(Integer, default=0,
+                                               server_default="0")
+    created_at: Mapped[created_at]
+    updated_at: Mapped[updated_at]
+
+    company: Mapped["Company"] = relationship(back_populates="entities")
+    mentions: Mapped[list["EntityMention"]] = relationship(
+        back_populates="entity", cascade="all, delete-orphan")
+
+
+class EntityMention(Base):
+    """Every place an entity appears — one provenance shape for every kind.
+
+    Previously this was `topic_mentions` plus the same three provenance columns
+    bolted onto four other tables. Writing it once means a new entity kind
+    needs no schema change and cannot quietly ship without provenance.
+    """
+    __tablename__ = "entity_mentions"
+    __table_args__ = (
+        UniqueConstraint("entity_id", "chunk_id",
+                         name="uq_entity_mentions_entity_id_chunk_id"),
+        Index("ix_entity_mentions_entity_id_observed_at",
+              "entity_id", "observed_at"),
+        Index("ix_entity_mentions_paragraph_id", "paragraph_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    chunk_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("chunks.id", ondelete="CASCADE"), index=True)
+    observed_at: Mapped[date] = mapped_column(Date)
+    quote: Mapped[str] = mapped_column(Text)
+    page_number: Mapped[Optional[int]]
+    paragraph_id: Mapped[Optional[str64]]
+    chunk_hash: Mapped[Optional[str]] = mapped_column(String(64))
+    # the extractor's own reported score — a self-report, not a calibrated
+    # probability. Fine for ranking and triage; not a likelihood of truth.
+    confidence: Mapped[Optional[float]] = mapped_column(Float)
+
+    entity: Mapped["Entity"] = relationship(back_populates="mentions")
+
+
+class Relationship(Base):
+    """A typed edge between two entities.
+
+    Edges are derivable from `entity_mentions` — two entities sharing a
+    document co-occur — so this table is a materialisation, not a second source
+    of truth, and can be rebuilt. `document_ids` records what produced an edge,
+    because an edge you cannot explain is decoration.
+    """
+    __tablename__ = "relationships"
+    __table_args__ = (
+        UniqueConstraint("source_entity_id", "target_entity_id", "kind",
+                         name="uq_relationships_source_entity_id_target_entity_id_kind"),
+        CheckConstraint("source_entity_id <> target_entity_id", name="no_self_edge"),
+        Index("ix_relationships_company_id_kind", "company_id", "kind"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    source_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    target_entity_id: Mapped[int] = mapped_column(
+        ForeignKey("entities.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str64]
+    weight: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    document_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger),
+                                                    default=list,
+                                                    server_default="{}")
+    attributes: Mapped[dict] = mapped_column(JSONB, default=dict,
+                                             server_default="{}")
+    first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
+    last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
+    created_at: Mapped[created_at]
+    updated_at: Mapped[updated_at]
+
+
+ALL_TABLES = (Company, Document, Chunk, Entity, EntityMention, Relationship,
+              TimelineEvent, MetricObservation)

@@ -19,13 +19,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from evident_ai.extract import extract_from_blocks
-from evident_db import Chunk, Document, session_scope
-from evident_db.repositories import (add_metric_observation, add_timeline_event,
-                                     add_topic_mention, mark_dropped_risks,
-                                     upsert_metric, upsert_person, upsert_risk,
-                                     upsert_topic)
-from evident_memory.entities import (normalise_metric, normalise_person,
-                                     slugify)
+from evident_db import Chunk, Document, Entity, session_scope
+from evident_db.repositories import (add_entity_mention, add_metric_observation,
+                                     add_timeline_event, mark_dropped_entities,
+                                     upsert_entity, upsert_relationship)
+from evident_graph.normalize import display_label, entity_key
+from evident_memory.entities import normalise_metric, normalise_person
 from evident_parser.models import Block
 
 log = logging.getLogger("evident.memory_builder")
@@ -40,7 +39,9 @@ class BuildStats:
     people: int = 0
     risks: int = 0
     metrics: int = 0
+    products: int = 0
     events: int = 0
+    relationships: int = 0
     dropped_uncited: int = 0
     risks_marked_dropped: int = 0
 
@@ -77,56 +78,57 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
         log.warning("dropped %d uncited entities from %s (ids: %s)",
                     report.dropped, document.accession, report.bad_ids[:5])
 
-    for topic in entities.get("topics", []):
-        row = upsert_topic(db, company_id=company_id, slug=topic.slug,
-                           label=topic.label, observed_at=document.filed_at)
-        stats.topics += 1
-        for ev in topic.evidence:
+    def record(kind: str, key: str, label: str, evidence, *,
+               attributes: dict | None = None) -> int | None:
+        """One path for every kind — the point of the unified model."""
+        row = upsert_entity(db, company_id=company_id, kind=kind, key=key,
+                            label=display_label(key, label),
+                            observed_at=document.filed_at,
+                            attributes=attributes or {})
+        db.flush()
+        first = None
+        for ev in evidence or []:
             chunk = by_paragraph.get(ev.paragraph_id or "")
-            if chunk is None:
-                continue
-            is_new = add_topic_mention(db, topic_id=row.id, chunk_id=chunk.id,
-                                       document_id=document.id,
-                                       observed_at=document.filed_at, quote=ev.quote,
-                                       page_number=ev.page_number,
-                                       paragraph_id=ev.paragraph_id,
-                                       confidence=ev.confidence)
+            is_new = add_entity_mention(
+                db, entity_id=row.id, document_id=document.id,
+                chunk_id=chunk.id if chunk else None,
+                observed_at=document.filed_at, quote=ev.quote,
+                page_number=ev.page_number, paragraph_id=ev.paragraph_id,
+                chunk_hash=chunk.chunk_hash if chunk else None,
+                confidence=ev.confidence)
             stats.mentions_new += is_new
             stats.mentions_seen += not is_new
-            if is_new and row.first_seen_at == document.filed_at:
-                add_timeline_event(db, company_id=company_id, kind="topic",
-                                   headline=f"{topic.label} first appears",
-                                   occurred_at=document.filed_at,
-                                   ref=f"topic:{topic.slug}", document_id=document.id,
-                                   chunk_id=chunk.id, topic_id=row.id,
-                                   page_number=ev.page_number,
-                                   paragraph_id=ev.paragraph_id,
-                                   confidence=ev.confidence)
-                stats.events += 1
+            first = first or ev
+        return row.id
+
+    for topic in entities.get("topics", []):
+        record("topic", entity_key(topic.label), topic.label, topic.evidence)
+        stats.topics += 1
 
     for person in entities.get("people", []):
-        chunk = _chunk_for(person, by_paragraph)
-        prov = _provenance(person)
-        upsert_person(db, company_id=company_id, full_name=person.full_name,
-                      normalised=normalise_person(person.full_name),
-                      observed_at=document.filed_at,
-                      chunk_id=chunk.id if chunk else None, **prov)
+        record("person", normalise_person(person.full_name), person.full_name,
+               person.evidence)
         stats.people += 1
 
+    for product in entities.get("products", []):
+        record("product", entity_key(product.name), product.name,
+               product.evidence, attributes={"status": product.status})
+        stats.products += 1
+
     for risk in entities.get("risks", []):
-        chunk = _chunk_for(risk, by_paragraph)
-        upsert_risk(db, company_id=company_id, slug=risk.slug, label=risk.label,
-                    category=risk.category, observed_at=document.filed_at,
-                    chunk_id=chunk.id if chunk else None, **_provenance(risk))
+        record("risk", entity_key(risk.label), risk.label, risk.evidence,
+               attributes={"category": risk.category} if risk.category else {})
         stats.risks += 1
 
-    pages = {c.paragraph_ids[0] if c.paragraph_ids else c.chunk_hash: c.page_number
-             for c in chunks}
+    pages = {(c.paragraph_ids or [c.chunk_hash])[0]: c.page_number for c in chunks}
     for m in entities.get("metrics_raw", []):
-        metric = upsert_metric(db, company_id=company_id, name=m.name,
-                               normalised=normalise_metric(m.name), unit=m.unit)
+        entity_id = upsert_entity(db, company_id=company_id, kind="metric",
+                                  key=normalise_metric(m.name), label=m.name,
+                                  observed_at=document.filed_at,
+                                  attributes={"unit": m.unit} if m.unit else {}).id
+        db.flush()
         chunk = by_paragraph.get(m.paragraph_id)
-        add_metric_observation(db, metric_id=metric.id, document_id=document.id,
+        add_metric_observation(db, entity_id=entity_id, document_id=document.id,
                                chunk_id=chunk.id if chunk else None,
                                period=m.period or "unknown", value=m.value,
                                unit=m.unit, page_number=pages.get(m.paragraph_id),
@@ -170,7 +172,7 @@ def run(*, company_id: int, url: str | None = None,
             build_for_document(db, company_id=company_id, document=document,
                                client=client, stats=stats)
         if documents:
-            stats.risks_marked_dropped = mark_dropped_risks(
-                db, company_id=company_id,
+            stats.risks_marked_dropped = mark_dropped_entities(
+                db, company_id=company_id, kind="risk",
                 latest_filing_at=max(d.filed_at for d in documents))
     return stats

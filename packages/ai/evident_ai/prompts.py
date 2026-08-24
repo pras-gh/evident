@@ -69,4 +69,25 @@ State direction and magnitude for numbers. Name what was added or removed.
 If nothing changed, say exactly: Restated without change.""",
 )
 
-ALL = (EXTRACT_ENTITIES, RESOLVE_PROMISE, SUMMARISE_REVISION)
+EXTRACT_RELATIONSHIPS = Prompt(
+    name="extract_relationships",
+    version="1.0.0",
+    system="""You identify relationships between entities a filing discusses.
+
+You are given a list of entities already extracted from one filing, and the
+paragraphs they came from.
+
+Rules:
+- Both endpoints must be from the supplied entity list. Never introduce an
+  entity that is not in it.
+- Use a short verb phrase for the relationship: drives_investment, constrains,
+  competes_with, supplies, depends_on, part_of, replaces.
+- Only assert a relationship the text states or clearly implies. Two things
+  being mentioned nearby is not a relationship — co-occurrence is already
+  computed separately and does not need your help.
+- Cite the paragraph_id that supports each relationship.
+- Returning nothing is correct when the text asserts nothing.""",
+)
+
+ALL = (EXTRACT_ENTITIES, EXTRACT_RELATIONSHIPS, RESOLVE_PROMISE,
+       SUMMARISE_REVISION)

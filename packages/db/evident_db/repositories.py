@@ -19,8 +19,8 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from .models import (Chunk, Company, Document, Metric, MetricObservation,
-                     Person, Risk, TimelineEvent, Topic, TopicMention)
+from .models import (Chunk, Company, Document, Entity, EntityMention,
+                     MetricObservation, Relationship, TimelineEvent)
 
 
 # ------------------------------------------------------------------ company
@@ -111,125 +111,22 @@ def set_embeddings(db: Session, rows: Iterable[tuple[int, list[float]]], *,
 
 
 # -------------------------------------------------------------------- topic
-def upsert_topic(db: Session, *, company_id: int, slug: str, label: str,
-                 observed_at: date) -> Topic:
-    """The one the brief calls out: update, never duplicate.
-
-    `first_seen_at` only ever moves earlier and `last_seen_at` only ever moves
-    later, so ingesting filings out of order still produces the right span.
-    """
-    stmt = (insert(Topic)
-            .values(company_id=company_id, slug=slug, label=label,
-                    first_seen_at=observed_at, last_seen_at=observed_at,
-                    mention_count=0)
-            .on_conflict_do_update(
-                index_elements=[Topic.company_id, Topic.slug],
-                set_={"label": label,
-                      "first_seen_at": func.least(Topic.first_seen_at, observed_at),
-                      "last_seen_at": func.greatest(Topic.last_seen_at, observed_at),
-                      "updated_at": func.now()})
-            .returning(Topic))
-    return db.execute(stmt).scalar_one()
 
 
-def add_topic_mention(db: Session, *, topic_id: int, chunk_id: int,
-                      document_id: int, observed_at: date, quote: str,
-                      page_number: int | None = None,
-                      paragraph_id: str | None = None,
-                      confidence: float | None = None) -> bool:
-    """Returns True when the mention was new.
-
-    Re-running the builder over the same chunk must not inflate mention_count,
-    so the counter is only bumped on a genuine insert.
-    """
-    # RETURNING, not rowcount: after ON CONFLICT DO NOTHING the driver's
-    # rowcount is not a dependable "did this insert" signal, and reading it as
-    # one leaves mention_count permanently at zero — a bug that looks like
-    # "extraction found nothing" rather than like a bug.
-    stmt = (insert(TopicMention)
-            .values(topic_id=topic_id, chunk_id=chunk_id, document_id=document_id,
-                    observed_at=observed_at, quote=quote, page_number=page_number,
-                    paragraph_id=paragraph_id, confidence=confidence)
-            .on_conflict_do_nothing(
-                index_elements=[TopicMention.topic_id, TopicMention.chunk_id])
-            .returning(TopicMention.id))
-    inserted = db.execute(stmt).scalar_one_or_none() is not None
-    if inserted:
-        db.query(Topic).filter(Topic.id == topic_id).update(
-            {Topic.mention_count: Topic.mention_count + 1},
-            synchronize_session=False)
-    return inserted
 
 
 # --------------------------------------------------------------------- risk
-def upsert_risk(db: Session, *, company_id: int, slug: str, label: str,
-                observed_at: date, chunk_id: int | None = None,
-                category: str | None = None, severity: str | None = None,
-                page_number: int | None = None, paragraph_id: str | None = None,
-                confidence: float | None = None) -> Risk:
-    stmt = (insert(Risk)
-            .values(company_id=company_id, slug=slug, label=label, category=category,
-                    severity=severity, chunk_id=chunk_id, status="active",
-                    page_number=page_number, paragraph_id=paragraph_id,
-                    confidence=confidence,
-                    first_seen_at=observed_at, last_seen_at=observed_at)
-            .on_conflict_do_update(
-                index_elements=[Risk.company_id, Risk.slug],
-                set_={"label": label, "status": "active",
-                      "last_seen_at": func.greatest(Risk.last_seen_at, observed_at),
-                      "updated_at": func.now()})
-            .returning(Risk))
-    return db.execute(stmt).scalar_one()
 
 
-def mark_dropped_risks(db: Session, *, company_id: int,
-                       latest_filing_at: date) -> int:
-    """A risk absent from the newest filing is dropped, not deleted.
-
-    The disappearance of a risk factor between two 10-Ks is one of the more
-    informative things in the corpus, so the row and its history stay.
-    """
-    return db.query(Risk).filter(
-        Risk.company_id == company_id,
-        Risk.status == "active",
-        Risk.last_seen_at < latest_filing_at,
-    ).update({Risk.status: "dropped"}, synchronize_session=False)
 
 
 # ------------------------------------------------------------------- person
-def upsert_person(db: Session, *, company_id: int, full_name: str,
-                  normalised: str, observed_at: date,
-                  roles: dict | None = None, chunk_id: int | None = None,
-                  page_number: int | None = None, paragraph_id: str | None = None,
-                  confidence: float | None = None) -> Person:
-    stmt = (insert(Person)
-            .values(company_id=company_id, full_name=full_name, normalised=normalised,
-                    roles=roles, chunk_id=chunk_id, page_number=page_number,
-                    paragraph_id=paragraph_id, confidence=confidence,
-                    first_seen_at=observed_at, last_seen_at=observed_at)
-            .on_conflict_do_update(
-                index_elements=[Person.company_id, Person.normalised],
-                # keep the longest spelling — usually the one with a middle name
-                set_={"full_name": func.greatest(Person.full_name, full_name),
-                      "last_seen_at": func.greatest(Person.last_seen_at, observed_at),
-                      "updated_at": func.now()})
-            .returning(Person))
-    return db.execute(stmt).scalar_one()
 
 
 # ------------------------------------------------------------------- metric
-def upsert_metric(db: Session, *, company_id: int, name: str, normalised: str,
-                  unit: str | None = None) -> Metric:
-    stmt = (insert(Metric)
-            .values(company_id=company_id, name=name, normalised=normalised, unit=unit)
-            .on_conflict_do_update(
-                index_elements=[Metric.company_id, Metric.normalised],
-                set_={"name": name})
-            .returning(Metric))
-    return db.execute(stmt).scalar_one()
 
 
-def add_metric_observation(db: Session, *, metric_id: int, document_id: int,
+def add_metric_observation(db: Session, *, entity_id: int, document_id: int,
                            period: str, value: float | None, unit: str | None,
                            chunk_id: int | None = None,
                            period_end: date | None = None,
@@ -238,31 +135,137 @@ def add_metric_observation(db: Session, *, metric_id: int, document_id: int,
                            confidence: float | None = None) -> None:
     restated = db.execute(
         select(func.count()).select_from(MetricObservation)
-        .where(MetricObservation.metric_id == metric_id,
+        .where(MetricObservation.entity_id == entity_id,
                MetricObservation.period == period)
     ).scalar_one() > 0
     db.execute(insert(MetricObservation)
-               .values(metric_id=metric_id, document_id=document_id, chunk_id=chunk_id,
+               .values(entity_id=entity_id, document_id=document_id, chunk_id=chunk_id,
                        period=period, period_end=period_end, value=value, unit=unit,
                        page_number=page_number, paragraph_id=paragraph_id,
                        confidence=confidence, is_restated=restated)
                .on_conflict_do_nothing(
-                   index_elements=[MetricObservation.metric_id,
+                   index_elements=[MetricObservation.entity_id,
                                    MetricObservation.period,
                                    MetricObservation.document_id]))
+
+
+# ------------------------------------------------------------------ entity
+def upsert_entity(db: Session, *, company_id: int, kind: str, key: str,
+                  label: str, observed_at: date,
+                  attributes: dict | None = None,
+                  status: str | None = None) -> Entity:
+    """Update, never duplicate — now for every kind rather than per table.
+
+    `first_seen_at` only moves earlier and `last_seen_at` only later, so filings
+    ingested out of order still produce the right span. Attributes are merged
+    rather than replaced: a later filing that mentions a risk without restating
+    its category must not erase the category.
+    """
+    stmt = (insert(Entity)
+            .values(company_id=company_id, kind=kind, key=key, label=label,
+                    attributes=attributes or {}, status=status or "active",
+                    first_seen_at=observed_at, last_seen_at=observed_at,
+                    mention_count=0)
+            .on_conflict_do_update(
+                index_elements=[Entity.company_id, Entity.kind, Entity.key],
+                set_={"label": label,
+                      "attributes": Entity.attributes.op("||")(
+                          insert(Entity).excluded.attributes),
+                      "first_seen_at": func.least(Entity.first_seen_at, observed_at),
+                      "last_seen_at": func.greatest(Entity.last_seen_at, observed_at),
+                      "updated_at": func.now()})
+            .returning(Entity))
+    return db.execute(stmt).scalar_one()
+
+
+def add_entity_mention(db: Session, *, entity_id: int, document_id: int,
+                       observed_at: date, quote: str,
+                       chunk_id: int | None = None, page_number: int | None = None,
+                       paragraph_id: str | None = None,
+                       chunk_hash: str | None = None,
+                       confidence: float | None = None) -> bool:
+    """Returns True when the mention was new, so counts do not inflate on rerun."""
+    stmt = (insert(EntityMention)
+            .values(entity_id=entity_id, document_id=document_id, chunk_id=chunk_id,
+                    observed_at=observed_at, quote=quote, page_number=page_number,
+                    paragraph_id=paragraph_id, chunk_hash=chunk_hash,
+                    confidence=confidence)
+            .on_conflict_do_nothing(
+                index_elements=[EntityMention.entity_id, EntityMention.chunk_id])
+            .returning(EntityMention.id))
+    inserted = db.execute(stmt).scalar_one_or_none() is not None
+    if inserted:
+        db.query(Entity).filter(Entity.id == entity_id).update(
+            {Entity.mention_count: Entity.mention_count + 1},
+            synchronize_session=False)
+    return inserted
+
+
+def mark_dropped_entities(db: Session, *, company_id: int, kind: str,
+                          latest_filing_at: date) -> int:
+    """An entity absent from the newest filing is dropped, not deleted.
+
+    A risk factor quietly disappearing between two 10-Ks is one of the more
+    informative things in the corpus, so the row and its mentions stay.
+    """
+    return db.query(Entity).filter(
+        Entity.company_id == company_id, Entity.kind == kind,
+        Entity.status == "active", Entity.last_seen_at < latest_filing_at,
+    ).update({Entity.status: "dropped"}, synchronize_session=False)
+
+
+def upsert_relationship(db: Session, *, company_id: int, source_entity_id: int,
+                        target_entity_id: int, kind: str, weight: int = 1,
+                        document_ids: list[int] | None = None,
+                        observed_at: date | None = None,
+                        attributes: dict | None = None) -> Relationship | None:
+    """Edges are a materialisation of what the mentions already say, so a
+    rebuild is safe and re-running only refreshes weight and span."""
+    if source_entity_id == target_entity_id:
+        return None
+    stmt = (insert(Relationship)
+            .values(company_id=company_id, source_entity_id=source_entity_id,
+                    target_entity_id=target_entity_id, kind=kind, weight=weight,
+                    document_ids=document_ids or [], attributes=attributes or {},
+                    first_seen_at=observed_at, last_seen_at=observed_at)
+            .on_conflict_do_update(
+                index_elements=[Relationship.source_entity_id,
+                                Relationship.target_entity_id, Relationship.kind],
+                set_={"weight": weight, "document_ids": document_ids or [],
+                      "first_seen_at": func.least(Relationship.first_seen_at,
+                                                  observed_at),
+                      "last_seen_at": func.greatest(Relationship.last_seen_at,
+                                                    observed_at),
+                      "updated_at": func.now()})
+            .returning(Relationship))
+    return db.execute(stmt).scalar_one()
+
+
+def entities_for_graph(db: Session, *, company_id: int,
+                       kinds: Sequence[str] | None = None) -> list[tuple]:
+    """(entity, mention_count, distinct_documents) in one pass."""
+    stmt = (select(Entity,
+                   func.count(EntityMention.id),
+                   func.count(func.distinct(EntityMention.document_id)))
+            .outerjoin(EntityMention, EntityMention.entity_id == Entity.id)
+            .where(Entity.company_id == company_id)
+            .group_by(Entity.id))
+    if kinds:
+        stmt = stmt.where(Entity.kind.in_(list(kinds)))
+    return list(db.execute(stmt).all())
 
 
 # ----------------------------------------------------------------- timeline
 def add_timeline_event(db: Session, *, company_id: int, kind: str, headline: str,
                        occurred_at: date, ref: str, detail: str | None = None,
                        document_id: int | None = None, chunk_id: int | None = None,
-                       topic_id: int | None = None, page_number: int | None = None,
+                       entity_id: int | None = None, page_number: int | None = None,
                        paragraph_id: str | None = None,
                        confidence: float | None = None) -> None:
     db.execute(insert(TimelineEvent)
                .values(company_id=company_id, kind=kind, headline=headline,
                        detail=detail, occurred_at=occurred_at, ref=ref,
-                       document_id=document_id, chunk_id=chunk_id, topic_id=topic_id,
+                       document_id=document_id, chunk_id=chunk_id, entity_id=entity_id,
                        page_number=page_number, paragraph_id=paragraph_id,
                        confidence=confidence)
                .on_conflict_do_nothing(

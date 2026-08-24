@@ -1,143 +1,146 @@
-"""Topic graph construction.
+"""Memory graph assembly.
 
-Turns resolved memory into the node/edge structure the Company Memory
-visualisation renders: a company core, the topics that surfaced around it, the
-documents that discuss them, and the co-occurrence between topics.
+Produces the frozen `/v1/company/{ticker}/graph` response:
 
-Edges are weighted by *shared documents*, not by text similarity. Two topics
-are related here because the same filing discussed both — which is a fact about
-the corpus rather than a guess about meaning, and it stays explainable: every
-edge can name the documents that produced it.
+    { "company": "NVDA",
+      "nodes": [{ id, label, type, importance, mentions }],
+      "edges": [{ source, target, relationship, strength }] }
+
+Node ids are entity keys rather than database ids on purpose. A client caches
+this graph and holds those ids; a surrogate key would change on a rebuild and
+silently break every stored reference.
 """
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Iterable, Literal, Sequence
+from typing import Any, Iterable, Sequence
 
-NodeKind = Literal["company", "topic", "document", "product", "person"]
+from .importance import Signals, score_all
+from .relationships import CO_OCCURS, Edge, TypedEdge, co_occurrence, degrees, strength, typed
 
 
-@dataclass(slots=True, frozen=True)
-class Node:
-    id: str
-    kind: NodeKind
+@dataclass(slots=True)
+class EntityInput:
+    key: str
     label: str
-    weight: int = 1
+    kind: str
+    documents: set[str] = field(default_factory=set)
+    mentions: int = 0
     first_seen_at: date | None = None
     last_seen_at: date | None = None
 
 
-@dataclass(slots=True, frozen=True)
-class Edge:
-    source: str
-    target: str
-    kind: Literal["mentions", "co_occurs", "about"]
-    weight: int = 1
-    # the documents that justify this edge — an edge you cannot explain is a
-    # decoration, and this graph is meant to be evidence-backed like everything
-    # else in the product
-    documents: tuple[str, ...] = ()
-
-
 @dataclass(slots=True)
-class TopicGraph:
-    nodes: list[Node] = field(default_factory=list)
-    edges: list[Edge] = field(default_factory=list)
+class Graph:
+    company: str
+    nodes: list[dict[str, Any]] = field(default_factory=list)
+    edges: list[dict[str, Any]] = field(default_factory=list)
 
-    def to_json(self) -> dict:
-        return {
-            "nodes": [{"id": n.id, "kind": n.kind, "label": n.label,
-                       "weight": n.weight,
-                       "firstSeen": n.first_seen_at.isoformat() if n.first_seen_at else None,
-                       "lastSeen": n.last_seen_at.isoformat() if n.last_seen_at else None}
-                      for n in self.nodes],
-            "edges": [{"source": e.source, "target": e.target, "kind": e.kind,
-                       "weight": e.weight, "documents": list(e.documents)}
-                      for e in self.edges],
-        }
-
-    def neighbours(self, node_id: str) -> list[str]:
-        out = []
-        for e in self.edges:
-            if e.source == node_id:
-                out.append(e.target)
-            elif e.target == node_id:
-                out.append(e.source)
-        return out
+    def to_contract(self) -> dict[str, Any]:
+        return {"company": self.company, "nodes": self.nodes, "edges": self.edges}
 
 
-def build(memory, *, min_co_occurrence: int = 1,
-          max_topics: int | None = None) -> TopicGraph:
-    """Build the graph from a CompanyMemory.
+def build_graph(
+    *,
+    company: str,
+    entities: Sequence[EntityInput],
+    typed_edges: Sequence[TypedEdge] = (),
+    total_documents: int | None = None,
+    newest_filing: date | None = None,
+    min_shared: int = 1,
+    min_importance: int = 0,
+    limit: int | None = None,
+) -> Graph:
+    known = {e.key for e in entities}
+    mention_docs = {e.key: e.documents for e in entities}
+    dates = {e.key: (e.first_seen_at, e.last_seen_at) for e in entities}
 
-    `min_co_occurrence` is the honest knob: at 1 every shared document makes an
-    edge, which is noisy on a large corpus. Raising it keeps only topics that
-    recur together, which is usually what a reader means by "related".
+    edges = [e.normalised() for e in
+             co_occurrence(mention_docs, min_shared=min_shared, dates=dates)]
+    edges += typed(list(typed_edges), known=known)
+
+    degree = degrees(edges)
+    total_documents = total_documents or len(
+        {d for e in entities for d in e.documents}) or 1
+    newest_filing = newest_filing or max(
+        (e.last_seen_at for e in entities if e.last_seen_at), default=None)
+
+    scores = score_all(
+        {e.key: Signals(mentions=e.mentions, documents=len(e.documents),
+                        last_seen_at=e.last_seen_at, degree=degree.get(e.key, 0))
+         for e in entities},
+        total_documents=total_documents, newest_filing=newest_filing)
+
+    nodes = [{
+        "id": e.key,
+        "label": e.label,
+        "type": e.kind,
+        "importance": scores[e.key].importance,
+        "mentions": e.mentions,
+    } for e in entities if scores[e.key].importance >= min_importance]
+
+    nodes.sort(key=lambda n: (-n["importance"], n["id"]))
+    if limit:
+        nodes = nodes[:limit]
+
+    kept = {n["id"] for n in nodes}
+    max_weight = max((e.weight for e in edges), default=0)
+    out_edges = [{
+        "source": e.source,
+        "target": e.target,
+        "relationship": e.kind,
+        "strength": strength(e, max_weight=max_weight),
+    } for e in edges if e.source in kept and e.target in kept]
+    out_edges.sort(key=lambda x: (-x["strength"], x["source"], x["target"]))
+
+    return Graph(company=company, nodes=nodes, edges=out_edges)
+
+
+def explain(entities: Sequence[EntityInput], key: str, *,
+            total_documents: int | None = None,
+            newest_filing: date | None = None,
+            typed_edges: Sequence[TypedEdge] = ()) -> dict[str, Any]:
+    """Why an entity scored what it did.
+
+    The contract returns a bare number; this is how a reader gets behind it.
+    A score nobody can interrogate is the same failure as an uncited claim.
     """
-    graph = TopicGraph()
-    core = f"company:{memory.company_id}"
-    graph.nodes.append(Node(id=core, kind="company",
-                            label=memory.ticker or memory.company_id,
-                            weight=len(memory.documents)))
-
-    topics = sorted(memory.topics, key=lambda t: -t.mention_count)
-    if max_topics:
-        topics = topics[:max_topics]
-
-    docs_by_topic: dict[str, set[str]] = defaultdict(set)
-    for t in topics:
-        tid = f"topic:{t.slug}"
-        graph.nodes.append(Node(id=tid, kind="topic", label=t.label,
-                                weight=t.mention_count,
-                                first_seen_at=t.first_seen_at,
-                                last_seen_at=t.last_seen_at))
-        graph.edges.append(Edge(source=core, target=tid, kind="about",
-                                weight=t.mention_count))
-        for e in t.evidence:
-            docs_by_topic[t.slug].add(e.document_id)
-
-    seen_docs = {d for docs in docs_by_topic.values() for d in docs}
-    for doc_id in sorted(seen_docs):
-        ref = next((d for d in memory.documents if d.document_id == doc_id), None)
-        graph.nodes.append(Node(
-            id=f"document:{doc_id}", kind="document",
-            label=ref.form_type if ref else doc_id,
-            first_seen_at=ref.filed_date if ref else None))
-
-    for slug, docs in docs_by_topic.items():
-        for doc_id in sorted(docs):
-            graph.edges.append(Edge(source=f"document:{doc_id}",
-                                    target=f"topic:{slug}", kind="mentions",
-                                    documents=(doc_id,)))
-
-    graph.edges.extend(_co_occurrence(docs_by_topic, min_co_occurrence))
-    return graph
+    graph = build_graph(company="", entities=entities, typed_edges=typed_edges,
+                        total_documents=total_documents, newest_filing=newest_filing)
+    node = next((n for n in graph.nodes if n["id"] == key), None)
+    if node is None:
+        return {}
+    mention_docs = {e.key: e.documents for e in entities}
+    dates = {e.key: (e.first_seen_at, e.last_seen_at) for e in entities}
+    edges = [e.normalised() for e in co_occurrence(mention_docs, dates=dates)]
+    edges += typed(list(typed_edges), known={e.key for e in entities})
+    degree = degrees(edges)
+    total_documents = total_documents or len(
+        {d for e in entities for d in e.documents}) or 1
+    newest = newest_filing or max(
+        (e.last_seen_at for e in entities if e.last_seen_at), default=None)
+    entity = next(e for e in entities if e.key == key)
+    scores = score_all(
+        {e.key: Signals(e.mentions, len(e.documents), e.last_seen_at,
+                        degree.get(e.key, 0)) for e in entities},
+        total_documents=total_documents, newest_filing=newest)
+    return {"id": key, "importance": node["importance"],
+            "components": scores[key].components,
+            "signals": {"mentions": entity.mentions,
+                        "documents": len(entity.documents),
+                        "last_seen_at": entity.last_seen_at.isoformat()
+                                        if entity.last_seen_at else None,
+                        "degree": degree.get(key, 0)}}
 
 
-def _co_occurrence(docs_by_topic: dict[str, set[str]], threshold: int) -> list[Edge]:
-    slugs = sorted(docs_by_topic)
-    out: list[Edge] = []
-    for i, a in enumerate(slugs):
-        for b in slugs[i + 1:]:
-            shared = docs_by_topic[a] & docs_by_topic[b]
-            if len(shared) >= threshold:
-                out.append(Edge(source=f"topic:{a}", target=f"topic:{b}",
-                                kind="co_occurs", weight=len(shared),
-                                documents=tuple(sorted(shared))))
-    return out
-
-
-def slice_by_period(graph: TopicGraph, *, until: date) -> TopicGraph:
-    """The graph as it stood on a date — what the replay animation scrubs.
-
-    Nodes whose first mention is later than `until` did not exist yet, so the
-    graph honestly has fewer of them.
-    """
-    keep = {n.id for n in graph.nodes
-            if n.first_seen_at is None or n.first_seen_at <= until}
-    return TopicGraph(
-        nodes=[n for n in graph.nodes if n.id in keep],
-        edges=[e for e in graph.edges if e.source in keep and e.target in keep],
-    )
+def slice_by_period(graph: Graph, *, until: date,
+                    entities: Sequence[EntityInput]) -> Graph:
+    """The graph as it stood on a date — what a replay animation scrubs."""
+    keep = {e.key for e in entities
+            if e.first_seen_at is None or e.first_seen_at <= until}
+    nodes = [n for n in graph.nodes if n["id"] in keep]
+    ids = {n["id"] for n in nodes}
+    return Graph(company=graph.company, nodes=nodes,
+                 edges=[e for e in graph.edges
+                        if e["source"] in ids and e["target"] in ids])
