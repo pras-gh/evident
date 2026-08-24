@@ -1,4 +1,4 @@
--- elevate-ingest — layer 2: company memory.
+-- evident-ingest — layer 2: company memory.
 --
 -- 001 stores *what was filed*: documents, sections, paragraphs, tables. That is
 -- substrate. This file stores *what we know*: a durable, typed model of the

@@ -16,7 +16,7 @@ from evident_parser.chunker import chunk_document
 from evident_retrieval.embed import HashingEmbedder
 from evident_parser.models import Block, Table, content_id, normalise
 from evident_parser.html import parse_html
-from workers.ingest_worker import fiscal_period
+from evident_parser.models import fiscal_period
 from evident_retrieval.store import _vector_literal
 
 ACC = "0000320193-25-000073"

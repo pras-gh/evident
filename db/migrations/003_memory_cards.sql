@@ -1,4 +1,4 @@
--- elevate-ingest — layer 3: memory cards.
+-- evident-ingest — layer 3: memory cards.
 --
 -- Cards are what a person reads; entities are what the system stores. A card is
 -- a derived projection over layer 2, never authored by hand, so rebuilding one

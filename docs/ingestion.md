@@ -1,4 +1,4 @@
-# elevate-ingest
+# evident-ingest
 
 Automated ingestion for SEC filings. Takes an EDGAR accession number, produces
 structured, citable entities in PostgreSQL.
@@ -181,16 +181,16 @@ real provider before this serves anything.
 ```bash
 pip install -r requirements.txt
 psql "$DATABASE_URL" -f sql/001_schema.sql      # needs pgvector on the server
-export SEC_USER_AGENT="Elevate ingest (you@example.com)"   # SEC refuses anonymous traffic
+export SEC_USER_AGENT="Evident ingest (you@example.com)"   # SEC refuses anonymous traffic
 
-python -m elevate_ingest.cli ingest --cik 320193 --accession 0000320193-25-000073
+python -m evident_ingest.cli ingest --cik 320193 --accession 0000320193-25-000073
 ```
 
 Parse a local file with no network and no database — useful for checking a
 parser change against a filing you already have:
 
 ```bash
-python -m elevate_ingest.cli parse --file filing.htm --accession 0000320193-25-000073
+python -m evident_ingest.cli parse --file filing.htm --accession 0000320193-25-000073
 ```
 
 ## Tests

@@ -147,3 +147,22 @@ class ParsedDocument:
             "pages": max(pages) if pages else None,
             "chars": sum(b.char_count for b in self.blocks),
         }
+
+
+def fiscal_period(form_type: str, report_date: str | None) -> str | None:
+    """Best-effort period label from a form type and report date.
+
+    Pure and dependency-free on purpose: it lives here rather than in the
+    ingest worker so the parser package can be tested without a database
+    driver installed.
+    """
+    if not report_date or len(report_date) < 7:
+        return None
+    year, month = report_date[:4], report_date[5:7]
+    if not (year.isdigit() and month.isdigit()):
+        return None
+    if form_type.startswith("10-K"):
+        return f"FY{year}"
+    if form_type.startswith("10-Q"):
+        return f"Q{(int(month) - 1) // 3 + 1} {year}"
+    return year

@@ -2,7 +2,7 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "elevate",
+      "name": "evident",
       "runtimeExecutable": "python3",
       "runtimeArgs": [
         "-m",

@@ -19,8 +19,14 @@ import urllib.request
 from datetime import date, datetime
 from typing import Any
 
-BASE = "https://data.sec.gov"
-ARCHIVES = "https://www.sec.gov/Archives/edgar/data"
+# Overridable so the fetch layer can point at a cache, a corporate proxy, or a
+# fixture server. Plenty of environments cannot reach sec.gov directly — SEC
+# blocks whole IP ranges at the edge — and a hard-coded origin makes those
+# environments untestable rather than merely inconvenient.
+BASE = os.environ.get("SEC_DATA_URL", "https://data.sec.gov").rstrip("/")
+ARCHIVES = os.environ.get(
+    "SEC_ARCHIVES_URL", "https://www.sec.gov/Archives/edgar/data").rstrip("/")
+WWW = os.environ.get("SEC_WWW_URL", "https://www.sec.gov").rstrip("/")
 _UA_ENV = "SEC_USER_AGENT"
 _MIN_INTERVAL = 0.11          # SEC asks for <= 10 requests/second
 _last_call = 0.0
@@ -31,7 +37,7 @@ def _get(url: str) -> bytes:
     ua = os.environ.get(_UA_ENV)
     if not ua:
         raise RuntimeError(
-            f"Set {_UA_ENV} to something like 'Elevate ingest (you@example.com)'. "
+            f"Set {_UA_ENV} to something like 'Evident ingest (you@example.com)'. "
             "SEC refuses anonymous automated traffic."
         )
     wait = _MIN_INTERVAL - (time.monotonic() - _last_call)
@@ -43,6 +49,48 @@ def _get(url: str) -> bytes:
         data = resp.read()
     _last_call = time.monotonic()
     return data
+
+
+_TICKER_MAP: dict[str, str] | None = None
+
+
+def cik_for_ticker(ticker: str) -> str:
+    """Resolve a ticker to a zero-padded CIK via EDGAR's own mapping file.
+
+    Cached for the process lifetime — the file is ~1MB and changes rarely, and
+    re-fetching it per request would burn the rate limit on data we already have.
+    """
+    global _TICKER_MAP
+    if _TICKER_MAP is None:
+        raw = json.loads(_get(f"{WWW}/files/company_tickers.json"))
+        _TICKER_MAP = {row["ticker"].upper(): str(row["cik_str"]).zfill(10)
+                       for row in raw.values()}
+    cik = _TICKER_MAP.get(ticker.upper())
+    if cik is None:
+        raise LookupError(f"{ticker.upper()} is not in EDGAR's ticker map")
+    return cik
+
+
+def recent_filings(submission: dict[str, Any], *, form_types: list[str] | None = None,
+                   limit: int = 5) -> list[dict[str, Any]]:
+    """The most recent filings, newest first, optionally filtered by form."""
+    recent = submission["filings"]["recent"]
+    out: list[dict[str, Any]] = []
+    for i, form in enumerate(recent["form"]):
+        if form_types and form not in form_types:
+            continue
+        out.append({
+            "accession": recent["accessionNumber"][i],
+            "form_type": form,
+            "filed_date": date.fromisoformat(recent["filingDate"][i]),
+            "published_at": _acceptance(recent, i),
+            "primary_document": recent["primaryDocument"][i],
+            "report_date": (recent.get("reportDate", []) or [None])[i]
+                           if i < len(recent.get("reportDate", [])) else None,
+        })
+        if len(out) >= limit:
+            break
+    return out
 
 
 def normalise_accession(accession: str) -> tuple[str, str]:

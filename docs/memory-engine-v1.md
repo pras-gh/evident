@@ -83,6 +83,34 @@ An unknown ticker is `404`, not an empty `200` — an empty list reads as "we
 looked and there is nothing", which is a different and more misleading claim
 than "we have never heard of this company".
 
+## Ingestion
+
+```
+POST /v1/ingest
+{ "ticker": "NVDA", "form_types": ["10-K"], "limit": 1 }
+```
+
+Runs inline and is bounded by `limit` — honest for V1 sizes, and the obvious
+thing to move onto a queue, since a twenty-filing backfill will outlive a
+sensible HTTP timeout.
+
+Requires `SEC_USER_AGENT`; the endpoint returns **503** rather than making an
+undeclared request, because SEC asks automated traffic to identify itself and
+silently ignoring that is not ours to decide.
+
+### The origin is configurable
+
+`SEC_WWW_URL`, `SEC_DATA_URL` and `SEC_ARCHIVES_URL` override the fetch layer's
+base URLs. This is not a test hook bolted on afterwards: **SEC blocks whole IP
+ranges at its edge**, returning a 403 Fair Access page even to a well-behaved
+client with a declarative User-Agent. Any environment behind such a range — CI,
+a corporate egress, a cloud region — needs to point at a cache or mirror, and a
+hard-coded origin would make those environments not merely inconvenient but
+untestable.
+
+`tests/test_ingest_e2e.py` uses the same override against a fixture origin, so
+the whole ingest path stays covered without depending on SEC being reachable.
+
 ## Running
 
 ```bash
