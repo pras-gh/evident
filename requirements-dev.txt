@@ -1,0 +1,10 @@
+# Runtime deps live in each package's pyproject. This is for running the
+# integration suite and the API locally.
+sqlalchemy[asyncio]>=2.0
+alembic>=1.13
+psycopg[binary,pool]>=3.2
+pgvector>=0.3
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+httpx>=0.27

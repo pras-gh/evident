@@ -1,36 +1,28 @@
-"""Evident API.
+"""Evident Memory Engine API.
 
-Read-only over the three layers. Every response that carries a claim also
-carries the evidence for it — that is enforced at the response-model level
-rather than left to each endpoint's discretion, because an endpoint that
-forgets is indistinguishable from one that had nothing to cite.
+Read-only over the memory schema. Every endpoint that returns a claim also
+returns the citation behind it.
 """
 from __future__ import annotations
 
 import os
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
-from .routers import cards, companies, graph, memory, search
+from .routers import memory, search
 
-API_VERSION = "0.1.0"
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    from .deps import close_pool, open_pool
-    await open_pool(os.environ["DATABASE_URL"])
-    yield
-    await close_pool()
-
+API_VERSION = "1.0.0"
 
 app = FastAPI(
-    title="Evident API",
+    title="Evident Memory Engine",
     version=API_VERSION,
     summary="Structured company intelligence from SEC filings.",
-    lifespan=lifespan,
+    description=(
+        "Every response that makes a claim carries the document, page and "
+        "paragraph that supports it."
+    ),
 )
 
 app.add_middleware(
@@ -40,12 +32,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-for router in (companies.router, memory.router, cards.router,
-               graph.router, search.router):
-    app.include_router(router, prefix="/v1")
+app.include_router(memory.router, prefix="/v1")
+app.include_router(search.router, prefix="/v1")
 
 
 @app.get("/health", tags=["meta"])
 async def health() -> dict:
-    from .deps import pool_ready
-    return {"status": "ok", "version": API_VERSION, "db": await pool_ready()}
+    """Liveness plus a real database round-trip — a health check that does not
+    touch the database only tells you the process is running."""
+    from .deps import factory
+    try:
+        async with factory()() as db:
+            await db.execute(text("select 1"))
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {"status": "ok" if db_ok else "degraded",
+            "version": API_VERSION, "database": db_ok}
