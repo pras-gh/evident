@@ -9,7 +9,7 @@
         "http.server",
         "4321",
         "--directory",
-        "/Users/prasoonpathak/Projects/elevate"
+        "/Users/prasoonpathak/Projects/evident"
       ],
       "port": 4321
     }
