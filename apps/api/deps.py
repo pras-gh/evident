@@ -1,32 +1,40 @@
-"""Connection pool and shared dependencies."""
+"""Shared dependencies."""
 from __future__ import annotations
 
-from typing import Any
+import os
+from collections.abc import AsyncIterator
 
-_pool: Any = None
+from fastapi import Depends, HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from evident_db import Company, async_session_factory
 
-async def open_pool(dsn: str) -> None:
-    global _pool
-    from psycopg_pool import AsyncConnectionPool
-    _pool = AsyncConnectionPool(dsn, open=False, min_size=1, max_size=8)
-    await _pool.open()
-
-
-async def close_pool() -> None:
-    if _pool is not None:
-        await _pool.close()
+_factory = None
 
 
-async def pool_ready() -> bool:
-    if _pool is None:
-        return False
-    async with _pool.connection() as conn, conn.cursor() as cur:
-        await cur.execute("select 1")
-        return (await cur.fetchone())[0] == 1
+def factory():
+    global _factory
+    if _factory is None:
+        _factory = async_session_factory(os.environ.get("DATABASE_URL"))
+    return _factory
 
 
-def get_pool() -> Any:
-    if _pool is None:
-        raise RuntimeError("pool not open — the app lifespan did not run")
-    return _pool
+async def get_db() -> AsyncIterator[AsyncSession]:
+    async with factory()() as session:
+        yield session
+
+
+async def get_company(ticker: str, db: AsyncSession = Depends(get_db)) -> Company:
+    """Resolve a ticker or 404 naming it.
+
+    A missing company returns 404 rather than an empty 200 — an empty result
+    reads as "we looked and there is nothing", which is a different and more
+    misleading claim than "we have never heard of this company".
+    """
+    company = (await db.execute(
+        select(Company).where(Company.ticker == ticker.upper())
+    )).scalar_one_or_none()
+    if company is None:
+        raise HTTPException(404, f"No memory built for {ticker.upper()}")
+    return company
