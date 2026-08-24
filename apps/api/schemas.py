@@ -20,14 +20,26 @@ class TopicOut(BaseModel):
     mention_count: int
 
 
+class Provenance(BaseModel):
+    """Where an extracted claim came from. Present on every extracted object."""
+    chunk_hash: str | None = None
+    document_id: int
+    page: int | None = None
+    paragraph_id: str | None = None
+    confidence: float | None = Field(
+        None, ge=0, le=1,
+        description=("the extractor's own reported score — a self-report, not a "
+                     "calibrated probability. Use it for ranking and triage, "
+                     "not as a likelihood that the claim is true."))
+
+
 class MentionOut(BaseModel):
     observed_at: date
     quote: str
     accession: str
     form_type: str
-    page_number: int | None = None
     section_title: str | None = None
-    paragraph_id: str
+    provenance: Provenance
 
 
 class TopicDetailOut(TopicOut):
@@ -74,7 +86,7 @@ class SearchRequest(BaseModel):
 
 class SearchHitOut(BaseModel):
     chunk_id: int
-    chunk_key: str
+    chunk_hash: str
     paragraph_ids: list[str] = Field(
         description="the source paragraphs this chunk was built from")
     score: float

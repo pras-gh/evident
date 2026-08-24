@@ -40,7 +40,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from evident_db import session_scope
         from evident_db.repositories import (replace_chunks, upsert_company,
                                              upsert_document)
-        from evident_parser.models import content_id
+        from evident_parser.models import chunk_hash, content_id
 
         with session_scope(DSN) as db:
             company = upsert_company(db, cik="1045810", name="NVIDIA Corp",
@@ -68,8 +68,10 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
                  "normalised."),
             ]
             replace_chunks(db, document_id=doc.id, chunks=[
-                dict(chunk_key=content_id("c", "acc", t),
-                     paragraph_ids=[content_id("p", "acc", t)], ordinal=i,
+                dict(chunk_hash=chunk_hash(company_id="0001045810",
+                                           document_accession="0001045810-25-000023",
+                                           page_number=page, text=t),
+                     paragraph_ids=[f"{page}_{i+1}"], ordinal=i,
                      page_number=page, section_title=section,
                      section_path=["Part II", section], text=t,
                      char_count=len(t), token_estimate=max(1, len(t) // 4))
@@ -257,9 +259,12 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
             r = await c.get("/v1/companies/nvda/topics/export-controls")
         self.assertEqual(r.status_code, 200)
         mention = r.json()["mentions"][0]
-        self.assertEqual(mention["page_number"], 12)
         self.assertEqual(mention["form_type"], "10-K")
-        self.assertTrue(mention["paragraph_id"], "mention returned without a citation")
+        prov = mention["provenance"]
+        self.assertEqual(prov["page"], 12)
+        self.assertTrue(prov["paragraph_id"], "mention returned without a paragraph")
+        self.assertTrue(prov["chunk_hash"], "mention returned without a chunk hash")
+        self.assertIsNotNone(prov["document_id"])
 
     async def test_timeline_endpoint(self):
         from evident_db import session_scope
@@ -289,7 +294,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         top = body["hits"][0]
         self.assertIn("p.", top["citation"])
         # a hit must name the paragraphs it came from, not just the chunk
-        self.assertTrue(top["chunk_key"])
+        self.assertTrue(top["chunk_hash"])
         self.assertTrue(top["paragraph_ids"], "search hit carried no paragraph ids")
         self.assertLessEqual(body["hits"][0]["score"], 1.0)
         # ordering must be by similarity

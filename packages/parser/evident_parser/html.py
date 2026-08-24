@@ -15,7 +15,8 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 
-from .models import Block, ParsedDocument, Section, Table, content_id
+from .models import (Block, ParsedDocument, Section, Table, content_id,
+                     positional_paragraph_id)
 
 # Text that starts a new section. Ordered — Part is coarser than Item.
 _PART = re.compile(r"^part\s+([ivx]+)\b", re.I)
@@ -55,6 +56,7 @@ class _FilingParser(HTMLParser):
 
         # table state
         self._table_depth = 0
+        self._page_counts: dict[int, int] = {}
         self._rows: list[list[str]] = []
         self._row: list[str] = []
         self._cell: list[str] | None = None
@@ -77,10 +79,11 @@ class _FilingParser(HTMLParser):
         if self._maybe_section(text):
             return
 
+        index = self._page_counts.get(self.page, 0) + 1
+        self._page_counts[self.page] = index
         self.blocks.append(
             Block(
-                paragraph_id=content_id("p", self.accession, text,
-                                        salt=str(len(self.blocks))),
+                paragraph_id=positional_paragraph_id(self.page, index),
                 ordinal=len(self.blocks),
                 text=text,
                 page_number=self.page,

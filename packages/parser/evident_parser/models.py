@@ -42,6 +42,31 @@ def content_id(prefix: str, accession: str, text: str, *, salt: str = "") -> str
     return f"{prefix}_{digest[:12]}"
 
 
+def chunk_hash(*, company_id: str, document_accession: str,
+               page_number: int | None, text: str) -> str:
+    """Global identity for a chunk.
+
+    Derived from company + accession + page + normalised text. Normalising
+    first means a filing that is merely re-rendered keeps its hashes; including
+    the page means repeated running headers stay distinct rows instead of
+    collapsing into one.
+    """
+    payload = "\x00".join([company_id, document_accession,
+                           str(page_number if page_number is not None else ""),
+                           normalise(text)])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def positional_paragraph_id(page_number: int | None, index_on_page: int) -> str:
+    """`42_7` — page 42, seventh paragraph.
+
+    Readable in a citation, which is the point. It is positional, so it moves
+    if a filing is re-rendered with different pagination; `chunk_hash` is the
+    content-stable identity and is what detects whether the words changed.
+    """
+    return f"{page_number if page_number is not None else 0}_{index_on_page}"
+
+
 @dataclass(slots=True)
 class Company:
     cik: str

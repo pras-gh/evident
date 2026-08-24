@@ -11,8 +11,8 @@ from evident_db import (Chunk, Company, Document, Metric, Person, Risk,
                         TimelineEvent, Topic, TopicMention)
 
 from ..deps import get_company, get_db
-from ..schemas import (CompanyMemoryOut, MentionOut, RiskOut, TimelineEventOut,
-                       TopicDetailOut, TopicOut)
+from ..schemas import (CompanyMemoryOut, MentionOut, Provenance, RiskOut,
+                       TimelineEventOut, TopicDetailOut, TopicOut)
 
 router = APIRouter(prefix="/companies", tags=["memory"])
 
@@ -76,8 +76,14 @@ async def get_topic(slug: str, company: Company = Depends(get_company),
         **TopicOut.model_validate(topic, from_attributes=True).model_dump(),
         mentions=[MentionOut(
             observed_at=m.observed_at, quote=m.quote, accession=d.accession,
-            form_type=d.form_type, page_number=c.page_number,
-            section_title=c.section_title, paragraph_id=(c.paragraph_ids or [c.chunk_key])[0],
+            form_type=d.form_type, section_title=c.section_title,
+            # provenance is required on the model, so a mention cannot be
+            # serialised without saying where it came from
+            provenance=Provenance(
+                chunk_hash=c.chunk_hash, document_id=d.id,
+                page=m.page_number or c.page_number,
+                paragraph_id=m.paragraph_id or (c.paragraph_ids or [None])[0],
+                confidence=m.confidence),
         ) for m, c, d in rows],
     )
 
