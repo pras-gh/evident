@@ -38,6 +38,12 @@ def _schema() -> Any:
     class Cited(BaseModel):
         paragraph_id: str = Field(description="an id from the input, never invented")
         quote: str = Field(description="verbatim span supporting this entity")
+        confidence: float = Field(
+            ge=0.0, le=1.0,
+            description=("how strongly the quoted span supports this entity: "
+                         "1.0 when it states it outright, lower when it is "
+                         "implied. Do not inflate — a low score is more useful "
+                         "than a confident wrong one."))
 
     class TopicOut(Cited):
         label: str
@@ -168,24 +174,33 @@ def extract_from_blocks(
         raw = getattr(parsed, kind, []) or []
         out[kind] = drop_uncited(raw, valid, report)
 
+    out["_hashes"] = {b.paragraph_id: getattr(b, "chunk_hash", None) for b in blocks}
     return _to_entities(out, document_id=document_id, observed_at=observed_at,
                         pages=pages), report
 
 
 def _ev(item: Any, *, document_id: str, observed_at: date,
-        pages: dict[str, int | None]) -> Evidence:
+        pages: dict[str, int | None],
+        hashes: dict[str, str] | None = None) -> Evidence:
+    hashes = hashes or {}
     return Evidence(
         document_id=document_id,
         paragraph_id=item.paragraph_id,
         page_number=pages.get(item.paragraph_id),
         quote=item.quote,
         observed_at=observed_at,
+        chunk_hash=hashes.get(item.paragraph_id),
+        confidence=getattr(item, "confidence", None),
     )
 
 
 def _to_entities(raw: dict[str, list[Any]], *, document_id: str,
                  observed_at: date, pages: dict[str, int | None]) -> dict[str, list[Any]]:
-    ev = lambda i: _ev(i, document_id=document_id, observed_at=observed_at, pages=pages)
+    hashes = raw.get("_hashes", {})
+
+    def ev(i):
+        return _ev(i, document_id=document_id, observed_at=observed_at,
+                   pages=pages, hashes=hashes)
     return {
         "topics": [Topic(slug=slugify(t.label), label=t.label,
                          first_seen_at=observed_at, last_seen_at=observed_at,

@@ -22,7 +22,8 @@ from evident_db.repositories import (replace_chunks, upsert_company,
 from evident_parser import edgar
 from evident_parser.chunker import chunk_document
 from evident_parser.html import parse_html
-from evident_parser.models import Block, content_id, fiscal_period
+from evident_parser.models import (Block, chunk_hash, content_id,
+                                   fiscal_period)
 
 log = logging.getLogger("evident.ingest_worker")
 
@@ -37,6 +38,7 @@ class FilingResult:
     sections: int = 0
     chunks: int = 0
     tables: int = 0
+    duplicates: int = 0
     error: str | None = None
 
 
@@ -113,13 +115,28 @@ def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
     for c in chunks:
         section = section_by_ordinal.get(c.section_ordinal)
         rows.append(dict(
-            chunk_key=c.chunk_id, paragraph_ids=c.paragraph_ids or [],
+            chunk_hash=chunk_hash(company_id=cik,
+                                  document_accession=filing["accession"],
+                                  page_number=c.page_start, text=c.text),
+            paragraph_ids=c.paragraph_ids or [],
             ordinal=c.ordinal,
             page_number=c.page_start,
             section_title=section.title if section else None,
             section_path=section.path if section else None,
             text=c.text, char_count=len(c.text), token_estimate=c.token_estimate))
-    out.chunks = replace_chunks(db, document_id=document.id, chunks=rows)
+    # chunk_hash is globally unique, so identical text on the same page of the
+    # same filing is one row. Deduping here rather than letting the constraint
+    # abort the whole document: on a real 10-K this collapses roughly one
+    # paragraph in a thousand, all of it repeated running headers.
+    seen: set[str] = set()
+    deduped = []
+    for row in rows:
+        if row["chunk_hash"] in seen:
+            out.duplicates += 1
+            continue
+        seen.add(row["chunk_hash"])
+        deduped.append(row)
+    out.chunks = replace_chunks(db, document_id=document.id, chunks=deduped)
     document.page_count = pages
     out.pages, out.sections, out.tables = pages, len(sections), len(tables)
     log.info("%s %s — %d pages, %d sections, %d chunks",

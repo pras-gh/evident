@@ -133,7 +133,10 @@ def upsert_topic(db: Session, *, company_id: int, slug: str, label: str,
 
 
 def add_topic_mention(db: Session, *, topic_id: int, chunk_id: int,
-                      document_id: int, observed_at: date, quote: str) -> bool:
+                      document_id: int, observed_at: date, quote: str,
+                      page_number: int | None = None,
+                      paragraph_id: str | None = None,
+                      confidence: float | None = None) -> bool:
     """Returns True when the mention was new.
 
     Re-running the builder over the same chunk must not inflate mention_count,
@@ -145,7 +148,8 @@ def add_topic_mention(db: Session, *, topic_id: int, chunk_id: int,
     # "extraction found nothing" rather than like a bug.
     stmt = (insert(TopicMention)
             .values(topic_id=topic_id, chunk_id=chunk_id, document_id=document_id,
-                    observed_at=observed_at, quote=quote)
+                    observed_at=observed_at, quote=quote, page_number=page_number,
+                    paragraph_id=paragraph_id, confidence=confidence)
             .on_conflict_do_nothing(
                 index_elements=[TopicMention.topic_id, TopicMention.chunk_id])
             .returning(TopicMention.id))
@@ -160,10 +164,14 @@ def add_topic_mention(db: Session, *, topic_id: int, chunk_id: int,
 # --------------------------------------------------------------------- risk
 def upsert_risk(db: Session, *, company_id: int, slug: str, label: str,
                 observed_at: date, chunk_id: int | None = None,
-                category: str | None = None, severity: str | None = None) -> Risk:
+                category: str | None = None, severity: str | None = None,
+                page_number: int | None = None, paragraph_id: str | None = None,
+                confidence: float | None = None) -> Risk:
     stmt = (insert(Risk)
             .values(company_id=company_id, slug=slug, label=label, category=category,
                     severity=severity, chunk_id=chunk_id, status="active",
+                    page_number=page_number, paragraph_id=paragraph_id,
+                    confidence=confidence,
                     first_seen_at=observed_at, last_seen_at=observed_at)
             .on_conflict_do_update(
                 index_elements=[Risk.company_id, Risk.slug],
@@ -191,10 +199,13 @@ def mark_dropped_risks(db: Session, *, company_id: int,
 # ------------------------------------------------------------------- person
 def upsert_person(db: Session, *, company_id: int, full_name: str,
                   normalised: str, observed_at: date,
-                  roles: dict | None = None, chunk_id: int | None = None) -> Person:
+                  roles: dict | None = None, chunk_id: int | None = None,
+                  page_number: int | None = None, paragraph_id: str | None = None,
+                  confidence: float | None = None) -> Person:
     stmt = (insert(Person)
             .values(company_id=company_id, full_name=full_name, normalised=normalised,
-                    roles=roles, chunk_id=chunk_id,
+                    roles=roles, chunk_id=chunk_id, page_number=page_number,
+                    paragraph_id=paragraph_id, confidence=confidence,
                     first_seen_at=observed_at, last_seen_at=observed_at)
             .on_conflict_do_update(
                 index_elements=[Person.company_id, Person.normalised],
@@ -221,7 +232,10 @@ def upsert_metric(db: Session, *, company_id: int, name: str, normalised: str,
 def add_metric_observation(db: Session, *, metric_id: int, document_id: int,
                            period: str, value: float | None, unit: str | None,
                            chunk_id: int | None = None,
-                           period_end: date | None = None) -> None:
+                           period_end: date | None = None,
+                           page_number: int | None = None,
+                           paragraph_id: str | None = None,
+                           confidence: float | None = None) -> None:
     restated = db.execute(
         select(func.count()).select_from(MetricObservation)
         .where(MetricObservation.metric_id == metric_id,
@@ -230,7 +244,8 @@ def add_metric_observation(db: Session, *, metric_id: int, document_id: int,
     db.execute(insert(MetricObservation)
                .values(metric_id=metric_id, document_id=document_id, chunk_id=chunk_id,
                        period=period, period_end=period_end, value=value, unit=unit,
-                       is_restated=restated)
+                       page_number=page_number, paragraph_id=paragraph_id,
+                       confidence=confidence, is_restated=restated)
                .on_conflict_do_nothing(
                    index_elements=[MetricObservation.metric_id,
                                    MetricObservation.period,
@@ -241,11 +256,15 @@ def add_metric_observation(db: Session, *, metric_id: int, document_id: int,
 def add_timeline_event(db: Session, *, company_id: int, kind: str, headline: str,
                        occurred_at: date, ref: str, detail: str | None = None,
                        document_id: int | None = None, chunk_id: int | None = None,
-                       topic_id: int | None = None) -> None:
+                       topic_id: int | None = None, page_number: int | None = None,
+                       paragraph_id: str | None = None,
+                       confidence: float | None = None) -> None:
     db.execute(insert(TimelineEvent)
                .values(company_id=company_id, kind=kind, headline=headline,
                        detail=detail, occurred_at=occurred_at, ref=ref,
-                       document_id=document_id, chunk_id=chunk_id, topic_id=topic_id)
+                       document_id=document_id, chunk_id=chunk_id, topic_id=topic_id,
+                       page_number=page_number, paragraph_id=paragraph_id,
+                       confidence=confidence)
                .on_conflict_do_nothing(
                    index_elements=[TimelineEvent.company_id, TimelineEvent.kind,
                                    TimelineEvent.ref, TimelineEvent.occurred_at]))

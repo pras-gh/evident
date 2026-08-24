@@ -62,13 +62,26 @@ def normalise_metric(name: str) -> str:
 
 @dataclass(slots=True, frozen=True)
 class Evidence:
-    """A span of a filing that supports exactly one claim."""
+    """A span of a filing that supports exactly one claim.
+
+    `confidence` is the extractor's own reported score. It is a self-report,
+    not a calibrated probability — useful for ranking and triage thresholds,
+    and not something to show a reader as "how likely this is true".
+    """
     document_id: str
     paragraph_id: str | None
     page_number: int | None
     quote: str
     table_id: str | None = None
     observed_at: date | None = None
+    chunk_hash: str | None = None
+    confidence: float | None = None
+
+    def as_provenance(self) -> dict:
+        """The shape every extracted object exposes."""
+        return {"chunk_hash": self.chunk_hash, "document_id": self.document_id,
+                "page": self.page_number, "paragraph_id": self.paragraph_id,
+                "confidence": self.confidence}
 
 
 @dataclass(slots=True)

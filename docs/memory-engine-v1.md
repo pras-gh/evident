@@ -181,6 +181,61 @@ still left a carry behind. `_chunk_section` now tracks characters including
 separators and drops the carry across a ceiling flush, with an assertion on the
 invariant.
 
+## Chunk identity and provenance
+
+### `chunk_hash`
+
+Globally unique, derived from **company_id + document_accession + page_number +
+normalised text**. Normalising first means a filing that is merely re-rendered
+keeps its hashes.
+
+Including the page is load-bearing, and here is the measurement that shows it —
+taken from the real NVDA FY2025 10-K, 1,156 paragraphs:
+
+| key | distinct | collisions |
+| --- | --- | --- |
+| with page | 1,155 | **1** |
+| without page | 1,120 | 36 — `table of contents` alone appears **82 times** |
+
+Without the page, every running header in the document collapses into a single
+row. With it, exactly one genuine same-page duplicate collides. The ingest
+worker drops that duplicate and reports the count rather than letting the
+constraint abort a whole filing.
+
+### Paragraph ids
+
+`42_7` — page 42, paragraph 7. Readable in a citation, which is the point.
+
+They are **positional**, so they move if a filing is re-paginated. That is a
+deliberate trade: `chunk_hash` is the content-stable identity and is what
+detects whether the words actually changed, so the pair covers both needs.
+A paragraph split by the size ceiling keeps its parent: `42_7#1`, `42_7#2`.
+
+### Provenance on every extracted object
+
+`page_number`, `paragraph_id` and `confidence` are columns on `topic_mentions`,
+`risks`, `people`, `metric_observations` and `timeline_events`. The API returns
+them as one object, and it is **required** on the response model — a mention
+cannot be serialised without saying where it came from:
+
+```json
+{
+  "entity": "Export Controls",
+  "provenance": {
+    "chunk_hash": "2011b6f14d6da043…",
+    "document_id": 1,
+    "page": 14,
+    "paragraph_id": "14_9",
+    "confidence": 0.96
+  }
+}
+```
+
+`confidence` is the extractor's **own reported score** — a self-report, not a
+calibrated probability. It is useful for ranking and triage thresholds, and
+should not be shown to a reader as a likelihood that the claim is true. It is
+nullable on purpose, so a missing score never reads as a confident zero.
+
 ## Known gaps
 
 - **`HashingEmbedder` is still the default.** It matches vocabulary overlap, not

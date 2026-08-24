@@ -44,7 +44,7 @@ async def search(req: SearchRequest,
 
     rows = (await db.execute(stmt)).all()
     hits = [SearchHitOut(
-        chunk_id=c.id, chunk_key=c.chunk_key,
+        chunk_id=c.id, chunk_hash=c.chunk_hash,
         paragraph_ids=list(c.paragraph_ids or []), score=round(1 - float(dist), 6),
         text=c.text, accession=d.accession, form_type=d.form_type,
         filed_at=d.filed_at, page_number=c.page_number,

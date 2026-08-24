@@ -58,9 +58,14 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     if not chunks:
         return stats
 
-    by_paragraph = {c.paragraph_id: c for c in chunks}
-    blocks = [Block(paragraph_id=c.paragraph_id, ordinal=c.ordinal, text=c.text,
-                    page_number=c.page_number) for c in chunks]
+    by_paragraph = {(c.paragraph_ids or [c.chunk_hash])[0]: c for c in chunks}
+    blocks = []
+    for c in chunks:
+        block = Block(paragraph_id=(c.paragraph_ids or [c.chunk_hash])[0],
+                      ordinal=c.ordinal, text=c.text, page_number=c.page_number)
+        # carried so extracted entities can record the chunk they came from
+        block.chunk_hash = c.chunk_hash            # type: ignore[attr-defined]
+        blocks.append(block)
 
     entities, report = extract_from_blocks(
         blocks, document_id=str(document.id),
@@ -82,7 +87,10 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
                 continue
             is_new = add_topic_mention(db, topic_id=row.id, chunk_id=chunk.id,
                                        document_id=document.id,
-                                       observed_at=document.filed_at, quote=ev.quote)
+                                       observed_at=document.filed_at, quote=ev.quote,
+                                       page_number=ev.page_number,
+                                       paragraph_id=ev.paragraph_id,
+                                       confidence=ev.confidence)
             stats.mentions_new += is_new
             stats.mentions_seen += not is_new
             if is_new and row.first_seen_at == document.filed_at:
@@ -90,24 +98,30 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
                                    headline=f"{topic.label} first appears",
                                    occurred_at=document.filed_at,
                                    ref=f"topic:{topic.slug}", document_id=document.id,
-                                   chunk_id=chunk.id, topic_id=row.id)
+                                   chunk_id=chunk.id, topic_id=row.id,
+                                   page_number=ev.page_number,
+                                   paragraph_id=ev.paragraph_id,
+                                   confidence=ev.confidence)
                 stats.events += 1
 
     for person in entities.get("people", []):
         chunk = _chunk_for(person, by_paragraph)
+        prov = _provenance(person)
         upsert_person(db, company_id=company_id, full_name=person.full_name,
                       normalised=normalise_person(person.full_name),
                       observed_at=document.filed_at,
-                      chunk_id=chunk.id if chunk else None)
+                      chunk_id=chunk.id if chunk else None, **prov)
         stats.people += 1
 
     for risk in entities.get("risks", []):
         chunk = _chunk_for(risk, by_paragraph)
         upsert_risk(db, company_id=company_id, slug=risk.slug, label=risk.label,
                     category=risk.category, observed_at=document.filed_at,
-                    chunk_id=chunk.id if chunk else None)
+                    chunk_id=chunk.id if chunk else None, **_provenance(risk))
         stats.risks += 1
 
+    pages = {c.paragraph_ids[0] if c.paragraph_ids else c.chunk_hash: c.page_number
+             for c in chunks}
     for m in entities.get("metrics_raw", []):
         metric = upsert_metric(db, company_id=company_id, name=m.name,
                                normalised=normalise_metric(m.name), unit=m.unit)
@@ -115,7 +129,9 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
         add_metric_observation(db, metric_id=metric.id, document_id=document.id,
                                chunk_id=chunk.id if chunk else None,
                                period=m.period or "unknown", value=m.value,
-                               unit=m.unit)
+                               unit=m.unit, page_number=pages.get(m.paragraph_id),
+                               paragraph_id=m.paragraph_id,
+                               confidence=getattr(m, "confidence", None))
         stats.metrics += 1
 
     add_timeline_event(db, company_id=company_id, kind="filing",
@@ -124,6 +140,14 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
                        ref=f"document:{document.id}", document_id=document.id)
     stats.events += 1
     return stats
+
+
+def _provenance(entity) -> dict:
+    """The provenance every extracted object carries."""
+    for ev in getattr(entity, "evidence", []) or []:
+        return {"page_number": ev.page_number, "paragraph_id": ev.paragraph_id,
+                "confidence": ev.confidence}
+    return {"page_number": None, "paragraph_id": None, "confidence": None}
 
 
 def _chunk_for(entity, by_paragraph):

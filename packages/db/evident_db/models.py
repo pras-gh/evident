@@ -31,6 +31,19 @@ from .base import Base, created_at, str16, str64, str255, updated_at
 EMBEDDING_DIM = 1536
 
 
+class Provenance:
+    """Mixin: where an extracted claim came from.
+
+    Every extracted object carries these. `confidence` is the extractor's own
+    reported score — a self-report, not a calibrated probability — so it is
+    useful for ranking and for triage thresholds, and should not be presented to
+    a reader as a likelihood that the claim is true.
+    """
+    page_number: Mapped[Optional[int]]
+    paragraph_id: Mapped[Optional[str64]]
+    confidence: Mapped[Optional[float]] = mapped_column(Float)
+
+
 class Company(Base):
     __tablename__ = "companies"
 
@@ -82,8 +95,10 @@ class Chunk(Base):
     Two distinct identities, and conflating them loses the product's core
     promise:
 
-      * `chunk_key` identifies this chunk. Content-addressed, so re-ingesting an
-        unchanged filing produces the same key.
+      * `chunk_hash` identifies this chunk globally. Derived from
+        company + accession + page + normalised text, so the same words on the
+        same page of the same filing are the same chunk however often we
+        re-ingest.
       * `paragraph_ids` lists the source paragraphs it was built from. This is
         what lets an answer cite "paragraph 3" rather than gesturing at a span
         of text somebody assembled.
@@ -93,8 +108,7 @@ class Chunk(Base):
     """
     __tablename__ = "chunks"
     __table_args__ = (
-        UniqueConstraint("document_id", "chunk_key",
-                         name="uq_chunks_document_id_chunk_key"),
+        UniqueConstraint("chunk_hash", name="uq_chunks_chunk_hash"),
         Index("ix_chunks_document_id_ordinal", "document_id", "ordinal"),
         # the ANN index; ivfflat/hnsw both require a fixed dimension
         Index("ix_chunks_embedding", "embedding",
@@ -106,7 +120,7 @@ class Chunk(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     document_id: Mapped[int] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), index=True)
-    chunk_key: Mapped[str64]
+    chunk_hash: Mapped[str] = mapped_column(String(64))
     paragraph_ids: Mapped[list[str]] = mapped_column(ARRAY(Text))
     ordinal: Mapped[int] = mapped_column(Integer)
     page_number: Mapped[Optional[int]]
@@ -174,6 +188,9 @@ class TopicMention(Base):
         ForeignKey("documents.id", ondelete="CASCADE"))
     observed_at: Mapped[date] = mapped_column(Date)
     quote: Mapped[str] = mapped_column(Text)
+    page_number: Mapped[Optional[int]]
+    paragraph_id: Mapped[Optional[str64]]
+    confidence: Mapped[Optional[float]] = mapped_column(Float)
 
     topic: Mapped["Topic"] = relationship(back_populates="mentions")
 
@@ -202,6 +219,9 @@ class TimelineEvent(Base):
     detail: Mapped[Optional[str]] = mapped_column(Text)
     occurred_at: Mapped[date] = mapped_column(Date)
     ref: Mapped[str255]
+    page_number: Mapped[Optional[int]]
+    paragraph_id: Mapped[Optional[str64]]
+    confidence: Mapped[Optional[float]] = mapped_column(Float)
     created_at: Mapped[created_at]
 
 
@@ -227,6 +247,9 @@ class Risk(Base):
     label: Mapped[str] = mapped_column(Text)
     category: Mapped[Optional[str64]]
     severity: Mapped[Optional[str64]]
+    page_number: Mapped[Optional[int]]
+    paragraph_id: Mapped[Optional[str64]]
+    confidence: Mapped[Optional[float]] = mapped_column(Float)
     status: Mapped[str16] = mapped_column(default="active", server_default="active")
     first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
     last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
@@ -257,6 +280,9 @@ class Person(Base):
     # dated because executives change jobs, and "the CFO said" means a
     # different person depending on the year
     roles: Mapped[Optional[dict]] = mapped_column(JSONB)
+    page_number: Mapped[Optional[int]]
+    paragraph_id: Mapped[Optional[str64]]
+    confidence: Mapped[Optional[float]] = mapped_column(Float)
     first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
     last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
     created_at: Mapped[created_at]
@@ -309,6 +335,9 @@ class MetricObservation(Base):
     period_end: Mapped[Optional[date]] = mapped_column(Date)
     value: Mapped[Optional[float]] = mapped_column(Numeric(20, 4))
     unit: Mapped[Optional[str64]]
+    page_number: Mapped[Optional[int]]
+    paragraph_id: Mapped[Optional[str64]]
+    confidence: Mapped[Optional[float]] = mapped_column(Float)
     is_restated: Mapped[bool] = mapped_column(Boolean, default=False,
                                               server_default="false")
 
