@@ -1,123 +1,155 @@
-"""Stage orchestration: fetch → parse → chunk → embed → store."""
+"""Ingestion worker — EDGAR to parsed, chunked rows.
+
+Downloads a filing, parses HTML or PDF, splits it into paragraph-level chunks
+carrying page number and section title, and writes them through the V1
+repositories.
+
+Idempotent on the content digest: an unchanged filing is recognised and skipped
+before it is parsed, so re-running over a company is cheap and safe. An *amended*
+filing has different bytes, so it is re-parsed and its chunks replaced wholesale
+— patching in place would leave orphaned paragraphs that still answer queries.
+"""
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
+import logging
+import tempfile
+from dataclasses import dataclass, field
+from datetime import date
 
+from evident_db import session_scope
+from evident_db.repositories import (replace_chunks, upsert_company,
+                                     upsert_document)
 from evident_parser import edgar
-from evident_retrieval import store
 from evident_parser.chunker import chunk_document
-from evident_retrieval.embed import Embedder, default_embedder
-from evident_parser.models import Company, Document, ParsedDocument
 from evident_parser.html import parse_html
+from evident_parser.models import Block, content_id, fiscal_period
 
-_FY = re.compile(r"^(\d{4})-(\d{2})-\d{2}$")
+log = logging.getLogger("evident.ingest_worker")
 
 
 @dataclass(slots=True)
-class Result:
+class FilingResult:
     accession: str
-    skipped: bool
-    document_id: int | None
-    stats: dict[str, Any]
+    form_type: str
+    filed_at: date
+    skipped: bool = False
+    pages: int = 0
+    sections: int = 0
+    chunks: int = 0
+    tables: int = 0
+    error: str | None = None
 
 
-def fiscal_period(form_type: str, report_date: str | None) -> str | None:
-    """Best-effort label. Returns None rather than guessing a quarter wrong."""
-    if not report_date:
-        return None
-    m = _FY.match(report_date)
-    if not m:
-        return None
-    year, month = m.group(1), int(m.group(2))
-    if form_type.startswith("10-K"):
-        return f"FY{year}"
-    if form_type.startswith("10-Q"):
-        return f"Q{(month - 1) // 3 + 1} {year}"
-    return year
+@dataclass(slots=True)
+class IngestResult:
+    ticker: str
+    cik: str
+    company: str
+    filings: list[FilingResult] = field(default_factory=list)
+
+    @property
+    def chunks_written(self) -> int:
+        return sum(f.chunks for f in self.filings)
 
 
-def ingest_accession(
-    *,
-    cik: str,
-    accession: str,
-    dsn: str | None = None,
-    embedder: Embedder | None = None,
-    target_tokens: int = 350,
-) -> Result:
-    started = datetime.now(timezone.utc)
+
+def ingest_ticker(ticker: str, *, form_types: list[str] | None = None,
+                  limit: int = 1, url: str | None = None,
+                  target_tokens: int = 350) -> IngestResult:
+    cik = edgar.cik_for_ticker(ticker)
     submission = edgar.fetch_submission(cik)
-    filing = edgar.find_filing(submission, accession)
-    url = edgar.document_url(cik, accession, filing["primary_document"])
+    filings = edgar.recent_filings(submission, form_types=form_types, limit=limit)
+
+    result = IngestResult(ticker=ticker.upper(), cik=cik,
+                          company=submission.get("name", ticker.upper()))
+
+    with session_scope(url) as db:
+        company = upsert_company(db, cik=cik, name=result.company,
+                                 ticker=(submission.get("tickers") or [ticker])[0],
+                                 sic=submission.get("sic"))
+        db.flush()
+
+        for filing in filings:
+            try:
+                result.filings.append(
+                    _ingest_one(db, company_id=company.id, cik=cik, filing=filing,
+                                target_tokens=target_tokens))
+            except Exception as exc:                      # one bad filing must not
+                log.exception("failed on %s", filing["accession"])  # sink the batch
+                result.filings.append(FilingResult(
+                    accession=filing["accession"], form_type=filing["form_type"],
+                    filed_at=filing["filed_date"], error=str(exc)))
+    return result
+
+
+def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
+                target_tokens: int) -> FilingResult:
+    url = edgar.document_url(cik, filing["accession"], filing["primary_document"])
     raw, sha = edgar.fetch_document(url)
-
-    conn = store.connect(dsn) if dsn else None
-    try:
-        if conn and store.already_ingested(conn, filing["accession"], sha):
-            store.log_run(conn, accession=filing["accession"], stage="fetch",
-                          status="skipped", detail="content unchanged",
-                          started_at=started)
-            return Result(filing["accession"], True, None, {})
-
-        parsed = _parse(raw, url, filing, cik, sha)
-        chunks = chunk_document(
-            accession=parsed.document.accession,
-            blocks=parsed.blocks,
-            tables=parsed.tables,
-            sections=parsed.sections,
-            target_tokens=target_tokens,
-        )
-        emb = (embedder or default_embedder()).embed([c.text for c in chunks])
-
-        stats = parsed.stats() | {"chunks": len(chunks),
-                                  "embedder": f"{emb.provider}/{emb.model}"}
-        if not conn:
-            return Result(parsed.document.accession, False, None, stats)
-
-        company = Company(
-            cik=cik.zfill(10),
-            name=submission.get("name", "Unknown"),
-            ticker=(submission.get("tickers") or [None])[0],
-            sic=submission.get("sic"),
-        )
-        document_id = store.write_document(conn, company=company, parsed=parsed,
-                                           chunks=chunks, embeddings=emb)
-        store.log_run(conn, accession=parsed.document.accession, stage="ingest",
-                      status="ok", detail=str(stats), started_at=started)
-        return Result(parsed.document.accession, False, document_id, stats)
-    finally:
-        if conn:
-            conn.close()
-
-
-def _parse(raw: bytes, url: str, filing: dict[str, Any], cik: str, sha: str) -> ParsedDocument:
     is_pdf = url.lower().endswith(".pdf") or raw[:5] == b"%PDF-"
-    document = Document(
-        accession=filing["accession"],
-        cik=cik.zfill(10),
-        form_type=filing["form_type"],
-        filed_date=filing["filed_date"],
-        published_at=filing["published_at"],
-        source_url=url,
-        source_format="pdf" if is_pdf else "html",
-        content_sha256=sha,
-        fiscal_period=fiscal_period(filing["form_type"], filing.get("report_date")),
-    )
-    parsed = ParsedDocument(document=document)
-    if is_pdf:
-        import tempfile
 
-        from evident_parser.pdf import parse_pdf
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
-            fh.write(raw)
-            path = fh.name
-        sections, blocks, tables, pages = parse_pdf(path, accession=document.accession)
-    else:
-        sections, blocks, tables, pages = parse_html(
-            raw.decode("utf-8", errors="replace"), accession=document.accession
-        )
-    parsed.sections, parsed.blocks, parsed.tables = sections, blocks, tables
+    document, is_new = upsert_document(
+        db, company_id=company_id, accession=filing["accession"],
+        form_type=filing["form_type"], filed_at=filing["filed_date"],
+        published_at=filing["published_at"], source_url=url,
+        source_format="pdf" if is_pdf else "html", content_sha256=sha,
+        fiscal_period=fiscal_period(filing["form_type"], filing.get("report_date")))
+    db.flush()
+
+    out = FilingResult(accession=filing["accession"], form_type=filing["form_type"],
+                       filed_at=filing["filed_date"])
+    if not is_new:
+        out.skipped = True
+        log.info("%s unchanged — skipped", filing["accession"])
+        return out
+
+    sections, blocks, tables, pages = _parse(raw, is_pdf, filing["accession"])
+    section_by_ordinal = {s.ordinal: s for s in sections}
+    chunks = chunk_document(accession=filing["accession"], blocks=blocks,
+                            tables=tables, sections=sections,
+                            target_tokens=target_tokens)
+
+    rows = []
+    for c in chunks:
+        section = section_by_ordinal.get(c.section_ordinal)
+        rows.append(dict(
+            chunk_key=c.chunk_id, paragraph_ids=c.paragraph_ids or [],
+            ordinal=c.ordinal,
+            page_number=c.page_start,
+            section_title=section.title if section else None,
+            section_path=section.path if section else None,
+            text=c.text, char_count=len(c.text), token_estimate=c.token_estimate))
+    out.chunks = replace_chunks(db, document_id=document.id, chunks=rows)
     document.page_count = pages
-    return parsed
+    out.pages, out.sections, out.tables = pages, len(sections), len(tables)
+    log.info("%s %s — %d pages, %d sections, %d chunks",
+             filing["form_type"], filing["accession"], pages, len(sections), out.chunks)
+    return out
+
+
+def _parse(raw: bytes, is_pdf: bool, accession: str):
+    if not is_pdf:
+        return parse_html(raw.decode("utf-8", errors="replace"), accession=accession)
+    from evident_parser.pdf import parse_pdf
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
+        fh.write(raw)
+        path = fh.name
+    return parse_pdf(path, accession=accession)
+
+
+if __name__ == "__main__":
+    import argparse
+    import json
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    ap = argparse.ArgumentParser(prog="evident-ingest")
+    ap.add_argument("--ticker", required=True)
+    ap.add_argument("--forms", nargs="*", default=None)
+    ap.add_argument("--limit", type=int, default=1)
+    args = ap.parse_args()
+
+    r = ingest_ticker(args.ticker, form_types=args.forms, limit=args.limit)
+    print(json.dumps({"ticker": r.ticker, "cik": r.cik, "company": r.company,
+                      "chunks": r.chunks_written,
+                      "filings": [f.__dict__ for f in r.filings]},
+                     indent=2, default=str))

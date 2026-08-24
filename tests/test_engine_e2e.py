@@ -68,7 +68,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
                  "normalised."),
             ]
             replace_chunks(db, document_id=doc.id, chunks=[
-                dict(paragraph_id=content_id("p", "acc", t), ordinal=i,
+                dict(chunk_key=content_id("c", "acc", t),
+                     paragraph_ids=[content_id("p", "acc", t)], ordinal=i,
                      page_number=page, section_title=section,
                      section_path=["Part II", section], text=t,
                      char_count=len(t), token_estimate=max(1, len(t) // 4))
@@ -287,7 +288,9 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(body["hits"], "vector search returned nothing")
         top = body["hits"][0]
         self.assertIn("p.", top["citation"])
-        self.assertTrue(top["paragraph_id"])
+        # a hit must name the paragraphs it came from, not just the chunk
+        self.assertTrue(top["chunk_key"])
+        self.assertTrue(top["paragraph_ids"], "search hit carried no paragraph ids")
         self.assertLessEqual(body["hits"][0]["score"], 1.0)
         # ordering must be by similarity
         scores = [h["score"] for h in body["hits"]]

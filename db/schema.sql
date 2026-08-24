@@ -12,7 +12,7 @@
 
 -- ===== 001_substrate.sql =================================================
 
--- elevate-ingest — structured entities for SEC filings.
+-- evident-ingest — structured entities for SEC filings.
 --
 -- The shape here is driven by one requirement: every retrieved chunk must be
 -- able to name the document, the section, the page and the paragraphs it came
@@ -165,7 +165,7 @@ create index if not exists ingest_runs_accession_idx on ingest_runs (accession, 
 
 -- ===== 002_company_memory.sql ============================================
 
--- elevate-ingest — layer 2: company memory.
+-- evident-ingest — layer 2: company memory.
 --
 -- 001 stores *what was filed*: documents, sections, paragraphs, tables. That is
 -- substrate. This file stores *what we know*: a durable, typed model of the
@@ -375,7 +375,7 @@ create index if not exists timeline_topic_idx        on timeline (topic_id, occu
 
 -- ===== 003_memory_cards.sql ==============================================
 
--- elevate-ingest — layer 3: memory cards.
+-- evident-ingest — layer 3: memory cards.
 --
 -- Cards are what a person reads; entities are what the system stores. A card is
 -- a derived projection over layer 2, never authored by hand, so rebuilding one

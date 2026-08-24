@@ -77,16 +77,24 @@ class Document(Base):
 
 
 class Chunk(Base):
-    """A paragraph-level span, with everything a citation needs.
+    """A retrievable span, with everything a citation needs.
 
-    `paragraph_id` is content-addressed rather than a counter, so re-ingesting
-    an unchanged filing produces identical ids and a citation issued months ago
-    still resolves.
+    Two distinct identities, and conflating them loses the product's core
+    promise:
+
+      * `chunk_key` identifies this chunk. Content-addressed, so re-ingesting an
+        unchanged filing produces the same key.
+      * `paragraph_ids` lists the source paragraphs it was built from. This is
+        what lets an answer cite "paragraph 3" rather than gesturing at a span
+        of text somebody assembled.
+
+    An oversized paragraph is split into parts keyed `p_abc#1`, `p_abc#2`, so a
+    part still resolves to its source paragraph.
     """
     __tablename__ = "chunks"
     __table_args__ = (
-        UniqueConstraint("document_id", "paragraph_id",
-                         name="uq_chunks_document_id_paragraph_id"),
+        UniqueConstraint("document_id", "chunk_key",
+                         name="uq_chunks_document_id_chunk_key"),
         Index("ix_chunks_document_id_ordinal", "document_id", "ordinal"),
         # the ANN index; ivfflat/hnsw both require a fixed dimension
         Index("ix_chunks_embedding", "embedding",
@@ -98,7 +106,8 @@ class Chunk(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     document_id: Mapped[int] = mapped_column(
         ForeignKey("documents.id", ondelete="CASCADE"), index=True)
-    paragraph_id: Mapped[str64]
+    chunk_key: Mapped[str64]
+    paragraph_ids: Mapped[list[str]] = mapped_column(ARRAY(Text))
     ordinal: Mapped[int] = mapped_column(Integer)
     page_number: Mapped[Optional[int]]
     section_title: Mapped[Optional[str255]]
