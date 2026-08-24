@@ -140,6 +140,47 @@ export TEST_DATABASE_URL=postgresql+psycopg://localhost/evident_test
 python -m unittest tests.test_engine_e2e
 ```
 
+## Completeness
+
+Verified against the real NVDA FY2025 10-K (`nvda-20250126.htm`, 2.08 MB),
+measured in a browser because SEC blocks this network at its edge:
+
+| | |
+| --- | --- |
+| pages parsed | **87** |
+| sections parsed | **27** |
+| paragraphs parsed | **1,132** |
+| chunks created | **275** (204 prose + 71 table) |
+| tables extracted | **68** |
+
+Three defects were found doing this, none of which was truncation:
+
+**Inline XBRL was being ingested as prose.** Every filing hides ~19KB of
+context and unit declarations in `<div style="display:none"><ix:header>`. The
+parser was reading it as one 19,834-character "paragraph" — a single junk chunk
+at the top of every document, embedded at full cost, matching nothing. The
+parser now skips `display:none` subtrees and inline-XBRL headers.
+
+**Oversized chunks.** A real 10-K has risk-factor paragraphs over 3,000
+characters, and there was no ceiling. Chunks of 1,000+ tokens match broadly and
+cite imprecisely. There is now a hard 600-token ceiling: paragraphs split on
+sentence boundaries into parts keyed `p_abc#1`, `p_abc#2`, so a part still
+resolves to its source paragraph. Tables split by row with the header repeated
+on every part — a body row without its header is a list of numbers with no
+meaning attached.
+
+**Paragraph provenance was not stored.** The worker wrote the *chunk's* id into
+`chunks.paragraph_id`, so the constituent paragraphs were never recorded and
+"cite the paragraph" quietly degraded to "cite the chunk". Revision `0002`
+separates `chunk_key` from `paragraph_ids`.
+
+The ceiling took four attempts to hold, each failure found by measurement rather
+than reading: budgets summed from parts under-counted the separators in the
+joined text; the overlap carry re-inflated the next chunk; and a `hard` flush
+still left a carry behind. `_chunk_section` now tracks characters including
+separators and drops the carry across a ceiling flush, with an assertion on the
+invariant.
+
 ## Known gaps
 
 - **`HashingEmbedder` is still the default.** It matches vocabulary overlap, not

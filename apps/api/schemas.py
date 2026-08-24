@@ -74,7 +74,9 @@ class SearchRequest(BaseModel):
 
 class SearchHitOut(BaseModel):
     chunk_id: int
-    paragraph_id: str
+    chunk_key: str
+    paragraph_ids: list[str] = Field(
+        description="the source paragraphs this chunk was built from")
     score: float
     text: str
     accession: str

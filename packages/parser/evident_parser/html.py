@@ -25,7 +25,15 @@ _ITEM = re.compile(r"^item\s+(\d+[a-z]?)\s*[.\-–—:]?\s*(.*)$", re.I)
 _PAGE_BREAK = re.compile(r"page-break-(?:before|after)\s*:\s*always", re.I)
 
 _BLOCK_TAGS = {"p", "div", "li", "br", "tr", "h1", "h2", "h3", "h4", "h5", "h6"}
-_SKIP_TAGS = {"script", "style", "head"}
+# ix:header carries the inline-XBRL context/unit declarations — roughly 19KB of
+# machine metadata in a real 10-K, with no sentence structure. Ingesting it
+# produces a single enormous junk chunk at the top of the document.
+_SKIP_TAGS = {"script", "style", "head", "ix:header", "ix:references",
+              "ix:resources", "ix:hidden"}
+# Void elements never close, so they must not affect nesting depth.
+_VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+              "link", "meta", "param", "source", "track", "wbr"}
+_DISPLAY_NONE = re.compile(r"display\s*:\s*none", re.I)
 _MAX_HEADING_CHARS = 120
 
 
@@ -40,6 +48,8 @@ class _FilingParser(HTMLParser):
 
         self._buf: list[str] = []
         self._skip_depth = 0
+        self._depth = 0
+        self._hidden_at: int | None = None
         self._section_ordinal: int | None = None
         self._path: list[str] = []
 
@@ -113,7 +123,27 @@ class _FilingParser(HTMLParser):
         self._section_ordinal = ordinal
 
     # ------------------------------------------------------------- callbacks
+    def _hidden(self, attrs: list[tuple[str, str | None]]) -> bool:
+        """Filings hide XBRL plumbing behind `display:none` rather than omitting
+        it. A browser never shows it, so neither should we."""
+        for name, value in attrs:
+            if name == "style" and value and _DISPLAY_NONE.search(value):
+                return True
+        return False
+
+    def handle_startendtag(self, tag, attrs):
+        # `<br/>` and friends: start and end in one token, so depth is untouched.
+        self.handle_starttag(tag, attrs)
+
     def handle_starttag(self, tag, attrs):
+        if tag not in _VOID_TAGS:
+            self._depth += 1
+        if self._hidden_at is None and self._hidden(attrs):
+            self._flush()
+            self._hidden_at = self._depth
+            return
+        if self._hidden_at is not None:
+            return
         if tag in _SKIP_TAGS:
             self._skip_depth += 1
             return
@@ -136,6 +166,13 @@ class _FilingParser(HTMLParser):
             self._flush()
 
     def handle_endtag(self, tag):
+        depth_before = self._depth
+        if tag not in _VOID_TAGS:
+            self._depth = max(0, self._depth - 1)
+        if self._hidden_at is not None:
+            if depth_before <= self._hidden_at:
+                self._hidden_at = None
+            return
         if tag in _SKIP_TAGS:
             self._skip_depth = max(0, self._skip_depth - 1)
             return
@@ -156,7 +193,7 @@ class _FilingParser(HTMLParser):
             self._flush()
 
     def handle_data(self, data):
-        if self._skip_depth:
+        if self._skip_depth or self._hidden_at is not None:
             return
         if self._table_depth:
             if self._cell is not None:

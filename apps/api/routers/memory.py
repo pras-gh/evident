@@ -77,7 +77,7 @@ async def get_topic(slug: str, company: Company = Depends(get_company),
         mentions=[MentionOut(
             observed_at=m.observed_at, quote=m.quote, accession=d.accession,
             form_type=d.form_type, page_number=c.page_number,
-            section_title=c.section_title, paragraph_id=c.paragraph_id,
+            section_title=c.section_title, paragraph_id=(c.paragraph_ids or [c.chunk_key])[0],
         ) for m, c, d in rows],
     )
 

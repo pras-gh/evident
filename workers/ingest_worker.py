@@ -113,7 +113,8 @@ def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
     for c in chunks:
         section = section_by_ordinal.get(c.section_ordinal)
         rows.append(dict(
-            paragraph_id=c.chunk_id, ordinal=c.ordinal,
+            chunk_key=c.chunk_id, paragraph_ids=c.paragraph_ids or [],
+            ordinal=c.ordinal,
             page_number=c.page_start,
             section_title=section.title if section else None,
             section_path=section.path if section else None,
