@@ -23,8 +23,9 @@ workers/
   memory_worker.py   extract → resolve → memory
   diff_worker.py     memory → card revisions
 db/
-  schema.sql         apply to a fresh database
-  migrations/        apply individually to an existing one
+  alembic/           migrations — the source of truth
+  schema.sql         generated from the chain; apply to a fresh database
+  legacy-design/     superseded hand-written SQL, NOT applied
 docs/
   PRD.md  architecture.md  api.md  ingestion.md
 ```
@@ -32,8 +33,10 @@ docs/
 ## Running
 
 ```bash
-# database — needs pgvector for chunk_embeddings; the other 27 tables do not
-psql "$DATABASE_URL" -f db/schema.sql
+# database — needs pgvector
+createdb evident && psql evident -c 'create extension vector'
+export DATABASE_URL=postgresql+psycopg://localhost/evident
+cd db && alembic upgrade head        # or: psql "$DATABASE_URL" -f db/schema.sql
 
 # tests: the core is standard-library only and runs on a clean checkout
 python3 -m unittest discover -s tests
@@ -49,9 +52,9 @@ cd apps/web && npm install && npm run dev
 
 | Layer | Stores | Answers |
 | --- | --- | --- |
-| substrate | what was *filed* — documents, sections, paragraphs, tables | "what does page 87 say" |
-| memory | what we *know* — resolved entities with a time axis | "when did they first mention Blackwell" |
-| cards | what a person *reads* — projections with history | "what changed, and when" |
+| substrate | what was *filed* — documents and chunks | "what does page 87 say" |
+| memory | what we *know* — entities, mentions, relationships | "when did they first mention Blackwell" |
+| graph | how it *connects* — importance and typed edges | "what drives what, and how much does it matter" |
 
 **The invariant across all three: nothing enters memory without a paragraph that
 asserts it.**

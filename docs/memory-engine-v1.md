@@ -116,7 +116,7 @@ the whole ingest path stays covered without depending on SEC being reachable.
 ```bash
 createdb evident && psql evident -c 'create extension vector'
 export DATABASE_URL=postgresql+psycopg://localhost/evident
-cd db && alembic upgrade head
+cd db && alembic upgrade head        # migrations are the source of truth
 
 python -m workers.ingest_worker    --cik 1045810 --accession 0001045810-25-000023
 python -m workers.embedding_worker
