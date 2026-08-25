@@ -61,7 +61,8 @@ workers/
   diff_worker.py      memory → card revisions
 db/
   schema.sql          generated; apply to a fresh database
-  migrations/         apply individually to an existing one
+  alembic/            migrations — the source of truth
+  legacy-design/      superseded hand-written SQL, NOT applied
 ```
 
 `apps/marketing/` is not in the original layout sketch. The landing site is a

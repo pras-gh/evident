@@ -22,7 +22,7 @@ from evident_memory.cards import (CAPEX, DEFAULT_SOURCES, GUIDANCE,
 from evident_memory.entities import (Evidence, Metric, Observation,
                                             Product, Promise, Risk)
 
-SQL_SEED = Path(__file__).resolve().parents[1] / "db" / "migrations" / "003_memory_cards.sql"
+SQL_SEED = Path(__file__).resolve().parents[1] / "db" / "legacy-design" / "003_memory_cards.sql"
 
 
 def ev(pid="p_a", quote="…"):
@@ -65,6 +65,12 @@ class SeedConsistency(unittest.TestCase):
 
     A silent divergence means a filing stops updating a card and nobody notices
     until the card is visibly stale.
+
+    The seed lives in db/legacy-design/ because the memory-card layer has
+    working Python and tests but no Alembic revision yet — the database cannot
+    store these cards. Keeping the check alive means whoever writes that
+    revision inherits a seed that still agrees with the routing code, instead
+    of one that quietly rotted while it sat unported.
     """
 
     def test_kinds_and_labels_match_the_sql_seed(self):
