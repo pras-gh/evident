@@ -97,7 +97,7 @@ re-fetch and a re-embed never forces a re-parse.
 | Worker | Reads | Writes | Idempotent on |
 | --- | --- | --- | --- |
 | `ingest_worker` | EDGAR | documents, sections, blocks, tables, chunks | accession + content digest |
-| `memory_worker` | blocks | topics, people, metrics, risks, promises, products, timeline | normalised entity identity |
+| `memory_worker` | blocks | the legacy `CompanyMemory` projection, adapted from canonical entities | normalised entity identity |
 | `diff_worker` | memory | card_revisions | (card, document) |
 
 Re-running any of them is safe. That is not incidental: filings get amended,

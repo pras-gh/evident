@@ -94,3 +94,33 @@ paragraphs that already have ids and must cite one per entity; anything citing
 an id we did not supply is dropped before storage, and counted. A hallucinated
 citation is worse than a missing entity — it looks exactly like a real one until
 someone clicks through.
+
+## What this costs elsewhere
+
+Two things get worse, and both are consequences of the spec rather than
+oversights.
+
+**Promises are no longer extracted.** There is no `promise` type in the
+canonical eight, so `resolve_promises` now runs on an empty list and every
+promise settles to `unclear`. The promise resolver, its prompt and its tests
+are all still there and still pass; nothing feeds them. Restoring the feature
+needs either a ninth type or a separate extraction pass.
+
+**Provenance column names are now inconsistent.** `entity_mentions.page` was
+renamed because the spec names it; `metric_observations.page_number` and
+`timeline_events.page_number` were not, because the spec does not mention them.
+Same concept, two names. Worth a follow-up migration, deliberately not folded
+into this one.
+
+## Verified
+
+- `0005` applied to a database built by `0004`; `db/schema.sql` and
+  `alembic upgrade head` produce identical 9-table schemas
+- the `event` guard fires and rolls back, leaving the database on `0004`
+- a `topic`/`strategy` slug collision merges to one row: counts summed, span
+  widened to cover both, attributes merged, the duplicate mention on a shared
+  chunk collapsed and the unique one repointed
+- 139 stdlib tests and 19 integration tests pass, including all 25 graph
+  contract tests **unchanged** — the frozen wire keys (`id`, `label`, `type`,
+  `importance`, `mentions`, `strength`, `last_seen_at`) still hold while the
+  columns behind them were renamed

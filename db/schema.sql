@@ -467,4 +467,115 @@ DROP TABLE metrics;
 
 UPDATE alembic_version SET version_num='0004' WHERE alembic_version.version_num = '0003';
 
+
+ALTER TABLE entities DROP CONSTRAINT uq_entities_company_id_kind_key;
+
+ALTER TABLE entities DROP CONSTRAINT ck_entities_ck_entities_kind;
+
+DROP INDEX ix_entities_company_id_kind;
+
+ALTER TABLE entities RENAME kind TO entity_type;
+
+ALTER TABLE entities RENAME key TO slug;
+
+ALTER TABLE entities RENAME label TO name;
+
+ALTER TABLE entities RENAME first_seen_at TO first_seen;
+
+ALTER TABLE entities RENAME last_seen_at TO latest_seen;
+
+alter index ix_entities_kind rename to ix_entities_entity_type;
+
+ALTER TABLE entities ADD COLUMN description TEXT;
+
+ALTER TABLE entities ADD COLUMN importance_score FLOAT DEFAULT '0' NOT NULL;
+
+update entities set entity_type = 'strategy' where entity_type = 'topic';
+
+update entities set entity_type = 'executive' where entity_type = 'person';
+
+create temporary table _entity_merge on commit drop as
+        select id as dup_id,
+               first_value(id) over (partition by company_id, slug
+                                     order by id) as keep_id
+        from entities;
+
+delete from entity_mentions m
+        using _entity_merge x, entity_mentions k
+        where m.entity_id = x.dup_id
+          and x.dup_id <> x.keep_id
+          and k.entity_id = x.keep_id
+          and k.chunk_id is not distinct from m.chunk_id;
+
+update entity_mentions m set entity_id = x.keep_id
+        from _entity_merge x
+        where m.entity_id = x.dup_id and x.dup_id <> x.keep_id;
+
+update metric_observations o set entity_id = x.keep_id
+        from _entity_merge x
+        where o.entity_id = x.dup_id and x.dup_id <> x.keep_id;
+
+update entities e
+        set mention_count = agg.mention_count,
+            first_seen    = agg.first_seen,
+            latest_seen   = agg.latest_seen,
+            attributes    = agg.attributes
+        from (
+            select x.keep_id,
+                   sum(d.mention_count)                       as mention_count,
+                   min(d.first_seen)                          as first_seen,
+                   max(d.latest_seen)                         as latest_seen,
+                   jsonb_object_agg(k, v)
+                       filter (where k is not null)           as attributes
+            from _entity_merge x
+            join entities d on d.id = x.dup_id
+            left join lateral jsonb_each(d.attributes) as a(k, v) on true
+            group by x.keep_id
+        ) agg
+        where e.id = agg.keep_id;
+
+delete from entities e
+        using _entity_merge x
+        where e.id = x.dup_id and x.dup_id <> x.keep_id;
+
+ALTER TABLE entities ADD CONSTRAINT uq_entities_company_id_slug UNIQUE (company_id, slug);
+
+ALTER TABLE entities ADD CONSTRAINT ck_entities_entity_type CHECK (entity_type in ('strategy','product','executive','risk','metric','segment','company','geography'));
+
+ALTER TABLE entities ADD CONSTRAINT ck_entities_importance_score CHECK (importance_score between 0 and 100);
+
+CREATE INDEX ix_entities_company_id_entity_type ON entities (company_id, entity_type);
+
+ALTER TABLE entity_mentions RENAME page_number TO page;
+
+delete from relationships;
+
+ALTER TABLE relationships DROP CONSTRAINT uq_relationships_source_target_kind;
+
+DROP INDEX ix_relationships_company_id_kind;
+
+ALTER TABLE relationships RENAME kind TO relationship_type;
+
+ALTER TABLE relationships RENAME first_seen_at TO first_seen;
+
+ALTER TABLE relationships RENAME last_seen_at TO latest_seen;
+
+ALTER TABLE relationships DROP COLUMN weight;
+
+ALTER TABLE relationships ADD COLUMN strength FLOAT DEFAULT '0' NOT NULL;
+
+ALTER TABLE relationships ADD COLUMN evidence_chunk_id BIGINT;
+
+ALTER TABLE relationships ADD CONSTRAINT fk_relationships_evidence_chunk_id_chunks FOREIGN KEY(evidence_chunk_id) REFERENCES chunks (id) ON DELETE SET NULL;
+
+CREATE INDEX ix_relationships_evidence_chunk_id ON relationships (evidence_chunk_id);
+
+ALTER TABLE relationships ADD CONSTRAINT uq_relationships_source_target_type UNIQUE (source_entity_id, target_entity_id, relationship_type);
+
+ALTER TABLE relationships ADD CONSTRAINT ck_relationships_strength CHECK (strength between 0 and 1);
+
+CREATE INDEX ix_relationships_company_id_relationship_type ON relationships (company_id, relationship_type);
+
+UPDATE alembic_version SET version_num='0005' WHERE alembic_version.version_num = '0004';
+
 COMMIT;

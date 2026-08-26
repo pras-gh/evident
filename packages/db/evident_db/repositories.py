@@ -150,29 +150,39 @@ def add_metric_observation(db: Session, *, entity_id: int, document_id: int,
 
 
 # ------------------------------------------------------------------ entity
-def upsert_entity(db: Session, *, company_id: int, kind: str, key: str,
-                  label: str, observed_at: date,
+def upsert_entity(db: Session, *, company_id: int, entity_type: str, slug: str,
+                  name: str, observed_at: date, description: str | None = None,
                   attributes: dict | None = None,
                   status: str | None = None) -> Entity:
-    """Update, never duplicate — now for every kind rather than per table.
+    """Update, never duplicate — one path for every entity type.
 
-    `first_seen_at` only moves earlier and `last_seen_at` only later, so filings
+    `first_seen` only moves earlier and `latest_seen` only later, so filings
     ingested out of order still produce the right span. Attributes are merged
     rather than replaced: a later filing that mentions a risk without restating
     its category must not erase the category.
+
+    `entity_type` is deliberately **not** updated on conflict. Identity is
+    `(company_id, slug)`, so a filing calling `Data Center` a product when it
+    was stored as a segment would otherwise retype it, and the type would flap
+    with ingest order — changing what every existing mention is understood to
+    be evidence *of*. First write wins, and the caller can compare the returned
+    row's `entity_type` against what it passed to see that it happened.
     """
     stmt = (insert(Entity)
-            .values(company_id=company_id, kind=kind, key=key, label=label,
+            .values(company_id=company_id, entity_type=entity_type, slug=slug,
+                    name=name, description=description,
                     attributes=attributes or {}, status=status or "active",
-                    first_seen_at=observed_at, last_seen_at=observed_at,
+                    first_seen=observed_at, latest_seen=observed_at,
                     mention_count=0)
             .on_conflict_do_update(
-                index_elements=[Entity.company_id, Entity.kind, Entity.key],
-                set_={"label": label,
+                index_elements=[Entity.company_id, Entity.slug],
+                set_={"name": name,
+                      "description": func.coalesce(
+                          insert(Entity).excluded.description, Entity.description),
                       "attributes": Entity.attributes.op("||")(
                           insert(Entity).excluded.attributes),
-                      "first_seen_at": func.least(Entity.first_seen_at, observed_at),
-                      "last_seen_at": func.greatest(Entity.last_seen_at, observed_at),
+                      "first_seen": func.least(Entity.first_seen, observed_at),
+                      "latest_seen": func.greatest(Entity.latest_seen, observed_at),
                       "updated_at": func.now()})
             .returning(Entity))
     return db.execute(stmt).scalar_one()
@@ -180,14 +190,14 @@ def upsert_entity(db: Session, *, company_id: int, kind: str, key: str,
 
 def add_entity_mention(db: Session, *, entity_id: int, document_id: int,
                        observed_at: date, quote: str,
-                       chunk_id: int | None = None, page_number: int | None = None,
+                       chunk_id: int | None = None, page: int | None = None,
                        paragraph_id: str | None = None,
                        chunk_hash: str | None = None,
                        confidence: float | None = None) -> bool:
     """Returns True when the mention was new, so counts do not inflate on rerun."""
     stmt = (insert(EntityMention)
             .values(entity_id=entity_id, document_id=document_id, chunk_id=chunk_id,
-                    observed_at=observed_at, quote=quote, page_number=page_number,
+                    observed_at=observed_at, quote=quote, page=page,
                     paragraph_id=paragraph_id, chunk_hash=chunk_hash,
                     confidence=confidence)
             .on_conflict_do_nothing(
@@ -201,7 +211,7 @@ def add_entity_mention(db: Session, *, entity_id: int, document_id: int,
     return inserted
 
 
-def mark_dropped_entities(db: Session, *, company_id: int, kind: str,
+def mark_dropped_entities(db: Session, *, company_id: int, entity_type: str,
                           latest_filing_at: date) -> int:
     """An entity absent from the newest filing is dropped, not deleted.
 
@@ -209,40 +219,54 @@ def mark_dropped_entities(db: Session, *, company_id: int, kind: str,
     informative things in the corpus, so the row and its mentions stay.
     """
     return db.query(Entity).filter(
-        Entity.company_id == company_id, Entity.kind == kind,
-        Entity.status == "active", Entity.last_seen_at < latest_filing_at,
+        Entity.company_id == company_id, Entity.entity_type == entity_type,
+        Entity.status == "active", Entity.latest_seen < latest_filing_at,
     ).update({Entity.status: "dropped"}, synchronize_session=False)
 
 
 def upsert_relationship(db: Session, *, company_id: int, source_entity_id: int,
-                        target_entity_id: int, kind: str, weight: int = 1,
+                        target_entity_id: int, relationship_type: str,
+                        strength: float = 0.0,
                         document_ids: list[int] | None = None,
                         observed_at: date | None = None,
+                        evidence_chunk_id: int | None = None,
                         attributes: dict | None = None) -> Relationship | None:
     """Edges are a materialisation of what the mentions already say, so a
-    rebuild is safe and re-running only refreshes weight and span."""
+    rebuild is safe and re-running only refreshes strength and span.
+
+    `strength` is corpus-relative (0-1 against the strongest edge in this
+    company's graph), which means it is only meaningful for a whole rebuild —
+    writing one edge at a time with a strength computed against a stale maximum
+    produces numbers that cannot be compared to each other.
+    """
     if source_entity_id == target_entity_id:
         return None
     stmt = (insert(Relationship)
             .values(company_id=company_id, source_entity_id=source_entity_id,
-                    target_entity_id=target_entity_id, kind=kind, weight=weight,
+                    target_entity_id=target_entity_id,
+                    relationship_type=relationship_type, strength=strength,
+                    evidence_chunk_id=evidence_chunk_id,
                     document_ids=document_ids or [], attributes=attributes or {},
-                    first_seen_at=observed_at, last_seen_at=observed_at)
+                    first_seen=observed_at, latest_seen=observed_at)
             .on_conflict_do_update(
                 index_elements=[Relationship.source_entity_id,
-                                Relationship.target_entity_id, Relationship.kind],
-                set_={"weight": weight, "document_ids": document_ids or [],
-                      "first_seen_at": func.least(Relationship.first_seen_at,
-                                                  observed_at),
-                      "last_seen_at": func.greatest(Relationship.last_seen_at,
-                                                    observed_at),
+                                Relationship.target_entity_id,
+                                Relationship.relationship_type],
+                set_={"strength": strength, "document_ids": document_ids or [],
+                      "evidence_chunk_id": func.coalesce(
+                          insert(Relationship).excluded.evidence_chunk_id,
+                          Relationship.evidence_chunk_id),
+                      "first_seen": func.least(Relationship.first_seen,
+                                               observed_at),
+                      "latest_seen": func.greatest(Relationship.latest_seen,
+                                                   observed_at),
                       "updated_at": func.now()})
             .returning(Relationship))
     return db.execute(stmt).scalar_one()
 
 
 def entities_for_graph(db: Session, *, company_id: int,
-                       kinds: Sequence[str] | None = None) -> list[tuple]:
+                       entity_types: Sequence[str] | None = None) -> list[tuple]:
     """(entity, mention_count, distinct_documents) in one pass."""
     stmt = (select(Entity,
                    func.count(EntityMention.id),
@@ -250,8 +274,8 @@ def entities_for_graph(db: Session, *, company_id: int,
             .outerjoin(EntityMention, EntityMention.entity_id == Entity.id)
             .where(Entity.company_id == company_id)
             .group_by(Entity.id))
-    if kinds:
-        stmt = stmt.where(Entity.kind.in_(list(kinds)))
+    if entity_types:
+        stmt = stmt.where(Entity.entity_type.in_(list(entity_types)))
     return list(db.execute(stmt).all())
 
 

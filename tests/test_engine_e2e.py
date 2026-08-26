@@ -133,38 +133,47 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from evident_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
-            for kind, label, when in (("topic", "Blackwell", date(2024, 5, 1)),
-                                      ("topic", "Blackwell", date(2023, 2, 1)),
-                                      ("topic", "Blackwell", date(2025, 2, 26))):
-                upsert_entity(db, company_id=self.company_id, kind=kind,
-                              key="blackwell", label=label, observed_at=when)
+            for kind, label, when in (("strategy", "Blackwell", date(2024, 5, 1)),
+                                      ("strategy", "Blackwell", date(2023, 2, 1)),
+                                      ("strategy", "Blackwell", date(2025, 2, 26))):
+                upsert_entity(db, company_id=self.company_id, entity_type=kind,
+                              slug="blackwell", name=label, observed_at=when)
             db.flush()
             rows = list(db.execute(select(Entity).where(
                 Entity.company_id == self.company_id,
-                Entity.key == "blackwell")).scalars())
+                Entity.slug == "blackwell")).scalars())
 
         self.assertEqual(len(rows), 1, "three ingests created more than one entity")
-        self.assertEqual(rows[0].first_seen_at, date(2023, 2, 1),
-                         "first_seen_at must move earlier, even out of order")
-        self.assertEqual(rows[0].last_seen_at, date(2025, 2, 26))
+        self.assertEqual(rows[0].first_seen, date(2023, 2, 1),
+                         "first_seen must move earlier, even out of order")
+        self.assertEqual(rows[0].latest_seen, date(2025, 2, 26))
 
-    def test_same_key_under_different_kinds_stays_distinct(self):
-        """A product and a topic can share a name and are not the same thing."""
+    def test_one_slug_is_one_entity_and_the_first_type_wins(self):
+        """Phase 1 inverts the old rule on purpose.
+
+        Identity used to be `(company_id, kind, key)`, so `Blackwell` could
+        exist as both a product and a topic. It is now `(company_id, slug)`:
+        one name is one thing per company. The stored type is kept rather than
+        overwritten, because retyping would change what every existing mention
+        is understood to be evidence of, and the type would then flap with
+        ingest order.
+        """
         from sqlalchemy import select
         from evident_db import Entity, session_scope
         from evident_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
-            upsert_entity(db, company_id=self.company_id, kind="topic",
-                          key="blackwell", label="Blackwell",
+            upsert_entity(db, company_id=self.company_id, entity_type="product",
+                          slug="blackwell", name="Blackwell",
                           observed_at=date(2025, 1, 1))
-            upsert_entity(db, company_id=self.company_id, kind="product",
-                          key="blackwell", label="Blackwell",
-                          observed_at=date(2025, 1, 1))
+            second = upsert_entity(db, company_id=self.company_id,
+                                   entity_type="strategy", slug="blackwell",
+                                   name="Blackwell", observed_at=date(2025, 1, 1))
             db.flush()
             rows = list(db.execute(select(Entity).where(
-                Entity.key == "blackwell")).scalars())
-        self.assertEqual(len(rows), 2)
+                Entity.slug == "blackwell")).scalars())
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(second.entity_type, "product")
 
     def test_attributes_merge_rather_than_overwrite(self):
         """A later filing that omits a risk's category must not erase it."""
@@ -173,16 +182,16 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from evident_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
-            upsert_entity(db, company_id=self.company_id, kind="risk",
-                          key="export", label="Export controls",
+            upsert_entity(db, company_id=self.company_id, entity_type="risk",
+                          slug="export", name="Export controls",
                           observed_at=date(2024, 1, 1),
                           attributes={"category": "regulatory"})
-            upsert_entity(db, company_id=self.company_id, kind="risk",
-                          key="export", label="Export controls",
+            upsert_entity(db, company_id=self.company_id, entity_type="risk",
+                          slug="export", name="Export controls",
                           observed_at=date(2025, 1, 1), attributes={})
             db.flush()
             row = db.execute(select(Entity).where(
-                Entity.key == "export")).scalar_one()
+                Entity.slug == "export")).scalar_one()
         self.assertEqual(row.attributes.get("category"), "regulatory")
 
     def test_mention_count_does_not_inflate_on_rerun(self):
@@ -191,8 +200,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from evident_db.repositories import add_entity_mention, upsert_entity
 
         with session_scope(DSN) as db:
-            entity = upsert_entity(db, company_id=self.company_id, kind="metric",
-                                   key="capex", label="CapEx",
+            entity = upsert_entity(db, company_id=self.company_id, entity_type="metric",
+                                   slug="capex", name="CapEx",
                                    observed_at=date(2025, 2, 26))
             db.flush()
             chunk = db.execute(select(Chunk).where(
@@ -215,17 +224,17 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from evident_db.repositories import mark_dropped_entities, upsert_entity
 
         with session_scope(DSN) as db:
-            upsert_entity(db, company_id=self.company_id, kind="risk", key="covid",
-                          label="COVID-19 disruption", observed_at=date(2023, 2, 1))
-            upsert_entity(db, company_id=self.company_id, kind="risk", key="export",
-                          label="Export controls", observed_at=date(2025, 2, 26))
+            upsert_entity(db, company_id=self.company_id, entity_type="risk", slug="covid",
+                          name="COVID-19 disruption", observed_at=date(2023, 2, 1))
+            upsert_entity(db, company_id=self.company_id, entity_type="risk", slug="export",
+                          name="Export controls", observed_at=date(2025, 2, 26))
             db.flush()
-            mark_dropped_entities(db, company_id=self.company_id, kind="risk",
+            mark_dropped_entities(db, company_id=self.company_id, entity_type="risk",
                                   latest_filing_at=date(2025, 2, 26))
             db.flush()
-            rows = {r.key: r.status for r in db.execute(
+            rows = {r.slug: r.status for r in db.execute(
                 select(Entity).where(Entity.company_id == self.company_id,
-                                     Entity.kind == "risk")).scalars()}
+                                     Entity.entity_type == "risk")).scalars()}
         self.assertEqual(rows["covid"], "dropped")
         self.assertEqual(rows["export"], "active")
 
@@ -284,8 +293,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from sqlalchemy import select
 
         with session_scope(DSN) as db:
-            entity = upsert_entity(db, company_id=self.company_id, kind="topic",
-                                   key="export_controls", label="Export controls",
+            entity = upsert_entity(db, company_id=self.company_id, entity_type="strategy",
+                                   slug="export_controls", name="Export controls",
                                    observed_at=date(2025, 2, 26))
             db.flush()
             chunk = db.execute(select(Chunk).where(
@@ -293,7 +302,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
                 Chunk.page_number == 12)).scalar_one()
             add_entity_mention(db, entity_id=entity.id, chunk_id=chunk.id,
                                document_id=self.document_id,
-                               observed_at=date(2025, 2, 26), page_number=12,
+                               observed_at=date(2025, 2, 26), page=12,
                                paragraph_id="12_1", chunk_hash=chunk.chunk_hash,
                                quote="Export controls on advanced computing products")
 

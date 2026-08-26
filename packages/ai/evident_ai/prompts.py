@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from evident_graph.taxonomy import ENTITY_TYPES
+
 MODEL = "claude-opus-5"
 
 
@@ -23,25 +25,49 @@ class Prompt:
         return f"{self.name}@{self.version}"
 
 
+def _type_table() -> str:
+    """Render the taxonomy into prompt text.
+
+    Generated rather than written out, so a type cannot exist in the schema and
+    be missing from the instructions — the failure mode there is the model
+    returning a valid enum value it was never told the meaning of.
+    """
+    lines = []
+    for t in ENTITY_TYPES:
+        examples = ", ".join(t.examples)
+        lines.append(f"- {t.name}: {t.definition} Examples: {examples}.")
+    return "\n".join(lines)
+
+
 EXTRACT_ENTITIES = Prompt(
     name="extract_entities",
-    version="1.0.0",
-    system="""You extract structured company intelligence from SEC filings.
+    version="2.0.0",
+    system=f"""You extract structured company intelligence from SEC filings.
 
-You will be given numbered paragraphs from one section of a filing. Each has an
-id. Extract only what the text actually supports.
+You will be given numbered paragraphs from one filing. Each paragraph has an id.
+
+Every entity you return must belong to exactly one of these eight types:
+
+{_type_table()}
 
 Rules:
-- Every entity you return MUST cite the paragraph_id it came from. Never invent
-  an id; use only ids from the input.
-- Quote the exact span that supports each entity, copied verbatim.
-- A promise is a forward-looking commitment with a horizon ("we expect to ship
-  in H2", "we plan to double capacity next year"). Boilerplate safe-harbour
-  language is not a promise.
-- A metric is a named, quantified measure. Record the period it refers to.
+- Use only these eight types. If something does not fit one of them, do not
+  return it. There is no "other".
+- Every entity MUST cite the paragraph_id it came from, and quote the exact
+  span that supports it, copied verbatim. Never invent an id.
+- Name the entity as the filing names it. Do not expand, translate or
+  normalise — "Blackwell", not "the Blackwell GPU architecture".
+- Return an entity once per paragraph that supports it. Repeats across
+  different paragraphs are wanted; they are how importance is measured.
+- confidence is how strongly the quoted span supports the entity: 1.0 when the
+  text states it outright, lower when it is implied. Do not inflate. A low
+  score is more useful than a confident wrong one.
+- The filer itself is never a `company` entity. Its own segments are
+  `segment`, its own products are `product`.
 - Do not infer, speculate, or fill gaps. Returning fewer entities is correct
   when the text does not support more.""",
 )
+
 
 RESOLVE_PROMISE = Prompt(
     name="resolve_promise",
