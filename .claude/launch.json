@@ -9,7 +9,7 @@
         "http.server",
         "4321",
         "--directory",
-        "/Users/prasoonpathak/Projects/evident"
+        "apps/marketing"
       ],
       "port": 4321
     }
