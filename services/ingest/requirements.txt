@@ -1,5 +1,0 @@
-# Core parsing, chunking and id assignment use the standard library only, so
-# they stay unit-testable with none of this installed.
-psycopg[binary]>=3.1     # PostgreSQL writes
-pypdf>=4.2               # PDF page extraction
-pytest>=8.0              # tests

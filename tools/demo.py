@@ -10,7 +10,7 @@ by the scrollbar rather than played by a timer.
 import re, os
 
 HERE = os.path.dirname(__file__)
-HTML = os.path.join(HERE, '..', 'index.html')
+HTML = os.path.join(HERE, '..', 'apps', 'marketing', 'index.html')
 
 ANSWER = ("Apple increased infrastructure spending primarily to expand "
           "<em>AI compute capacity</em> across data centers and support "
@@ -104,7 +104,7 @@ SECTION = f'''
     <header class="demo-head">
       <p class="demo-eyebrow anim">03 &mdash; The proof</p>
       <h2 class="demo-h2 anim">Every answer comes with evidence.</h2>
-      <p class="demo-sub anim">Stop trusting AI summaries. Elevate shows exactly where every
+      <p class="demo-sub anim">Stop trusting AI summaries. Evident shows exactly where every
         answer comes from &mdash; down to the paragraph inside the filing.</p>
     </header>
 
@@ -112,7 +112,7 @@ SECTION = f'''
       <!-- ---------- left: the conversation ---------- -->
       <div class="chat anim">
         <div class="chat-top">
-          <span class="chat-dot"></span><span class="chat-name">Elevate</span>
+          <span class="chat-dot"></span><span class="chat-name">Evident</span>
           <span class="chat-live">Live</span>
         </div>
 

@@ -10,9 +10,9 @@ sample stays honest about what the backend would actually produce.
 import os
 
 HERE = os.path.dirname(__file__)
-OUT = os.path.join(HERE, "..", "app", "index.html")
+OUT = os.path.join(HERE, "..", "apps", "web", "reference", "static-sample.html")
 
-NAV = [("home", "Home"), ("watchlist", "Watchlist"), ("ask", "Ask Elevate"),
+NAV = [("home", "Home"), ("watchlist", "Watchlist"), ("ask", "Ask Evident"),
        ("memory", "Company Memory"), ("pulse", "Market Pulse"),
        ("screeners", "Screeners"), ("alerts", "Alerts"), ("notebook", "Notebook")]
 
@@ -311,7 +311,7 @@ def build():
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Company Memory — Elevate</title>
+<title>Company Memory — Evident</title>
 <meta name="theme-color" content="#0a0a0b">
 <link rel="icon" href="../assets/favicon.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -327,7 +327,7 @@ def build():
 <div class="shell">
   <nav class="side" aria-label="Primary">
     <a class="brand" href="../index.html">
-      <span class="brand-mark"></span> elevate
+      <span class="brand-mark"></span> evident
     </a>
     <div class="nav">{nav}</div>
     <div class="promo">

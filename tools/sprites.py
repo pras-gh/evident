@@ -253,7 +253,7 @@ def to_svg(name, art):
 
 
 if __name__ == '__main__':
-    out = os.path.join(os.path.dirname(__file__), '..', 'assets')
+    out = os.path.join(os.path.dirname(__file__), '..', 'apps', 'marketing', 'assets')
     os.makedirs(out, exist_ok=True)
     for name, art in SPRITES.items():
         svg, w, h, n = to_svg(name, art)

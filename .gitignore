@@ -1,4 +1,12 @@
 .DS_Store
 node_modules/
+.next/
 dist/
+build/
 *.log
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env

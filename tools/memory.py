@@ -15,7 +15,7 @@ def rng(a, b):
 
 
 HERE = os.path.dirname(__file__)
-HTML = os.path.join(HERE, '..', 'index.html')
+HTML = os.path.join(HERE, '..', 'apps', 'marketing', 'index.html')
 
 # ---- the graph ------------------------------------------------------------
 TOPICS = [
