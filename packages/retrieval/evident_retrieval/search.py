@@ -1,14 +1,14 @@
-"""Vector search over evidence spans.
+"""LEGACY — written against the superseded raw-SQL schema.
 
-Retrieval here is a *supporting* index, not the product. A hit is only useful if
-it can name the document, page and paragraphs it came from, so every result
-carries that and the SQL joins back to `chunks` rather than returning a bare
-score.
+This module queries `chunk_embeddings`, `sections`, `blocks` and
+`filing_tables`, none of which exist in the Alembic schema. It cannot run
+against the current database and has no callers except `_vector_literal`.
 
-The ranking is deliberately hybrid: cosine similarity finds the passage, but
-recency and form type decide which of five near-identical passages a reader
-actually wants. A 10-K and a stale 10-Q often say the same sentence; the newer
-one is almost always the right answer.
+The live paths are `apps/api/routers/search.py` for retrieval and
+`packages/db/evident_db/repositories.py` for writes, both of which use
+`chunks.embedding` on the 9-table schema. The pure re-ranking logic below is
+still good and still tested; the SQL is what rotted. Kept rather than deleted
+so the re-ranking has a home until it is ported.
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Sequence
 
-from .embed import Embedder
+from .embed import EmbeddingProvider
 
 
 @dataclass(slots=True, frozen=True)
@@ -58,13 +58,17 @@ select c.chunk_id, d.id, d.accession, d.form_type, d.filed_date,
 """
 
 
-def search(conn: Any, query: str, *, embedder: Embedder, cik: str | None = None,
+def search(conn: Any, query: str, *, embedder: EmbeddingProvider, cik: str | None = None,
            form_types: Sequence[str] | None = None, k: int = 20,
            recency_weight: float = 0.15) -> list[Hit]:
     """Nearest chunks, re-ranked so newer filings win near-ties."""
-    from .store import _vector_literal
-
-    vector = _vector_literal(embedder.embed([query]).vectors[0])
+    raise RuntimeError(
+        "evident_retrieval.search.search() targets the superseded raw-SQL "
+        "schema (chunk_embeddings, sections) and cannot run against the "
+        "current database. The live retrieval path is POST /v1/search in "
+        "apps/api/routers/search.py. `rerank` below is still good and still "
+        "used."
+    )
     params = {"q": vector, "provider": embedder.provider, "model": embedder.model,
               "cik": cik, "forms": list(form_types) if form_types else None,
               "k": k * 3}          # over-fetch so re-ranking has room to work

@@ -79,3 +79,47 @@ Voyage distinguishes `input_type="document"` from `input_type="query"`, and
 using the right one measurably improves retrieval. `embed()` is the document
 path; `embed_query()` is the query path and defaults to `embed()` for providers
 that draw no distinction.
+
+## Verified
+
+- 179 unit tests, 22 integration against real Postgres
+- every provider defaults to the shared width, and the width matches the column
+- a provider returning the wrong width, or the wrong count, raises before
+  anything reaches the database
+- Voyage sends `input_type=document` for chunks and `query` for searches,
+  omits `output_dimension` for `voyage-finance-2` (which rejects it) and sends
+  it for the general models, and batches at the documented 1,000-text limit
+- OpenAI requests `dimensions=1024` explicitly and sorts results by the `index`
+  the API returns rather than trusting arrival order
+- `default_provider()` raises when unconfigured — asserted, not assumed
+- revision `0006` applied to a database holding a real 1536-wide vector: the
+  vector and its provenance are cleared and the column is `vector(1024)`
+- `db/schema.sql` and `alembic upgrade head` still produce identical 9-table
+  schemas, both with `vector(1024)`
+
+Provider dimensions and batch limits were read from Voyage's and OpenAI's
+current documentation during this change, not recalled.
+
+### Found while doing this
+
+`packages/retrieval/search.py` and `store.py` are written against the
+superseded raw-SQL schema — they query `chunk_embeddings`, `sections`, `blocks`
+and `filing_tables`, none of which exist. They have no callers beyond
+`_vector_literal` and `rerank`, and the four retrieval tests only cover the
+pure re-ranking logic, so nothing noticed.
+
+They are labelled and their dead entry points now raise a message naming the
+live path, instead of failing somewhere deeper. The live retrieval path is
+`POST /v1/search`, which uses `chunks.embedding` correctly — and which now
+filters on `embedding_provider` and `embedding_model`, so a half-re-embedded
+corpus returns nothing rather than nonsense.
+
+Porting `rerank`'s recency weighting onto the live path is worth doing and is
+not in this change.
+
+## Not proven
+
+No embedding API has been called. There are no Voyage or OpenAI credentials
+here, so both providers are driven by fake clients. What is asserted is the
+shape of the request and the handling of the response; what has not been
+observed is a real vector.

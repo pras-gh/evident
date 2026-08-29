@@ -149,21 +149,23 @@ class Embedding(unittest.TestCase):
         self.e = HashingEmbedder(dim=256)
 
     def test_is_deterministic(self):
-        a = self.e.embed(["capital expenditure"]).vectors[0]
-        b = self.e.embed(["capital expenditure"]).vectors[0]
+        a = self.e.embed(["capital expenditure"])[0]
+        b = self.e.embed(["capital expenditure"])[0]
         self.assertEqual(a, b)
 
     def test_reports_its_provenance(self):
-        batch = self.e.embed(["x"])
-        self.assertEqual((batch.provider, batch.model, batch.dim),
+        # provenance moved onto the provider: `embed` returns plain vectors,
+        # but the row still records what produced it
+        self.assertEqual((self.e.name, self.e.model, self.e.dim),
                          ("local", "hashing-v1", 256))
+        self.assertEqual(len(self.e.embed(["x"])[0]), 256)
 
     def test_vectors_are_unit_length(self):
-        v = self.e.embed(["data centre capacity expansion"]).vectors[0]
+        v = self.e.embed(["data centre capacity expansion"])[0]
         self.assertAlmostEqual(sum(x * x for x in v) ** 0.5, 1.0, places=6)
 
     def test_one_vector_per_input(self):
-        self.assertEqual(len(self.e.embed(["a", "b", "c"]).vectors), 3)
+        self.assertEqual(len(self.e.embed(["a", "b", "c"])), 3)
 
 
 class Misc(unittest.TestCase):

@@ -36,6 +36,11 @@ docs/
 # database — needs pgvector
 createdb evident && psql evident -c 'create extension vector'
 export DATABASE_URL=postgresql+psycopg://localhost/evident
+
+# embeddings: required, no default. 'hashing' is for tests only and has no
+# semantics -- it will make retrieval look like it works.
+export EMBEDDING_PROVIDER=voyage        # or: openai, hashing
+export VOYAGE_API_KEY=...               # or OPENAI_API_KEY
 cd db && alembic upgrade head        # or: psql "$DATABASE_URL" -f db/schema.sql
 
 # tests: needs the project's dependencies. Extraction is validated through

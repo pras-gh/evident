@@ -19,6 +19,10 @@ DSN = os.environ.get("TEST_DATABASE_URL")
 class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
+        # The suite names a provider the way production must: default_provider()
+        # no longer falls back to hash vectors, so an unset variable is an
+        # error here exactly as it would be on a server.
+        os.environ.setdefault("EMBEDDING_PROVIDER", "hashing")
         from evident_db import Base, make_engine
         cls.engine = make_engine(DSN)
         Base.metadata.drop_all(cls.engine)
@@ -241,7 +245,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     # -------------------------------------------------------------- embedding
     def test_embedding_worker_writes_vectors_with_provenance(self):
         from sqlalchemy import select
-        from evident_db import Chunk, session_scope
+        from evident_db import Chunk, EMBEDDING_DIM, session_scope
         from workers import embedding_worker
 
         result = embedding_worker.run(url=DSN, batch_size=2)
@@ -251,16 +255,35 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
             rows = list(db.execute(select(Chunk).where(
                 Chunk.document_id == self.document_id)).scalars())
         self.assertTrue(all(r.embedding is not None for r in rows))
-        self.assertTrue(all(len(r.embedding) == 1536 for r in rows))
+        self.assertTrue(all(len(r.embedding) == EMBEDDING_DIM for r in rows))
         self.assertTrue(all(r.embedding_provider and r.embedding_model
                             for r in rows), "vectors stored without provenance")
 
     def test_worker_refuses_a_dimension_mismatch(self):
+        """A width the column cannot hold is refused before anything is written."""
         from evident_retrieval.embed import HashingEmbedder
         from workers import embedding_worker
         with self.assertRaises(ValueError) as ctx:
             embedding_worker.run(url=DSN, embedder=HashingEmbedder(dim=768))
         self.assertIn("Add a migration", str(ctx.exception))
+
+    def test_default_provider_refuses_to_guess(self):
+        """Unconfigured must fail loudly, not fall back to hash vectors.
+
+        A search index quietly full of HashingEmbedder output answers every
+        query with something plausible and wrong, and nothing looks broken
+        while it happens.
+        """
+        import os
+        from evident_retrieval.embed import EmbeddingError, default_provider
+        old = os.environ.pop("EMBEDDING_PROVIDER", None)
+        try:
+            with self.assertRaises(EmbeddingError) as ctx:
+                default_provider()
+            self.assertIn("EMBEDDING_PROVIDER", str(ctx.exception))
+        finally:
+            if old is not None:
+                os.environ["EMBEDDING_PROVIDER"] = old
 
     # -------------------------------------------------------------------- api
     async def _client(self):

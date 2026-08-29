@@ -1,20 +1,21 @@
-"""PostgreSQL writer.
+"""LEGACY — written against the superseded raw-SQL schema.
 
-Ingestion is idempotent on accession: re-running a filing replaces its derived
-rows rather than duplicating them, and the content digest lets an unchanged
-filing skip the work entirely. Everything for one document lands in a single
-transaction — a half-ingested filing that answers queries with missing pages is
-worse than one that is absent.
+This module queries `chunk_embeddings`, `sections`, `blocks` and
+`filing_tables`, none of which exist in the Alembic schema. It cannot run
+against the current database and has no callers except `_vector_literal`.
 
-Requires `psycopg` (v3). Imported lazily so the rest of the package stays
-dependency-free.
+The live paths are `apps/api/routers/search.py` for retrieval and
+`packages/db/evident_db/repositories.py` for writes, both of which use
+`chunks.embedding` on the 9-table schema. The pure re-ranking logic below is
+still good and still tested; the SQL is what rotted. Kept rather than deleted
+so the re-ranking has a home until it is ported.
 """
 from __future__ import annotations
 
 import json
 from typing import Any, Iterable
 
-from .embed import EmbeddingBatch
+from .embed import EmbeddingProvider
 from evident_parser.models import Chunk, Company, ParsedDocument
 
 
@@ -43,10 +44,18 @@ def write_document(
     company: Company,
     parsed: ParsedDocument,
     chunks: list[Chunk],
-    embeddings: EmbeddingBatch | None = None,
+    embeddings: list[list[float]] | None = None,
+    provider: EmbeddingProvider | None = None,
 ) -> int:
     """Write one filing atomically. Returns the document id."""
     doc = parsed.document
+    raise RuntimeError(
+        "evident_retrieval.store.write_document() targets the superseded "
+        "raw-SQL schema (blocks, sections, filing_tables, chunk_embeddings) "
+        "and cannot run against the current database. Writes go through "
+        "packages/db/evident_db/repositories.py. `_vector_literal` below is "
+        "still used."
+    )
     if embeddings and len(embeddings.vectors) != len(chunks):
         raise ValueError(
             f"{len(embeddings.vectors)} vectors for {len(chunks)} chunks — refusing "

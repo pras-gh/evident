@@ -24,16 +24,23 @@ async def search(req: SearchRequest,
     its document, page and paragraph is not a usable result, and the response
     model makes that non-optional.
     """
-    from evident_retrieval.embed import default_embedder
+    from evident_retrieval.embed import default_provider
 
     started = time.perf_counter()
-    embedder = default_embedder()
-    vector = embedder.embed([req.query]).vectors[0]
+    embedder = default_provider()
+    vector = embedder.embed_query([req.query])[0]
 
     distance = Chunk.embedding.cosine_distance(vector)
     stmt = (select(Chunk, Document, distance.label("distance"))
             .join(Document, Document.id == Chunk.document_id)
-            .where(Chunk.embedding.is_not(None))
+            .where(Chunk.embedding.is_not(None),
+                   # Only rows embedded by the provider asking the question.
+                   # Cosine distance between two models' vectors is a number
+                   # with no meaning — it does not error, it just ranks
+                   # wrongly, so a half-re-embedded corpus would answer every
+                   # query confidently and incorrectly.
+                   Chunk.embedding_provider == embedder.name,
+                   Chunk.embedding_model == embedder.model)
             .order_by(distance)
             .limit(req.k))
     if req.ticker:
@@ -53,4 +60,4 @@ async def search(req: SearchRequest,
 
     return SearchResponse(query=req.query, hits=hits,
                           took_ms=round((time.perf_counter() - started) * 1000, 2),
-                          embedder=f"{embedder.provider}/{embedder.model}")
+                          embedder=f"{embedder.name}/{embedder.model}")
