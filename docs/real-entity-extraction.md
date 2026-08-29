@@ -65,3 +65,44 @@ co-occurrence edges the graph engine already derives. Both carry
 Prompt caching on the system prompt, and the Batch API for whole-filing runs at
 half price. Both were built in Phase 1; this phase makes them the default path
 for a full document rather than a per-chunk call.
+
+## Verified
+
+Everything below the HTTP boundary is exercised by tests; the boundary itself
+is faked, because a fake response is the only way to assert how a *bad* one is
+handled.
+
+- 156 unit tests, 21 integration tests against real Postgres
+- the whole path persists: chunk -> fake Claude -> Pydantic -> validation ->
+  entities, mentions, and an edge carrying its `evidence_chunk_id`
+- an edge whose source was never extracted is dropped, not stored
+- a truncated response writes **nothing** — asserted by counting rows before
+  and after
+- every rejection path covered: truncation, refusal, malformed JSON, unknown
+  enum value, out-of-range confidence, and a field we never asked for
+- 474 chunks ingested into a real database, and `tools/extract_live.py
+  --dry-run` renders the exact request against them
+
+### Found while doing this
+
+`build_for_document` had never run. It assigned `block.chunk_hash` onto a
+slots dataclass, which always raises `AttributeError` — meaning the worker that
+writes memory to Postgres was never once executed end to end, by a test or
+otherwise. The line was vestigial from the previous extractor; the chunk is
+recovered through `by_paragraph`, which the mention write already used. The new
+integration test is what surfaced it.
+
+## Still not proven
+
+**The live call has not happened.** There are no Anthropic credentials in this
+environment, so every test drives a fake client. The request shape, schema,
+caching block and batch path follow the SDK reference, but nothing has been
+sent. Two things can only be measured on a real run: the drop rate, and whether
+the system prompt is long enough to cache — at 3,429 characters it is roughly
+900 tokens, likely just under the ~1024-token minimum, in which case caching
+saves nothing and `cache_hit_rate()` will report zero.
+
+**The only filing on disk is synthetic.** `tests/fixtures/edgar/...` has real
+inline-XBRL structure and word-salad prose, which is right for testing the
+parser and useless for testing extraction. A real run needs a real filing
+ingested from SEC, which this network blocks at the edge.

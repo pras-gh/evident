@@ -1,4 +1,4 @@
-"""Phase 1 — the canonical taxonomy and the extraction guardrails.
+"""The canonical taxonomy, the Pydantic gate, and the extraction guardrails.
 
 The tests that matter here are the refusals. Extraction quality is a prompt
 question and cannot be asserted offline, but *what we refuse to store* is pure
@@ -10,20 +10,33 @@ from __future__ import annotations
 import json
 import unittest
 
-from evident_ai.extract import (DropReport, cache_hit_rate, collect_batch,
-                                extract_from_blocks, json_schema, render,
-                                validate_all)
+from evident_ai.extract import (DropReport, Extraction, ExtractionRejected,
+                                cache_hit_rate, collect_batch, extract_document,
+                                extract_from_blocks, parse_response, render,
+                                request_params, validate_entities,
+                                validate_relationships)
 from evident_ai.prompts import EXTRACT_ENTITIES
-from evident_graph.taxonomy import (ENTITY_TYPES, TYPE_NAMES, InvalidEntity,
-                                    check_constraint, slug, validate)
+from evident_ai.schema import (EntityExtractionResponse, ExtractedEntity,
+                               wire_schema)
+from evident_graph.taxonomy import (ENTITY_TYPES, RELATIONSHIP_NAMES,
+                                    TYPE_NAMES, check_constraint, slug)
 from evident_parser.models import Block
+from pydantic import ValidationError
 
 VALID = {"7_1", "7_2"}
 
 
-def raw(**over):
+def ent(**over):
     base = {"name": "Blackwell", "entity_type": "product", "confidence": 0.99,
             "paragraph_id": "7_1", "quote": "accelerate Blackwell deployment"}
+    base.update(over)
+    return base
+
+
+def rel(**over):
+    base = {"source_name": "AI Infrastructure", "target_name": "Blackwell",
+            "relationship_type": "drives_investment", "confidence": 0.9,
+            "paragraph_id": "7_1", "quote": "investing in AI infrastructure"}
     base.update(over)
     return base
 
@@ -36,8 +49,6 @@ class Taxonomy(unittest.TestCase):
              "company", "geography"})
 
     def test_every_type_carries_a_definition_and_examples(self):
-        # they are rendered into the prompt; an empty one silently teaches
-        # the model nothing about a type it is still allowed to return
         for t in ENTITY_TYPES:
             self.assertTrue(t.definition.strip(), t.name)
             self.assertTrue(t.examples, t.name)
@@ -48,103 +59,190 @@ class Taxonomy(unittest.TestCase):
             self.assertIn(f"'{name}'", sql)
         self.assertEqual(sql.count("'"), len(TYPE_NAMES) * 2)
 
-    def test_schema_enum_and_prompt_come_from_the_same_tuple(self):
-        enum = json_schema()["properties"]["entities"]["items"] \
-            ["properties"]["entity_type"]["enum"]
-        self.assertEqual(enum, list(TYPE_NAMES))
-        for name in TYPE_NAMES:
-            self.assertIn(name, EXTRACT_ENTITIES.system)
+    def test_relationship_types_are_closed_and_exclude_the_derived_one(self):
+        # co_occurs is computed from shared documents, never asserted; letting
+        # the model emit it would make a derived edge look like a claim
+        self.assertNotIn("co_occurs", RELATIONSHIP_NAMES)
+        self.assertIn("competes_with", RELATIONSHIP_NAMES)
 
     def test_slug_keeps_underscores_because_node_ids_are_frozen(self):
-        # the graph contract's node ids are these strings; hyphens would break
-        # every id a client has cached
         self.assertEqual(slug("AI Infrastructure"), "ai_infrastructure")
         self.assertNotIn("-", slug("Cost Optimization"))
 
     def test_slug_folds_the_variants_a_filing_actually_uses(self):
         self.assertEqual(slug("Accelerated Computing"), slug("AI Infrastructure"))
-        self.assertEqual(slug("Export Restrictions"), slug("Export Control"))
 
 
-class Validation(unittest.TestCase):
-    def test_accepts_a_well_formed_entity(self):
-        e = validate(raw(), valid_paragraph_ids=VALID)
-        self.assertEqual((e.name, e.entity_type, e.slug),
-                         ("Blackwell", "product", "blackwell"))
+class WireSchema(unittest.TestCase):
+    """The request's schema is generated from the models it validates against."""
 
-    def test_refuses_a_type_outside_the_canonical_set(self):
-        with self.assertRaises(InvalidEntity):
-            validate(raw(entity_type="theme"), valid_paragraph_ids=VALID)
+    def setUp(self):
+        self.s = wire_schema()
+        self.item = self.s["properties"]["entities"]["items"]
 
-    def test_refuses_a_citation_we_never_supplied(self):
-        # the whole point: a fabricated citation looks exactly like a real one
-        with self.assertRaises(InvalidEntity):
-            validate(raw(paragraph_id="99_9"), valid_paragraph_ids=VALID)
+    def test_is_self_contained(self):
+        # refs would leave how much of JSON Schema the endpoint resolves an
+        # open question; the schema is small enough that inlining costs nothing
+        blob = json.dumps(self.s)
+        self.assertNotIn("$ref", blob)
+        self.assertNotIn("$defs", blob)
 
-    def test_refuses_confidence_outside_zero_to_one(self):
-        for bad in (1.5, -0.2, "high", None):
-            with self.assertRaises(InvalidEntity):
-                validate(raw(confidence=bad), valid_paragraph_ids=VALID)
+    def test_forbids_fields_we_did_not_ask_for(self):
+        self.assertIs(self.item["additionalProperties"], False)
 
-    def test_refuses_an_entity_with_no_name_or_no_quote(self):
-        with self.assertRaises(InvalidEntity):
-            validate(raw(name="  "), valid_paragraph_ids=VALID)
-        with self.assertRaises(InvalidEntity):
-            validate(raw(quote=""), valid_paragraph_ids=VALID)
+    def test_enums_and_bounds_come_from_the_canonical_tuples(self):
+        self.assertEqual(self.item["properties"]["entity_type"]["enum"],
+                         list(TYPE_NAMES))
+        self.assertEqual(
+            self.s["properties"]["relationships"]["items"]["properties"]
+            ["relationship_type"]["enum"], list(RELATIONSHIP_NAMES))
+        conf = self.item["properties"]["confidence"]
+        self.assertEqual((conf["minimum"], conf["maximum"]), (0.0, 1.0))
+
+    def test_optional_fields_are_plain_types_not_nullable_unions(self):
+        self.assertEqual(self.item["properties"]["description"]["type"], "string")
+        self.assertNotIn("description", self.item["required"])
+
+    def test_prompt_and_schema_describe_the_same_vocabulary(self):
+        for name in list(TYPE_NAMES) + list(RELATIONSHIP_NAMES):
+            self.assertIn(name, EXTRACT_ENTITIES.system)
+
+
+class PydanticGate(unittest.TestCase):
+    """Nothing becomes an object except through EntityExtractionResponse."""
+
+    def ok(self, payload):
+        return EntityExtractionResponse.model_validate_json(json.dumps(payload))
+
+    def test_accepts_a_well_formed_response(self):
+        r = self.ok({"entities": [ent()], "relationships": [rel()]})
+        self.assertEqual(r.entities[0].name, "Blackwell")
+        self.assertEqual(r.relationships[0].relationship_type, "drives_investment")
+
+    def test_missing_lists_default_to_empty_rather_than_failing(self):
+        r = self.ok({})
+        self.assertEqual((r.entities, r.relationships), ([], []))
+
+    def test_rejects_a_type_outside_the_canonical_set(self):
+        with self.assertRaises(ValidationError):
+            self.ok({"entities": [ent(entity_type="theme")]})
+
+    def test_rejects_a_relationship_type_outside_the_canonical_set(self):
+        with self.assertRaises(ValidationError):
+            self.ok({"entities": [ent()], "relationships": [rel(relationship_type="rivals")]})
+
+    def test_rejects_confidence_outside_zero_to_one(self):
+        for bad in (1.5, -0.2):
+            with self.assertRaises(ValidationError):
+                self.ok({"entities": [ent(confidence=bad)]})
+
+    def test_rejects_empty_name_or_quote(self):
+        with self.assertRaises(ValidationError):
+            self.ok({"entities": [ent(name="")]})
+        with self.assertRaises(ValidationError):
+            self.ok({"entities": [ent(quote="")]})
+
+    def test_rejects_a_field_we_never_asked_for(self):
+        # extra="forbid": a field we do not model is a response we do not
+        # understand, not one to silently discard part of
+        with self.assertRaises(ValidationError):
+            self.ok({"entities": [ent(sentiment="bullish")]})
+
+    def test_rejects_malformed_json_outright(self):
+        with self.assertRaises(ValidationError):
+            EntityExtractionResponse.model_validate_json('{"entities": [')
 
     def test_metric_carries_its_reading_when_the_text_states_one(self):
-        e = validate(raw(name="Revenue", entity_type="metric", period="FY2025",
-                         value=130497, unit="USD millions"),
-                     valid_paragraph_ids=VALID)
+        r = self.ok({"entities": [ent(name="Revenue", entity_type="metric",
+                                      period="FY2025", value=130497,
+                                      unit="USD millions")]})
+        e = r.entities[0]
         self.assertEqual((e.period, e.value, e.unit),
                          ("FY2025", 130497.0, "USD millions"))
 
-    def test_metric_without_a_figure_is_still_a_valid_entity(self):
-        e = validate(raw(name="Gross Margin", entity_type="metric"),
-                     valid_paragraph_ids=VALID)
-        self.assertIsNone(e.value)
 
+class PostValidation(unittest.TestCase):
+    """The two rules a schema cannot express, because they depend on our input."""
 
-class Guardrail(unittest.TestCase):
-    def test_survivors_are_kept_and_every_refusal_is_counted_with_a_reason(self):
+    def test_an_entity_citing_a_paragraph_we_never_sent_is_dropped(self):
         report = DropReport()
-        kept = validate_all(
-            [raw(),
-             raw(name="Theme", entity_type="theme"),
-             raw(name="Ghost", paragraph_id="99_9")],
+        kept = validate_entities(
+            [ExtractedEntity(**ent()), ExtractedEntity(**ent(name="Ghost",
+                                                             paragraph_id="99_9"))],
             VALID, report)
         self.assertEqual([e.name for e in kept], ["Blackwell"])
-        self.assertEqual((report.kept, report.dropped), (1, 2))
+        self.assertEqual((report.kept, report.dropped), (1, 1))
         self.assertIn("99_9", " ".join(report.bad_ids))
-        self.assertEqual(len(report.reasons), 2)
+        self.assertIn("not supplied", " ".join(report.reasons))
 
-    def test_drop_rate_is_reported_for_monitoring(self):
-        report = DropReport(kept=3, dropped=1)
-        self.assertAlmostEqual(report.drop_rate, 0.25)
-        self.assertEqual(DropReport().drop_rate, 0.0)
+    def test_an_edge_to_something_that_is_not_an_entity_is_dropped(self):
+        from evident_ai.schema import ExtractedRelationship
+        entities = [ExtractedEntity(**ent())]           # only Blackwell
+        report = DropReport()
+        kept = validate_relationships(
+            [ExtractedRelationship(**rel())],            # cites AI Infrastructure
+            entities, VALID, report)
+        self.assertEqual(kept, [])
+        self.assertIn("are not entities", " ".join(report.reasons))
+
+    def test_an_edge_whose_endpoints_both_exist_survives(self):
+        from evident_ai.schema import ExtractedRelationship
+        entities = [ExtractedEntity(**ent()),
+                    ExtractedEntity(**ent(name="AI Infrastructure",
+                                          entity_type="strategy"))]
+        report = DropReport()
+        kept = validate_relationships([ExtractedRelationship(**rel())],
+                                      entities, VALID, report)
+        self.assertEqual(len(kept), 1)
+
+    def test_endpoints_are_matched_on_slug_not_exact_string(self):
+        # the model may say "Blackwell" in entities and "the Blackwell
+        # platform" in an edge; both fold to the same node
+        from evident_ai.schema import ExtractedRelationship
+        entities = [ExtractedEntity(**ent()),
+                    ExtractedEntity(**ent(name="Accelerated Computing",
+                                          entity_type="strategy"))]
+        report = DropReport()
+        kept = validate_relationships(
+            [ExtractedRelationship(**rel(source_name="AI Infrastructure"))],
+            entities, VALID, report)
+        self.assertEqual(len(kept), 1, "Accelerated Computing folds to "
+                                       "ai_infrastructure and should match")
+
+    def test_a_self_edge_is_dropped(self):
+        from evident_ai.schema import ExtractedRelationship
+        entities = [ExtractedEntity(**ent())]
+        report = DropReport()
+        kept = validate_relationships(
+            [ExtractedRelationship(**rel(source_name="Blackwell",
+                                         target_name="Blackwell"))],
+            entities, VALID, report)
+        self.assertEqual(kept, [])
+        self.assertIn("self-edge", " ".join(report.reasons))
 
 
 # --------------------------------------------------------------- fake client
-class _Block:
+class _Text:
+    type = "text"
+
     def __init__(self, text):
-        self.type, self.text = "text", text
+        self.text = text
 
 
 class _Response:
-    stop_reason = "end_turn"
-
-    def __init__(self, payload, thinking=True):
-        content = [_Block(json.dumps(payload))]
-        if thinking:
-            # responses lead with thinking blocks; the parser must not assume
-            # the JSON is at index 0
-            content.insert(0, type("T", (), {"type": "thinking"})())
-        self.content = content
+    def __init__(self, payload, *, stop_reason="end_turn", thinking=True,
+                 raw=None, stop_details=None):
+        text = raw if raw is not None else json.dumps(payload)
+        self.content = [_Text(text)]
+        if thinking:   # responses lead with thinking; JSON is not at index 0
+            self.content.insert(0, type("T", (), {"type": "thinking"})())
+        self.stop_reason = stop_reason
+        self.stop_details = stop_details
 
 
 class _Client:
-    def __init__(self, payload):
-        self.payload, self.calls = payload, []
+    def __init__(self, *responses):
+        self.responses, self.calls = list(responses), []
 
     class _Messages:
         def __init__(self, outer):
@@ -152,11 +250,49 @@ class _Client:
 
         def create(self, **kw):
             self.outer.calls.append(kw)
-            return _Response(self.outer.payload)
+            r = self.outer.responses
+            return r.pop(0) if len(r) > 1 else r[0]
 
     @property
     def messages(self):
         return self._Messages(self)
+
+
+class Rejection(unittest.TestCase):
+    """A response that cannot be trusted whole produces nothing at all."""
+
+    def test_truncated_response_is_rejected_not_salvaged(self):
+        r = _Response(None, stop_reason="max_tokens",
+                      raw='{"entities": [{"name": "Blac')
+        with self.assertRaises(ExtractionRejected) as cm:
+            parse_response(r)
+        self.assertIn("truncated", cm.exception.reason)
+
+    def test_refusal_is_rejected_and_records_the_category(self):
+        r = _Response(None, stop_reason="refusal", raw="",
+                      stop_details=type("D", (), {"category": "cyber"})())
+        with self.assertRaises(ExtractionRejected) as cm:
+            parse_response(r)
+        self.assertIn("cyber", cm.exception.reason)
+
+    def test_malformed_json_is_rejected_and_the_raw_text_is_kept(self):
+        r = _Response(None, raw='{"entities": [oops]}')
+        with self.assertRaises(ExtractionRejected) as cm:
+            parse_response(r)
+        self.assertEqual(cm.exception.raw, '{"entities": [oops]}')
+
+    def test_a_single_bad_entity_rejects_the_whole_response(self):
+        # the API is told the enum, so an unknown type means the response is
+        # not what we asked for -- not that one row should be skipped
+        r = _Response({"entities": [ent(), ent(entity_type="theme")]})
+        with self.assertRaises(ExtractionRejected):
+            parse_response(r)
+
+    def test_no_text_block_is_rejected(self):
+        r = _Response({"entities": []})
+        r.content = [type("T", (), {"type": "thinking"})()]
+        with self.assertRaises(ExtractionRejected):
+            parse_response(r)
 
 
 class EndToEnd(unittest.TestCase):
@@ -167,49 +303,41 @@ class EndToEnd(unittest.TestCase):
                                   "export restrictions into China.")]
 
     def test_the_worked_example_from_the_spec(self):
-        client = _Client({"entities": [
-            {"name": "Blackwell", "entity_type": "product", "confidence": 0.99,
-             "paragraph_id": "7_1", "quote": "accelerate Blackwell deployment"},
-            {"name": "AI Infrastructure", "entity_type": "strategy",
-             "confidence": 0.97, "paragraph_id": "7_1",
-             "quote": "investing in AI infrastructure"},
-            {"name": "China", "entity_type": "geography", "confidence": 0.98,
-             "paragraph_id": "7_1", "quote": "into China"},
-            {"name": "Export Restrictions", "entity_type": "risk",
-             "confidence": 0.95, "paragraph_id": "7_1",
-             "quote": "despite export restrictions"},
-        ]})
-        got, report = extract_from_blocks(self.blocks, client=client)
-        self.assertEqual(report.dropped, 0)
+        client = _Client(_Response({"entities": [
+            ent(),
+            ent(name="AI Infrastructure", entity_type="strategy", confidence=0.97),
+            ent(name="China", entity_type="geography", confidence=0.98),
+            ent(name="Export Restrictions", entity_type="risk", confidence=0.95),
+        ], "relationships": [rel()]}))
+        out = extract_from_blocks(self.blocks, client=client)
         self.assertEqual(
-            {(e.name, e.entity_type) for e in got},
+            {(e.name, e.entity_type) for e in out.entities},
             {("Blackwell", "product"), ("AI Infrastructure", "strategy"),
              ("China", "geography"), ("Export Restrictions", "risk")})
+        self.assertEqual(len(out.relationships), 1)
+        self.assertEqual(out.report.dropped, 0)
 
     def test_a_hallucinated_citation_never_reaches_the_caller(self):
-        client = _Client({"entities": [
-            raw(),
-            {"name": "Invented", "entity_type": "product", "confidence": 1.0,
-             "paragraph_id": "412_9", "quote": "nothing said this"},
-        ]})
-        got, report = extract_from_blocks(self.blocks, client=client)
-        self.assertEqual([e.name for e in got], ["Blackwell"])
-        self.assertEqual(report.dropped, 1)
+        client = _Client(_Response({"entities": [
+            ent(), ent(name="Invented", paragraph_id="412_9")]}))
+        out = extract_from_blocks(self.blocks, client=client)
+        self.assertEqual([e.name for e in out.entities], ["Blackwell"])
+        self.assertEqual(out.report.dropped, 1)
 
     def test_no_blocks_makes_no_request(self):
-        client = _Client({"entities": []})
-        got, report = extract_from_blocks([], client=client)
-        self.assertEqual((got, report.kept, client.calls), ([], 0, []))
+        client = _Client(_Response({"entities": []}))
+        out = extract_from_blocks([], client=client)
+        self.assertEqual((out.entities, client.calls), ([], []))
 
-    def test_the_system_prompt_is_sent_as_a_cacheable_block(self):
-        client = _Client({"entities": []})
+    def test_the_request_carries_the_generated_schema_and_a_cacheable_prompt(self):
+        client = _Client(_Response({"entities": []}))
         extract_from_blocks(self.blocks, client=client)
-        system = client.calls[0]["system"]
-        self.assertEqual(system[0]["cache_control"], {"type": "ephemeral"})
+        call = client.calls[0]
+        self.assertEqual(call["system"][0]["cache_control"], {"type": "ephemeral"})
+        self.assertEqual(call["output_config"]["format"]["schema"], wire_schema())
 
     def test_the_cached_prefix_is_identical_across_calls(self):
-        # a per-request byte change would silently cost the cache on every chunk
-        client = _Client({"entities": []})
+        client = _Client(_Response({"entities": []}))
         other = [Block(paragraph_id="7_2", ordinal=1, page_number=7, text="Other.")]
         extract_from_blocks(self.blocks, client=client)
         extract_from_blocks(other, client=client)
@@ -219,14 +347,23 @@ class EndToEnd(unittest.TestCase):
     def test_rendered_input_carries_the_paragraph_ids_the_model_must_cite(self):
         self.assertTrue(render(self.blocks).startswith("[7_1] "))
 
+    def test_a_rejected_chunk_does_not_stop_the_document(self):
+        groups = {"a": self.blocks, "b": self.blocks}
+        client = _Client(_Response(None, stop_reason="max_tokens", raw="{"),
+                         _Response({"entities": [ent()]}))
+        out, report = extract_document(groups, client=client)
+        self.assertEqual(list(out), ["b"])
+        self.assertEqual(report.rejected, 1)
+        self.assertIn("a:", " ".join(report.reasons))
+
 
 class Batch(unittest.TestCase):
     class _Result:
-        def __init__(self, custom_id, payload, status="succeeded"):
+        def __init__(self, custom_id, payload, status="succeeded", **kw):
             self.custom_id = custom_id
             self.result = type("R", (), {
                 "type": status,
-                "message": _Response(payload) if payload is not None else None})()
+                "message": _Response(payload, **kw) if payload is not None else None})()
 
     def setUp(self):
         self.groups = {
@@ -235,35 +372,37 @@ class Batch(unittest.TestCase):
         }
 
     def test_results_are_matched_by_custom_id_not_by_position(self):
-        # the API returns them in arbitrary order; reading positionally would
-        # attach one chunk's entities to another chunk's paragraph ids
         results = [
-            self._Result("b", {"entities": [
-                {"name": "Gaming", "entity_type": "segment", "confidence": 0.9,
-                 "paragraph_id": "2_1", "quote": "B."}]}),
-            self._Result("a", {"entities": [
-                {"name": "CUDA", "entity_type": "product", "confidence": 0.9,
-                 "paragraph_id": "1_1", "quote": "A."}]}),
+            self._Result("b", {"entities": [ent(name="Gaming",
+                                                entity_type="segment",
+                                                paragraph_id="2_1", quote="B.")]}),
+            self._Result("a", {"entities": [ent(name="CUDA", paragraph_id="1_1",
+                                                quote="A.")]}),
         ]
         out, report = collect_batch(results, self.groups)
-        self.assertEqual([e.name for e in out["a"]], ["CUDA"])
-        self.assertEqual([e.name for e in out["b"]], ["Gaming"])
+        self.assertEqual([e.name for e in out["a"].entities], ["CUDA"])
+        self.assertEqual([e.name for e in out["b"].entities], ["Gaming"])
         self.assertEqual(report.dropped, 0)
 
     def test_a_failed_request_is_recorded_rather_than_silently_missing(self):
         out, report = collect_batch(
             [self._Result("a", None, status="errored")], self.groups)
         self.assertNotIn("a", out)
-        self.assertIn("errored", " ".join(report.reasons))
+        self.assertEqual(report.rejected, 1)
+
+    def test_a_truncated_batch_result_is_rejected_too(self):
+        out, report = collect_batch(
+            [self._Result("a", {}, stop_reason="max_tokens", raw="{")],
+            self.groups)
+        self.assertNotIn("a", out)
+        self.assertEqual(report.rejected, 1)
 
 
 class CacheReporting(unittest.TestCase):
     def test_hit_rate_distinguishes_a_hit_from_a_prompt_too_short_to_cache(self):
-        hit = type("U", (), {"cache_read_input_tokens": 900,
-                             "input_tokens": 100,
+        hit = type("U", (), {"cache_read_input_tokens": 900, "input_tokens": 100,
                              "cache_creation_input_tokens": 0})()
-        miss = type("U", (), {"cache_read_input_tokens": 0,
-                              "input_tokens": 1000,
+        miss = type("U", (), {"cache_read_input_tokens": 0, "input_tokens": 1000,
                               "cache_creation_input_tokens": 0})()
         self.assertAlmostEqual(cache_hit_rate(hit), 0.9)
         self.assertEqual(cache_hit_rate(miss), 0.0)

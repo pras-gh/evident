@@ -12,3 +12,8 @@ ROOT = Path(__file__).resolve().parent
 for path in [ROOT, ROOT / "apps", *(ROOT / "packages").glob("*/")]:
     if str(path) not in sys.path:
         sys.path.insert(0, str(path))
+
+# Note: the extraction modules import pydantic at module load, because the
+# response models are the only route from a Claude response to a row. That
+# makes `pydantic` a hard requirement of the test suite -- it used to run on a
+# bare interpreter, and no longer does. Install requirements first.
