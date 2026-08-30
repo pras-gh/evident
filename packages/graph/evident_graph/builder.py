@@ -22,13 +22,13 @@ from .relationships import CO_OCCURS, Edge, TypedEdge, co_occurrence, degrees, s
 
 @dataclass(slots=True)
 class EntityInput:
-    key: str
-    label: str
-    kind: str
+    slug: str
+    name: str
+    entity_type: str
     documents: set[str] = field(default_factory=set)
     mentions: int = 0
-    first_seen_at: date | None = None
-    last_seen_at: date | None = None
+    first_seen: date | None = None
+    latest_seen: date | None = None
 
 
 @dataclass(slots=True)
@@ -52,9 +52,9 @@ def build_graph(
     min_importance: int = 0,
     limit: int | None = None,
 ) -> Graph:
-    known = {e.key for e in entities}
-    mention_docs = {e.key: e.documents for e in entities}
-    dates = {e.key: (e.first_seen_at, e.last_seen_at) for e in entities}
+    known = {e.slug for e in entities}
+    mention_docs = {e.slug: e.documents for e in entities}
+    dates = {e.slug: (e.first_seen, e.latest_seen) for e in entities}
 
     edges = [e.normalised() for e in
              co_occurrence(mention_docs, min_shared=min_shared, dates=dates)]
@@ -64,21 +64,21 @@ def build_graph(
     total_documents = total_documents or len(
         {d for e in entities for d in e.documents}) or 1
     newest_filing = newest_filing or max(
-        (e.last_seen_at for e in entities if e.last_seen_at), default=None)
+        (e.latest_seen for e in entities if e.latest_seen), default=None)
 
     scores = score_all(
-        {e.key: Signals(mentions=e.mentions, documents=len(e.documents),
-                        last_seen_at=e.last_seen_at, degree=degree.get(e.key, 0))
+        {e.slug: Signals(mentions=e.mentions, documents=len(e.documents),
+                        last_seen_at=e.latest_seen, degree=degree.get(e.slug, 0))
          for e in entities},
         total_documents=total_documents, newest_filing=newest_filing)
 
     nodes = [{
-        "id": e.key,
-        "label": e.label,
-        "type": e.kind,
-        "importance": scores[e.key].importance,
+        "id": e.slug,
+        "label": e.name,
+        "type": e.entity_type,
+        "importance": scores[e.slug].importance,
         "mentions": e.mentions,
-    } for e in entities if scores[e.key].importance >= min_importance]
+    } for e in entities if scores[e.slug].importance >= min_importance]
 
     nodes.sort(key=lambda n: (-n["importance"], n["id"]))
     if limit:
@@ -111,34 +111,34 @@ def explain(entities: Sequence[EntityInput], key: str, *,
     node = next((n for n in graph.nodes if n["id"] == key), None)
     if node is None:
         return {}
-    mention_docs = {e.key: e.documents for e in entities}
-    dates = {e.key: (e.first_seen_at, e.last_seen_at) for e in entities}
+    mention_docs = {e.slug: e.documents for e in entities}
+    dates = {e.slug: (e.first_seen, e.latest_seen) for e in entities}
     edges = [e.normalised() for e in co_occurrence(mention_docs, dates=dates)]
-    edges += typed(list(typed_edges), known={e.key for e in entities})
+    edges += typed(list(typed_edges), known={e.slug for e in entities})
     degree = degrees(edges)
     total_documents = total_documents or len(
         {d for e in entities for d in e.documents}) or 1
     newest = newest_filing or max(
-        (e.last_seen_at for e in entities if e.last_seen_at), default=None)
-    entity = next(e for e in entities if e.key == key)
+        (e.latest_seen for e in entities if e.latest_seen), default=None)
+    entity = next(e for e in entities if e.slug == key)
     scores = score_all(
-        {e.key: Signals(e.mentions, len(e.documents), e.last_seen_at,
-                        degree.get(e.key, 0)) for e in entities},
+        {e.slug: Signals(e.mentions, len(e.documents), e.latest_seen,
+                        degree.get(e.slug, 0)) for e in entities},
         total_documents=total_documents, newest_filing=newest)
     return {"id": key, "importance": node["importance"],
             "components": scores[key].components,
             "signals": {"mentions": entity.mentions,
                         "documents": len(entity.documents),
-                        "last_seen_at": entity.last_seen_at.isoformat()
-                                        if entity.last_seen_at else None,
+                        "last_seen_at": entity.latest_seen.isoformat()
+                                        if entity.latest_seen else None,
                         "degree": degree.get(key, 0)}}
 
 
 def slice_by_period(graph: Graph, *, until: date,
                     entities: Sequence[EntityInput]) -> Graph:
     """The graph as it stood on a date — what a replay animation scrubs."""
-    keep = {e.key for e in entities
-            if e.first_seen_at is None or e.first_seen_at <= until}
+    keep = {e.slug for e in entities
+            if e.first_seen is None or e.first_seen <= until}
     nodes = [n for n in graph.nodes if n["id"] in keep]
     ids = {n["id"] for n in nodes}
     return Graph(company=graph.company, nodes=nodes,

@@ -26,6 +26,8 @@ from sqlalchemy import (BigInteger, Boolean, CheckConstraint, Date, DateTime,
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from evident_graph.taxonomy import check_constraint
+
 from .base import Base, created_at, str16, str64, str255, updated_at
 
 EMBEDDING_DIM = 1536
@@ -209,10 +211,15 @@ class MetricObservation(Base):
 class Entity(Base):
     """Canonical topics, people, products, metrics and risks in one table.
 
-    Identity is `(company_id, kind, key)` where `key` is the normalised form —
-    a slug for a topic, a folded name for a person. The unique constraint is
-    what makes the builder update rather than duplicate, and it now covers
-    every kind instead of being re-stated per table.
+    Identity is `(company_id, slug)` where `slug` is the normalised form of the
+    name. The unique constraint is what makes the builder update rather than
+    duplicate, and it covers every type instead of being re-stated per table.
+
+    The scope is per company on purpose. A globally unique slug would work for
+    exactly one filer: every company on earth reports `revenue`, and the second
+    one ingested would collide on the first slug it shares. Scoping to the
+    company also means a name resolves to one type per company — `Data Center`
+    cannot be a segment in one filing and a product in the next.
 
     Type-specific data lives in `attributes`: a person's dated roles, a risk's
     category, a metric's unit. `status` is deliberately a real column rather
@@ -221,31 +228,37 @@ class Entity(Base):
     """
     __tablename__ = "entities"
     __table_args__ = (
-        UniqueConstraint("company_id", "kind", "key",
-                         name="uq_entities_company_id_kind_key"),
-        CheckConstraint(
-            "kind in ('topic','strategy','person','product','metric','risk',"
-            "'event','segment')",
-            name="kind"),
+        UniqueConstraint("company_id", "slug",
+                         name="uq_entities_company_id_slug"),
+        # generated from the same tuple that builds the prompt and the schema
+        # enum, so a type cannot be extractable but unstorable
+        CheckConstraint(check_constraint("entity_type"), name="entity_type"),
         CheckConstraint("status in ('active','dropped','superseded')",
                         name="status"),
-        Index("ix_entities_company_id_kind", "company_id", "kind"),
+        CheckConstraint("importance_score between 0 and 100",
+                        name="importance_score"),
+        Index("ix_entities_company_id_entity_type", "company_id", "entity_type"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     company_id: Mapped[int] = mapped_column(
         ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    kind: Mapped[str16] = mapped_column(index=True)
-    key: Mapped[str255]
-    label: Mapped[str255]
+    entity_type: Mapped[str16] = mapped_column(index=True)
+    slug: Mapped[str255]
+    name: Mapped[str255]
+    description: Mapped[Optional[str]] = mapped_column(Text)
     attributes: Mapped[dict] = mapped_column(JSONB, default=dict,
                                              server_default="{}")
     status: Mapped[str16] = mapped_column(default="active",
                                           server_default="active")
-    first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
+    first_seen: Mapped[Optional[date]] = mapped_column(Date)
+    latest_seen: Mapped[Optional[date]] = mapped_column(Date)
     mention_count: Mapped[int] = mapped_column(Integer, default=0,
                                                server_default="0")
+    # computed corpus-relative by the graph engine and persisted here, so a
+    # client can rank without recomputing the whole graph
+    importance_score: Mapped[float] = mapped_column(Float, default=0.0,
+                                                    server_default="0")
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 
@@ -279,7 +292,7 @@ class EntityMention(Base):
         ForeignKey("chunks.id", ondelete="CASCADE"), index=True)
     observed_at: Mapped[date] = mapped_column(Date)
     quote: Mapped[str] = mapped_column(Text)
-    page_number: Mapped[Optional[int]]
+    page: Mapped[Optional[int]]
     paragraph_id: Mapped[Optional[str64]]
     chunk_hash: Mapped[Optional[str]] = mapped_column(String(64))
     # the extractor's own reported score — a self-report, not a calibrated
@@ -299,10 +312,12 @@ class Relationship(Base):
     """
     __tablename__ = "relationships"
     __table_args__ = (
-        UniqueConstraint("source_entity_id", "target_entity_id", "kind",
-                         name="uq_relationships_source_entity_id_target_entity_id_kind"),
+        UniqueConstraint("source_entity_id", "target_entity_id", "relationship_type",
+                         name="uq_relationships_source_target_type"),
         CheckConstraint("source_entity_id <> target_entity_id", name="no_self_edge"),
-        Index("ix_relationships_company_id_kind", "company_id", "kind"),
+        CheckConstraint("strength between 0 and 1", name="strength"),
+        Index("ix_relationships_company_id_relationship_type",
+              "company_id", "relationship_type"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -312,15 +327,20 @@ class Relationship(Base):
         ForeignKey("entities.id", ondelete="CASCADE"), index=True)
     target_entity_id: Mapped[int] = mapped_column(
         ForeignKey("entities.id", ondelete="CASCADE"), index=True)
-    kind: Mapped[str64]
-    weight: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    relationship_type: Mapped[str64]
+    # normalised 0-1, matching what the frozen graph contract emits
+    strength: Mapped[float] = mapped_column(Float, default=0.0, server_default="0")
+    # the single chunk a reader should be shown to justify this edge; the
+    # array keeps the full set, because one edge is usually built from many
+    evidence_chunk_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("chunks.id", ondelete="SET NULL"), index=True)
     document_ids: Mapped[list[int]] = mapped_column(ARRAY(BigInteger),
                                                     default=list,
                                                     server_default="{}")
     attributes: Mapped[dict] = mapped_column(JSONB, default=dict,
                                              server_default="{}")
-    first_seen_at: Mapped[Optional[date]] = mapped_column(Date)
-    last_seen_at: Mapped[Optional[date]] = mapped_column(Date)
+    first_seen: Mapped[Optional[date]] = mapped_column(Date)
+    latest_seen: Mapped[Optional[date]] = mapped_column(Date)
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
 

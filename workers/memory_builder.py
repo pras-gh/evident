@@ -22,9 +22,8 @@ from evident_ai.extract import extract_from_blocks
 from evident_db import Chunk, Document, Entity, session_scope
 from evident_db.repositories import (add_entity_mention, add_metric_observation,
                                      add_timeline_event, mark_dropped_entities,
-                                     upsert_entity, upsert_relationship)
-from evident_graph.normalize import display_label, entity_key
-from evident_memory.entities import normalise_metric, normalise_person
+                                     upsert_entity)
+from evident_graph.normalize import display_label
 from evident_parser.models import Block
 
 log = logging.getLogger("evident.memory_builder")
@@ -33,19 +32,21 @@ log = logging.getLogger("evident.memory_builder")
 @dataclass(slots=True)
 class BuildStats:
     documents: int = 0
-    topics: int = 0
+    entities: int = 0
     mentions_new: int = 0
     mentions_seen: int = 0
-    people: int = 0
-    risks: int = 0
     metrics: int = 0
-    products: int = 0
     events: int = 0
     relationships: int = 0
     dropped_uncited: int = 0
     risks_marked_dropped: int = 0
+    #: A name already stored under a different type. First write wins, so this
+    #: counts the extractions that were overruled — a high number means the
+    #: taxonomy is ambiguous for this corpus, not that the run failed.
+    type_conflicts: int = 0
+    by_type: dict[str, int] = field(default_factory=dict)
 
-    def as_dict(self) -> dict[str, int]:
+    def as_dict(self) -> dict[str, Any]:
         return {f.name: getattr(self, f.name) for f in self.__dataclass_fields__.values()}
 
 
@@ -68,9 +69,7 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
         block.chunk_hash = c.chunk_hash            # type: ignore[attr-defined]
         blocks.append(block)
 
-    entities, report = extract_from_blocks(
-        blocks, document_id=str(document.id),
-        observed_at=document.filed_at, client=client)
+    extracted, report = extract_from_blocks(blocks, client=client)
     stats.documents += 1
     stats.dropped_uncited += report.dropped
     if report.dropped:
@@ -78,63 +77,56 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
         log.warning("dropped %d uncited entities from %s (ids: %s)",
                     report.dropped, document.accession, report.bad_ids[:5])
 
-    def record(kind: str, key: str, label: str, evidence, *,
-               attributes: dict | None = None) -> int | None:
-        """One path for every kind — the point of the unified model."""
-        row = upsert_entity(db, company_id=company_id, kind=kind, key=key,
-                            label=display_label(key, label),
-                            observed_at=document.filed_at,
-                            attributes=attributes or {})
+    pages = {(c.paragraph_ids or [c.chunk_hash])[0]: c.page_number for c in chunks}
+
+    # One upsert per distinct entity, one mention per citation. Grouping first
+    # means an entity named in six paragraphs is written once and cited six
+    # times, rather than fighting the unique constraint six times.
+    by_slug: dict[str, list] = {}
+    for item in extracted:
+        by_slug.setdefault(item.slug, []).append(item)
+
+    for slug, items in by_slug.items():
+        head = items[0]
+        row = upsert_entity(
+            db, company_id=company_id, entity_type=head.entity_type, slug=slug,
+            name=display_label(slug, head.name),
+            description=next((i.description for i in items if i.description), None),
+            observed_at=document.filed_at)
         db.flush()
-        first = None
-        for ev in evidence or []:
-            chunk = by_paragraph.get(ev.paragraph_id or "")
+        stats.entities += 1
+        stats.by_type[row.entity_type] = stats.by_type.get(row.entity_type, 0) + 1
+
+        if row.entity_type != head.entity_type:
+            # Identity is (company_id, slug), so the stored type wins and the
+            # extraction is overruled. Loud because it means one name is being
+            # read two ways, which is a taxonomy problem, not a data problem.
+            stats.type_conflicts += 1
+            log.warning("%s: extracted as %s but stored as %s — keeping stored",
+                        slug, head.entity_type, row.entity_type)
+
+        for item in items:
+            chunk = by_paragraph.get(item.paragraph_id)
             is_new = add_entity_mention(
                 db, entity_id=row.id, document_id=document.id,
                 chunk_id=chunk.id if chunk else None,
-                observed_at=document.filed_at, quote=ev.quote,
-                page_number=ev.page_number, paragraph_id=ev.paragraph_id,
+                observed_at=document.filed_at, quote=item.quote,
+                page=pages.get(item.paragraph_id), paragraph_id=item.paragraph_id,
                 chunk_hash=chunk.chunk_hash if chunk else None,
-                confidence=ev.confidence)
+                confidence=item.confidence)
             stats.mentions_new += is_new
             stats.mentions_seen += not is_new
-            first = first or ev
-        return row.id
 
-    for topic in entities.get("topics", []):
-        record("topic", entity_key(topic.label), topic.label, topic.evidence)
-        stats.topics += 1
-
-    for person in entities.get("people", []):
-        record("person", normalise_person(person.full_name), person.full_name,
-               person.evidence)
-        stats.people += 1
-
-    for product in entities.get("products", []):
-        record("product", entity_key(product.name), product.name,
-               product.evidence, attributes={"status": product.status})
-        stats.products += 1
-
-    for risk in entities.get("risks", []):
-        record("risk", entity_key(risk.label), risk.label, risk.evidence,
-               attributes={"category": risk.category} if risk.category else {})
-        stats.risks += 1
-
-    pages = {(c.paragraph_ids or [c.chunk_hash])[0]: c.page_number for c in chunks}
-    for m in entities.get("metrics_raw", []):
-        entity_id = upsert_entity(db, company_id=company_id, kind="metric",
-                                  key=normalise_metric(m.name), label=m.name,
-                                  observed_at=document.filed_at,
-                                  attributes={"unit": m.unit} if m.unit else {}).id
-        db.flush()
-        chunk = by_paragraph.get(m.paragraph_id)
-        add_metric_observation(db, entity_id=entity_id, document_id=document.id,
-                               chunk_id=chunk.id if chunk else None,
-                               period=m.period or "unknown", value=m.value,
-                               unit=m.unit, page_number=pages.get(m.paragraph_id),
-                               paragraph_id=m.paragraph_id,
-                               confidence=getattr(m, "confidence", None))
-        stats.metrics += 1
+            # A metric that names a figure is also an observation: a period and
+            # a number, which belong in a time series rather than in a quote.
+            if item.entity_type == "metric" and item.value is not None:
+                add_metric_observation(
+                    db, entity_id=row.id, document_id=document.id,
+                    chunk_id=chunk.id if chunk else None,
+                    period=item.period or "unknown", value=item.value,
+                    unit=item.unit, page_number=pages.get(item.paragraph_id),
+                    paragraph_id=item.paragraph_id, confidence=item.confidence)
+                stats.metrics += 1
 
     add_timeline_event(db, company_id=company_id, kind="filing",
                        headline=f"{document.form_type} filed",

@@ -47,20 +47,20 @@ async def memory_graph(
     )).all()
 
     entities = [
-        EntityInput(key=e.key, label=e.label, kind=e.kind,
+        EntityInput(slug=e.slug, name=e.name, entity_type=e.entity_type,
                     documents={str(d) for d in (docs or []) if d is not None},
                     mentions=int(mentions or 0),
-                    first_seen_at=e.first_seen_at, last_seen_at=e.last_seen_at)
+                    first_seen=e.first_seen, latest_seen=e.latest_seen)
         for e, mentions, docs in rows
-        if until is None or (e.first_seen_at is None or e.first_seen_at <= until)
+        if until is None or (e.first_seen is None or e.first_seen <= until)
     ]
 
-    by_id = {e.id: e.key for e, _, _ in rows}
+    by_id = {e.id: e.slug for e, _, _ in rows}
     typed_edges = [
         TypedEdge(source_key=by_id[r.source_entity_id],
                   target_key=by_id[r.target_entity_id],
-                  relationship=r.kind, document_id=str(d),
-                  observed_at=r.last_seen_at)
+                  relationship=r.relationship_type, document_id=str(d),
+                  observed_at=r.latest_seen)
         for r in (await db.execute(
             select(Relationship).where(Relationship.company_id == company.id)
         )).scalars()
@@ -94,12 +94,12 @@ async def explain_node(node_id: str, company: Company = Depends(get_company),
                func.array_agg(func.distinct(EntityMention.document_id)))
         .outerjoin(EntityMention, EntityMention.entity_id == Entity.id)
         .where(Entity.company_id == company.id).group_by(Entity.id))).all()
-    entities = [EntityInput(key=e.key, label=e.label, kind=e.kind,
+    entities = [EntityInput(slug=e.slug, name=e.name, entity_type=e.entity_type,
                             documents={str(d) for d in (docs or []) if d is not None},
-                            mentions=int(m or 0), first_seen_at=e.first_seen_at,
-                            last_seen_at=e.last_seen_at)
+                            mentions=int(m or 0), first_seen=e.first_seen,
+                            latest_seen=e.latest_seen)
                 for e, m, docs in rows]
-    if node_id not in {e.key for e in entities}:
+    if node_id not in {e.slug for e in entities}:
         raise HTTPException(404, f"No node '{node_id}' for {company.ticker}")
 
     totals = (await db.execute(

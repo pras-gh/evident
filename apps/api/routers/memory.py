@@ -25,10 +25,10 @@ async def company_memory(company: Company = Depends(get_company),
         select(func.count(), func.min(Document.filed_at), func.max(Document.filed_at))
         .where(Document.company_id == company.id))).one()
 
-    # one grouped read instead of a count per kind
+    # one grouped read instead of a count per type
     by_kind = dict((await db.execute(
-        select(Entity.kind, func.count())
-        .where(Entity.company_id == company.id).group_by(Entity.kind))).all())
+        select(Entity.entity_type, func.count())
+        .where(Entity.company_id == company.id).group_by(Entity.entity_type))).all())
 
     top = list((await db.execute(
         select(Entity).where(Entity.company_id == company.id)
@@ -47,14 +47,14 @@ async def company_memory(company: Company = Depends(get_company),
             summary="Entities")
 async def list_entities(company: Company = Depends(get_company),
                         db: AsyncSession = Depends(get_db),
-                        kind: str | None = Query(None),
+                        entity_type: str | None = Query(None),
                         status: str | None = Query(
                             None, description="active | dropped — 'dropped' means "
                                               "it stopped being disclosed"),
                         limit: int = Query(50, le=500)) -> list[EntityOut]:
     stmt = select(Entity).where(Entity.company_id == company.id)
-    if kind:
-        stmt = stmt.where(Entity.kind == kind)
+    if entity_type:
+        stmt = stmt.where(Entity.entity_type == entity_type)
     if status:
         stmt = stmt.where(Entity.status == status)
     rows = (await db.execute(
@@ -62,17 +62,18 @@ async def list_entities(company: Company = Depends(get_company),
     return [EntityOut.model_validate(e, from_attributes=True) for e in rows]
 
 
-@router.get("/{ticker}/entities/{key}", response_model=EntityDetailOut,
+@router.get("/{ticker}/entities/{slug}", response_model=EntityDetailOut,
             summary="One entity, with every mention")
-async def get_entity(key: str, company: Company = Depends(get_company),
+async def get_entity(slug: str, company: Company = Depends(get_company),
                      db: AsyncSession = Depends(get_db),
-                     kind: str | None = Query(None)) -> EntityDetailOut:
-    stmt = select(Entity).where(Entity.company_id == company.id, Entity.key == key)
-    if kind:
-        stmt = stmt.where(Entity.kind == kind)
+                     entity_type: str | None = Query(None)) -> EntityDetailOut:
+    stmt = select(Entity).where(Entity.company_id == company.id,
+                                Entity.slug == slug)
+    if entity_type:
+        stmt = stmt.where(Entity.entity_type == entity_type)
     entity = (await db.execute(stmt)).scalars().first()
     if entity is None:
-        raise HTTPException(404, f"No entity '{key}' for {company.ticker}")
+        raise HTTPException(404, f"No entity '{slug}' for {company.ticker}")
 
     rows = (await db.execute(
         select(EntityMention, Chunk, Document)
@@ -90,7 +91,7 @@ async def get_entity(key: str, company: Company = Depends(get_company),
             provenance=Provenance(
                 chunk_hash=m.chunk_hash or (c.chunk_hash if c else None),
                 document_id=d.id,
-                page=m.page_number or (c.page_number if c else None),
+                page=m.page or (c.page_number if c else None),
                 paragraph_id=m.paragraph_id,
                 confidence=m.confidence),
         ) for m, c, d in rows],

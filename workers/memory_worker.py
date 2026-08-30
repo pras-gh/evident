@@ -16,7 +16,8 @@ from datetime import date
 from typing import Any, Sequence
 
 from evident_ai.extract import extract_from_blocks
-from evident_memory.entities import CompanyMemory, DocumentRef
+from evident_memory.entities import (CompanyMemory, DocumentRef, Evidence,
+                                     Person, Product, Risk, Topic)
 from evident_memory.resolve import (build_timeline, merge_metrics, merge_people,
                                     merge_products, merge_risks, merge_topics,
                                     resolve_promises)
@@ -30,6 +31,44 @@ class BuildResult:
     memory: CompanyMemory
     documents_seen: int
     entities_dropped: int
+
+
+def _legacy(extracted: Sequence[Any], ref: Any,
+            pages: dict[str, int | None]) -> dict[str, list]:
+    """Project canonical entities onto the pre-Phase-1 memory types.
+
+    `CompanyMemory` and the `merge_*` resolvers still speak the older
+    vocabulary — Topic, Person, Product, Risk — and folding them onto the
+    canonical model is a larger change than Phase 1. This keeps the projection
+    honest in the meantime by mapping rather than reimplementing.
+
+    Two mappings are lossy on purpose. `strategy` becomes `Topic` because topic
+    was always the catch-all it replaced. And **promises are no longer
+    extracted at all**: there is no `promise` type in the canonical eight, so
+    `resolve_promises` now runs on an empty list and every promise settles to
+    `unclear`. The promise layer needs its own type before it works again.
+    """
+    out: dict[str, list] = {"topics": [], "people": [], "products": [],
+                            "risks": [], "metrics": []}
+    for item in extracted:
+        ev = Evidence(document_id=ref.document_id, paragraph_id=item.paragraph_id,
+                      page_number=pages.get(item.paragraph_id), quote=item.quote,
+                      observed_at=ref.filed_date, confidence=item.confidence)
+        if item.entity_type == "strategy":
+            out["topics"].append(Topic(item.slug, item.name, ref.filed_date,
+                                       ref.filed_date, [ev]))
+        elif item.entity_type == "executive":
+            out["people"].append(Person(item.name, item.slug, [],
+                                        ref.filed_date, ref.filed_date, [ev]))
+        elif item.entity_type == "product":
+            out["products"].append(Product(item.name, item.slug, "mentioned",
+                                           ref.filed_date, ref.filed_date, [ev]))
+        elif item.entity_type == "risk":
+            out["risks"].append(Risk(item.slug, item.name, None, "active",
+                                     ref.filed_date, ref.filed_date, [ev]))
+        elif item.entity_type == "metric" and item.value is not None:
+            out["metrics"].append((item, ev))
+    return out
 
 
 def build_memory(
@@ -48,22 +87,20 @@ def build_memory(
 
     for ref, blocks in sorted(documents, key=lambda d: d[0].filed_date):
         memory.documents.append(ref)
-        entities, report = extract_from_blocks(
-            blocks, document_id=ref.document_id,
-            observed_at=ref.filed_date, client=client,
-        )
+        extracted, report = extract_from_blocks(blocks, client=client)
         dropped += report.dropped
         if report.dropped:
             # A rising drop rate means extraction started inventing citations.
             # Loud, because it is the one failure that looks like success.
             log.warning("dropped %d uncited entities from %s (bad ids: %s)",
                         report.dropped, ref.accession, report.bad_ids[:5])
-        topics.append(entities.get("topics", []))
-        people.append(entities.get("people", []))
-        products.append(entities.get("products", []))
-        risks.append(entities.get("risks", []))
-        promises.extend(entities.get("promises", []))
-        metric_rows.extend(_metric_rows(entities, ref))
+        pages = {b.paragraph_id: b.page_number for b in blocks}
+        legacy = _legacy(extracted, ref, pages)
+        topics.append(legacy["topics"])
+        people.append(legacy["people"])
+        products.append(legacy["products"])
+        risks.append(legacy["risks"])
+        metric_rows.extend(_metric_rows(legacy["metrics"], ref))
 
     latest = max((d.filed_date for d in memory.documents), default=None)
     memory.topics = merge_topics(topics)
@@ -79,13 +116,7 @@ def build_memory(
     return BuildResult(memory, len(memory.documents), dropped)
 
 
-def _metric_rows(entities: dict, ref: DocumentRef):
-    meta = entities.get("_evidence_for", {})
-    pages = meta.get("pages", {})
-    for m in entities.get("metrics_raw", []):
-        from evident_memory.entities import Evidence
-        yield (m.name, m.period, m.value, m.unit,
-               Evidence(document_id=ref.document_id, paragraph_id=m.paragraph_id,
-                        page_number=pages.get(m.paragraph_id), quote=m.quote,
-                        observed_at=ref.filed_date),
-               None)
+def _metric_rows(rows: Sequence[tuple], ref: DocumentRef):
+    """The row shape `merge_metrics` expects, from (Extracted, Evidence) pairs."""
+    for item, ev in rows:
+        yield (item.name, item.period, item.value, item.unit, ev, None)

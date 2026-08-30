@@ -13,14 +13,16 @@ from pydantic import BaseModel, Field
 
 class EntityOut(BaseModel):
     id: int
-    kind: str
-    key: str
-    label: str
+    entity_type: str
+    slug: str
+    name: str
+    description: str | None = None
     attributes: dict = Field(default_factory=dict)
     status: str
-    first_seen_at: date | None = None
-    last_seen_at: date | None = None
+    first_seen: date | None = None
+    latest_seen: date | None = None
     mention_count: int
+    importance_score: float = 0.0
 
 
 class Provenance(BaseModel):
