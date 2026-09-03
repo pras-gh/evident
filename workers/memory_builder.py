@@ -18,7 +18,7 @@ from typing import Any, Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from evident_ai.extract import ExtractionRejected, extract_from_blocks
+from evident_ai.extract import extract_document
 from evident_db import Chunk, Document, Entity, session_scope
 from evident_db.repositories import (add_entity_mention, add_metric_observation,
                                      add_timeline_event, mark_dropped_entities,
@@ -82,16 +82,25 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
               for c in chunks]
 
     stats.documents += 1
-    try:
-        result = extract_from_blocks(blocks, client=client)
-    except ExtractionRejected as exc:
-        # The whole response was unusable, so none of it is stored. Loud, and
-        # the document is left untouched rather than half-populated.
-        stats.responses_rejected += 1
-        log.error("rejected extraction for %s: %s", document.accession, exc.reason)
-        return stats
 
-    extracted, report = result.entities, result.report
+    # One request per chunk, not one per document. A 10-K is a few hundred
+    # chunks; asking for all of their entities in a single response needs far
+    # more output tokens than any max_tokens allows, so the response truncates,
+    # gets rejected whole, and the filing stores nothing. Per chunk also makes
+    # the rejection semantics work as designed: one bad response costs that
+    # chunk, not the other 473.
+    #
+    # This is the synchronous path. `submit_batch` is half the price for
+    # backfills and nothing about a 2019 filing is latency-sensitive.
+    groups = {b.paragraph_id: [b] for b in blocks}
+    per_chunk, report = extract_document(groups, client=client)
+
+    stats.responses_rejected += report.rejected
+    for reason in report.reasons[:5] if report.rejected else []:
+        log.error("rejected extraction in %s: %s", document.accession, reason)
+
+    extracted = [e for r in per_chunk.values() for e in r.entities]
+    relationships = [rel for r in per_chunk.values() for rel in r.relationships]
     stats.dropped_uncited += report.dropped
     if report.dropped:
         # The one failure that looks like success — loud on purpose.
@@ -158,7 +167,7 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     # validation; a miss here means the entity upsert collapsed two names onto
     # one slug, which is legitimate and just leaves fewer edges.
     ids_by_slug = {slug: row_id for slug, row_id in entity_ids.items()}
-    for r in result.relationships:
+    for r in relationships:
         src = ids_by_slug.get(entity_slug(r.source_name))
         dst = ids_by_slug.get(entity_slug(r.target_name))
         if src is None or dst is None or src == dst:
