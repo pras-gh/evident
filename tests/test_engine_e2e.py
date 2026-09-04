@@ -281,6 +281,118 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["document_count"], 1)
         self.assertIsInstance(body["counts"], dict)
 
+    def test_the_whole_path_persists_entities_edges_and_evidence(self):
+        """chunk -> (fake) Claude -> Pydantic -> validation -> Postgres.
+
+        The client is faked because the response is what we are testing the
+        handling of, not the model. Everything after the HTTP boundary is the
+        real code path the worker runs: the same parse, the same validation,
+        the same repositories, the same constraints.
+        """
+        import json
+        from sqlalchemy import select
+        from evident_db import Chunk, Document, Entity, EntityMention, Relationship, session_scope
+        from workers.memory_builder import build_for_document
+
+        class _Text:
+            type = "text"
+            def __init__(self, t): self.text = t
+
+        class _Resp:
+            stop_reason = "end_turn"
+            def __init__(self, payload): self.content = [_Text(json.dumps(payload))]
+
+        class _Msgs:
+            def __init__(self, o): self.o = o
+            def create(self, **kw):
+                self.o.calls.append(kw)
+                return _Resp(self.o.payload)
+
+        class _Client:
+            def __init__(self, payload): self.payload, self.calls = payload, []
+            @property
+            def messages(self): return _Msgs(self)
+
+        with session_scope(DSN) as db:
+            document = db.execute(select(Document).where(
+                Document.id == self.document_id)).scalar_one()
+            pid = (db.execute(select(Chunk).where(
+                Chunk.document_id == self.document_id)
+                .order_by(Chunk.ordinal)).scalars().first().paragraph_ids or [""])[0]
+
+            client = _Client({
+                "entities": [
+                    {"name": "Blackwell", "entity_type": "product",
+                     "confidence": 0.99, "paragraph_id": pid,
+                     "quote": "accelerate Blackwell deployment"},
+                    {"name": "AI Infrastructure", "entity_type": "strategy",
+                     "confidence": 0.97, "paragraph_id": pid,
+                     "quote": "investing in AI infrastructure"},
+                ],
+                "relationships": [
+                    {"source_name": "AI Infrastructure", "target_name": "Blackwell",
+                     "relationship_type": "drives_investment", "confidence": 0.9,
+                     "paragraph_id": pid, "quote": "investing in AI infrastructure"},
+                    {"source_name": "Ghost", "target_name": "Blackwell",
+                     "relationship_type": "supplies", "confidence": 0.9,
+                     "paragraph_id": pid, "quote": "nothing said this"},
+                ],
+            })
+            stats = build_for_document(db, company_id=self.company_id,
+                                       document=document, client=client, limit=1)
+            db.flush()
+
+            slugs = {e.slug for e in db.execute(select(Entity).where(
+                Entity.company_id == self.company_id)).scalars()}
+            edges = list(db.execute(select(Relationship).where(
+                Relationship.company_id == self.company_id)).scalars())
+            mentions = list(db.execute(select(EntityMention)).scalars())
+
+        self.assertLessEqual({"blackwell", "ai_infrastructure"}, slugs)
+
+        # the edge whose source was never extracted is dropped, not stored
+        self.assertEqual(len(edges), 1, "only the edge with both endpoints known")
+        edge = edges[0]
+        self.assertEqual(edge.relationship_type, "drives_investment")
+        self.assertAlmostEqual(edge.strength, 0.9)
+        self.assertIsNotNone(edge.evidence_chunk_id,
+                             "every edge must be able to show its sentence")
+        self.assertTrue(edge.attributes.get("asserted"))
+        self.assertEqual(stats.as_dict()["relationships"], 1)
+
+        # and every mention carries the provenance the citation promise needs
+        self.assertTrue(mentions)
+        for m in mentions:
+            self.assertIsNotNone(m.quote)
+            self.assertIsNotNone(m.paragraph_id)
+
+    def test_a_rejected_response_stores_nothing(self):
+        """A truncated response must not leave half a document behind."""
+        from sqlalchemy import func, select
+        from evident_db import Document, Entity, session_scope
+        from workers.memory_builder import build_for_document
+
+        class _Resp:
+            stop_reason = "max_tokens"
+            content = [type("T", (), {"type": "text", "text": '{"entities": [{'})()]
+
+        class _Client:
+            @property
+            def messages(self):
+                return type("M", (), {"create": lambda *a, **k: _Resp()})()
+
+        with session_scope(DSN) as db:
+            before = db.execute(select(func.count(Entity.id))).scalar_one()
+            document = db.execute(select(Document).where(
+                Document.id == self.document_id)).scalar_one()
+            stats = build_for_document(db, company_id=self.company_id,
+                                       document=document, client=_Client(), limit=1)
+            db.flush()
+            after = db.execute(select(func.count(Entity.id))).scalar_one()
+
+        self.assertEqual(before, after, "a rejected response wrote rows")
+        self.assertEqual(stats.as_dict()["responses_rejected"], 1)
+
     async def test_unknown_company_is_404_not_empty_200(self):
         async with await self._client() as c:
             r = await c.get("/v1/companies/zzzz/memory")

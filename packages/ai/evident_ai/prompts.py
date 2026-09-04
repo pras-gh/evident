@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from evident_graph.taxonomy import ENTITY_TYPES
+from evident_graph.taxonomy import ENTITY_TYPES, RELATIONSHIP_TYPES
 
 MODEL = "claude-opus-5"
 
@@ -23,6 +23,11 @@ class Prompt:
     @property
     def id(self) -> str:
         return f"{self.name}@{self.version}"
+
+
+def _rel_table() -> str:
+    return "\n".join(
+        f"- {r.name}: {r.definition} e.g. {r.examples[0]}." for r in RELATIONSHIP_TYPES)
 
 
 def _type_table() -> str:
@@ -41,7 +46,7 @@ def _type_table() -> str:
 
 EXTRACT_ENTITIES = Prompt(
     name="extract_entities",
-    version="2.0.0",
+    version="3.0.0",
     system=f"""You extract structured company intelligence from SEC filings.
 
 You will be given numbered paragraphs from one filing. Each paragraph has an id.
@@ -65,7 +70,22 @@ Rules:
 - The filer itself is never a `company` entity. Its own segments are
   `segment`, its own products are `product`.
 - Do not infer, speculate, or fill gaps. Returning fewer entities is correct
-  when the text does not support more.""",
+  when the text does not support more.
+
+Also return the relationships the text asserts between the entities you found.
+Use exactly one of these types:
+
+{_rel_table()}
+
+Relationship rules:
+- Both endpoints must be entities you returned in `entities`, named the same
+  way. An edge to something you did not extract will be discarded.
+- Only assert what the text states or clearly implies. Two things appearing in
+  the same sentence is not a relationship — co-occurrence is computed
+  separately and does not need your help.
+- Cite the paragraph_id and quote the span, exactly as for entities.
+- Returning no relationships is correct and common. Most paragraphs assert
+  none.""",
 )
 
 

@@ -1,117 +1,86 @@
-"""Entity extraction from parsed filings.
+"""Entity extraction from parsed filings — the whole path against Claude.
+
+    chunk -> Claude API -> JSON Schema -> Pydantic -> entities + relationships
 
 This is the one place in the pipeline where a language model belongs. Turning
 "During fiscal 2025 the Company increased payments for acquisition of property,
 plant and equipment" into a `metric` entity is a reading task, not a parsing
 task.
 
-Two guardrails matter more than the extraction itself.
+**Nothing here is free-form.** The request constrains the API with a schema
+generated from the Pydantic models; the response becomes objects only through
+`EntityExtractionResponse`; and a response that will not parse is rejected
+whole. There is no code path from raw model text to a database row.
 
-The model returns one of eight types or nothing — the set is an `enum` in the
-schema, so an unknown type is a malformed response rather than a row nobody can
-group. And every entity must cite a paragraph id we supplied; anything citing an
-id we did not is **dropped, not stored**. A hallucinated citation is worse than
-a missing entity, because it looks exactly like a real one until someone clicks
-through.
+Two rules cannot be written into a schema, because they depend on the input we
+sent, so they are enforced after parsing:
 
-Both rejections are counted. A rising drop rate is the signal that a prompt or
-model change has started inventing things, and it is the only signal there is.
+- an entity must cite a `paragraph_id` we actually supplied
+- a relationship's endpoints must both be entities in the same response
+
+Those are per item. A hallucinated citation costs that entity, not the other
+nineteen from the chunk. Every drop carries a reason, because "23 dropped" says
+something is wrong and nothing about what — and a rising drop rate is the only
+signal that a prompt or model change has started inventing things.
 """
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Sequence
 
-from evident_graph.taxonomy import (TYPE_NAMES, Extracted, InvalidEntity,
-                                    validate)
+from evident_graph.taxonomy import slug as slugify
 from evident_parser.models import Block
+from pydantic import ValidationError
 
 from .prompts import EXTRACT_ENTITIES, MODEL
+from .schema import (EntityExtractionResponse, ExtractedEntity,
+                     ExtractedRelationship, wire_schema)
 
-#: Non-streaming default from the SDK guidance. Extraction output is small, but
-#: a truncated response is an unparseable one, so there is no reason to shave it.
+#: Non-streaming default from the SDK guidance. A truncated response is an
+#: unparseable one, so there is no reason to shave this.
 MAX_TOKENS = 16000
 
 
-# --------------------------------------------------------------------- schema
-def json_schema() -> dict[str, Any]:
-    """The structured-output schema.
+class ExtractionRejected(RuntimeError):
+    """The response was not usable and produced nothing.
 
-    `entity_type` is an enum over the canonical types and `additionalProperties`
-    is false, so the model cannot invent a type or smuggle an extra field past
-    validation. Generated from `TYPE_NAMES` rather than written out — the same
-    tuple that produces the prompt text and the CHECK constraint.
+    Raised rather than returning a partial result. Salvaging the entities that
+    happened to parse before a cut-off means storing data from a response we
+    know was incomplete, which looks fine until someone audits it.
     """
-    return {
-        "type": "object",
-        "properties": {
-            "entities": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {
-                            "type": "string",
-                            "description": "as the filing names it, not expanded",
-                        },
-                        "entity_type": {"type": "string", "enum": list(TYPE_NAMES)},
-                        "confidence": {"type": "number"},
-                        "paragraph_id": {
-                            "type": "string",
-                            "description": "an id from the input, never invented",
-                        },
-                        "quote": {
-                            "type": "string",
-                            "description": "verbatim span supporting this entity",
-                        },
-                        "description": {
-                            "type": "string",
-                            "description": "one clause on what it is, if the text says",
-                        },
-                        "period": {
-                            "type": "string",
-                            "description": "metric only: the period the figure covers",
-                        },
-                        "value": {
-                            "type": "number",
-                            "description": "metric only: the figure, if one is stated",
-                        },
-                        "unit": {
-                            "type": "string",
-                            "description": "metric only: e.g. USD millions, percent",
-                        },
-                    },
-                    "required": ["name", "entity_type", "confidence",
-                                 "paragraph_id", "quote"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        "required": ["entities"],
-        "additionalProperties": False,
-    }
+
+    def __init__(self, reason: str, *, stop_reason: str | None = None,
+                 raw: str | None = None):
+        super().__init__(reason)
+        self.reason = reason
+        self.stop_reason = stop_reason
+        # kept for diagnosis, never parsed further
+        self.raw = raw
 
 
-# ------------------------------------------------------------------ guardrail
 @dataclass(slots=True)
 class DropReport:
-    """What the extractor refused, and why.
-
-    `reasons` is kept because "23 dropped" tells you something is wrong and
-    nothing about what. Uncited entities and unknown types are different
-    failures with different fixes.
-    """
+    """What was refused, and why."""
     kept: int = 0
     dropped: int = 0
     bad_ids: list[str] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
+    #: whole responses rejected — distinct from individual items dropped
+    rejected: int = 0
 
     @property
     def drop_rate(self) -> float:
         total = self.kept + self.dropped
         return self.dropped / total if total else 0.0
+
+
+@dataclass(slots=True)
+class Extraction:
+    """One chunk's worth of validated output."""
+    entities: list[ExtractedEntity] = field(default_factory=list)
+    relationships: list[ExtractedRelationship] = field(default_factory=list)
+    report: DropReport = field(default_factory=DropReport)
 
 
 def drop_uncited(items: Sequence[Any], valid_ids: set[str],
@@ -129,21 +98,60 @@ def drop_uncited(items: Sequence[Any], valid_ids: set[str],
     return kept
 
 
-def validate_all(raw: Iterable[dict], valid_ids: set[str],
-                 report: DropReport) -> list[Extracted]:
-    """Validate every returned object, keeping the survivors."""
-    kept: list[Extracted] = []
-    for obj in raw:
-        try:
-            kept.append(validate(obj, valid_paragraph_ids=valid_ids))
-        except InvalidEntity as exc:
+# ------------------------------------------------------------- post-validation
+def validate_entities(entities: Iterable[ExtractedEntity], valid_ids: set[str],
+                      report: DropReport) -> list[ExtractedEntity]:
+    kept: list[ExtractedEntity] = []
+    for e in entities:
+        if e.paragraph_id not in valid_ids:
             report.dropped += 1
-            report.reasons.append(str(exc))
-            pid = str((obj or {}).get("paragraph_id"))
-            if pid not in valid_ids:
-                report.bad_ids.append(pid)
-        else:
-            report.kept += 1
+            report.bad_ids.append(e.paragraph_id)
+            report.reasons.append(
+                f"{e.name!r}: cites paragraph {e.paragraph_id!r}, "
+                "which was not supplied")
+            continue
+        report.kept += 1
+        kept.append(e)
+    return kept
+
+
+def validate_relationships(relationships: Iterable[ExtractedRelationship],
+                           entities: Sequence[ExtractedEntity],
+                           valid_ids: set[str],
+                           report: DropReport) -> list[ExtractedRelationship]:
+    """Keep only edges whose endpoints survived, matched on slug.
+
+    Endpoints are matched by slug rather than by exact string because the model
+    may name an entity `Blackwell` in the entity list and `the Blackwell
+    platform` in an edge; both fold to `blackwell`. An edge to something that
+    is not an entity is not an edge — it is a claim with one end unattached.
+    """
+    known = {slugify(e.name) for e in entities}
+    kept: list[ExtractedRelationship] = []
+    for r in relationships:
+        src, dst = slugify(r.source_name), slugify(r.target_name)
+        if r.paragraph_id not in valid_ids:
+            report.dropped += 1
+            report.bad_ids.append(r.paragraph_id)
+            report.reasons.append(
+                f"{r.source_name}->{r.target_name}: cites paragraph "
+                f"{r.paragraph_id!r}, which was not supplied")
+            continue
+        if src == dst:
+            report.dropped += 1
+            report.reasons.append(f"{r.source_name}->{r.target_name}: self-edge")
+            continue
+        missing = [n for n, s in ((r.source_name, src), (r.target_name, dst))
+                   if s not in known]
+        if missing:
+            report.dropped += 1
+            report.reasons.append(
+                f"{r.source_name}->{r.target_name}: endpoint(s) "
+                f"{', '.join(repr(m) for m in missing)} are not entities in "
+                "this response")
+            continue
+        report.kept += 1
+        kept.append(r)
     return kept
 
 
@@ -155,19 +163,19 @@ def render(blocks: Sequence[Block]) -> str:
 def _system() -> list[dict[str, Any]]:
     """The system prompt, marked cacheable.
 
-    It is byte-identical for every chunk of every filing, so it is the ideal
-    cache prefix. Caching needs a prefix of roughly 1024 tokens to engage —
-    below that the block is sent normally and nothing breaks, it just does not
-    save anything. `cache_hit_rate()` is how you find out which happened.
+    Byte-identical for every chunk of every filing, so it is the ideal cache
+    prefix. Caching engages above roughly 1024 tokens; below that the block is
+    sent normally and nothing breaks, it just saves nothing. `cache_hit_rate()`
+    is how you find out which happened rather than assuming.
     """
     return [{"type": "text", "text": EXTRACT_ENTITIES.system,
              "cache_control": {"type": "ephemeral"}}]
 
 
-def _request_params(blocks: Sequence[Block], *, max_tokens: int,
-                    effort: str | None) -> dict[str, Any]:
+def request_params(blocks: Sequence[Block], *, max_tokens: int = MAX_TOKENS,
+                   effort: str | None = None) -> dict[str, Any]:
     output_config: dict[str, Any] = {
-        "format": {"type": "json_schema", "schema": json_schema()}
+        "format": {"type": "json_schema", "schema": wire_schema()}
     }
     if effort:
         output_config["effort"] = effort
@@ -199,22 +207,40 @@ def _client(client: Any | None) -> Any:
     return anthropic.Anthropic()
 
 
-def parse_response(response: Any, blocks: Sequence[Block],
-                   report: DropReport) -> list[Extracted]:
-    """Pull entities out of one response and validate them.
+# -------------------------------------------------------------------- parsing
+def parse_response(response: Any) -> EntityExtractionResponse:
+    """Response -> validated models, or `ExtractionRejected`.
 
-    `output_config.format` guarantees a text block holding valid JSON, but the
-    response may lead with thinking blocks, so the text block is selected by
-    type rather than position.
+    Every rejection below is a case where the response cannot be trusted as a
+    whole, so nothing from it is kept.
     """
+    stop = getattr(response, "stop_reason", None)
+
+    if stop == "max_tokens":
+        raise ExtractionRejected(
+            "response hit max_tokens and the JSON is truncated", stop_reason=stop)
+
+    if stop == "refusal":
+        details = getattr(response, "stop_details", None)
+        category = getattr(details, "category", None)
+        raise ExtractionRejected(
+            f"model refused the request (category={category})", stop_reason=stop)
+
     text = next((b.text for b in response.content if b.type == "text"), None)
-    if text is None:  # pragma: no cover - would mean a refusal or empty turn
-        report.reasons.append(
-            f"no text block in response (stop_reason={response.stop_reason})")
-        return []
-    payload = json.loads(text)
-    valid = {b.paragraph_id for b in blocks}
-    return validate_all(payload.get("entities") or [], valid, report)
+    if text is None:
+        raise ExtractionRejected(
+            "no text block in response", stop_reason=stop)
+
+    try:
+        return EntityExtractionResponse.model_validate_json(text)
+    except ValidationError as exc:
+        # Covers malformed JSON and schema-valid-looking JSON that still
+        # violates the model — an unknown entity_type, a confidence of 1.4, an
+        # extra field. Either way the response is refused whole.
+        raise ExtractionRejected(
+            f"response did not validate against EntityExtractionResponse: "
+            f"{exc.error_count()} error(s); first: {exc.errors()[0]['msg']}",
+            stop_reason=stop, raw=text) from exc
 
 
 # ----------------------------------------------------------------- extractors
@@ -224,37 +250,66 @@ def extract_from_blocks(
     client: Any | None = None,
     max_tokens: int = MAX_TOKENS,
     effort: str | None = None,
-) -> tuple[list[Extracted], DropReport]:
-    """Extract canonical entities from one group of paragraphs.
+) -> Extraction:
+    """Extract entities and relationships from one group of paragraphs.
 
-    Returns a flat list — each `Extracted` carries its own type and its own
-    single citation, so an entity mentioned in four paragraphs comes back four
-    times. That is deliberate: repetition is how importance gets measured, and
-    collapsing it here would throw the signal away before it is counted.
+    Raises `ExtractionRejected` when the response is unusable. Callers working
+    through a whole document catch it per chunk and carry on — one bad response
+    should not cost the other 274.
+
+    An entity mentioned in four paragraphs comes back four times. That is
+    deliberate: repetition is how importance gets measured, and collapsing it
+    here would throw the signal away before it is counted.
     """
-    report = DropReport()
     if not blocks:
-        return [], report
+        return Extraction()
 
     response = _client(client).messages.create(
-        **_request_params(blocks, max_tokens=max_tokens, effort=effort))
-    return parse_response(response, blocks, report), report
+        **request_params(blocks, max_tokens=max_tokens, effort=effort))
+    parsed = parse_response(response)
+
+    valid = {b.paragraph_id for b in blocks}
+    report = DropReport()
+    entities = validate_entities(parsed.entities, valid, report)
+    relationships = validate_relationships(parsed.relationships, entities,
+                                           valid, report)
+    return Extraction(entities, relationships, report)
 
 
-def extract_batched(
+def extract_document(
     groups: dict[str, Sequence[Block]],
     *,
     client: Any | None = None,
     max_tokens: int = MAX_TOKENS,
     effort: str | None = None,
-) -> Any:
-    """Submit many groups as one Batch API job, at half price.
+) -> tuple[dict[str, Extraction], DropReport]:
+    """Every chunk of a document, one call each, rejections survived.
 
-    A 10-K is a few hundred chunks and nothing about backfilling a 2019 filing
-    is latency-sensitive, so the synchronous path is the wrong default for bulk
-    ingestion. Returns the batch object; poll it and pass the results to
-    `collect_batch`.
+    The synchronous path. For backfilling a whole filing, `submit_batch` is
+    half the price and nothing about a 2019 10-K is latency-sensitive.
     """
+    out: dict[str, Extraction] = {}
+    overall = DropReport()
+    for key, blocks in groups.items():
+        try:
+            result = extract_from_blocks(blocks, client=client,
+                                         max_tokens=max_tokens, effort=effort)
+        except ExtractionRejected as exc:
+            overall.rejected += 1
+            overall.reasons.append(f"{key}: {exc.reason}")
+            continue
+        out[key] = result
+        overall.kept += result.report.kept
+        overall.dropped += result.report.dropped
+        overall.bad_ids += result.report.bad_ids
+        overall.reasons += [f"{key}: {r}" for r in result.report.reasons]
+    return out, overall
+
+
+def submit_batch(groups: dict[str, Sequence[Block]], *,
+                 client: Any | None = None, max_tokens: int = MAX_TOKENS,
+                 effort: str | None = None) -> Any:
+    """Submit every chunk as one Batch API job, at half price."""
     from anthropic.types.message_create_params import \
         MessageCreateParamsNonStreaming
     from anthropic.types.messages.batch_create_params import Request
@@ -263,7 +318,7 @@ def extract_batched(
         Request(
             custom_id=key,
             params=MessageCreateParamsNonStreaming(
-                **_request_params(blocks, max_tokens=max_tokens, effort=effort)),
+                **request_params(blocks, max_tokens=max_tokens, effort=effort)),
         )
         for key, blocks in groups.items() if blocks
     ]
@@ -271,35 +326,60 @@ def extract_batched(
 
 
 def collect_batch(results: Iterable[Any], groups: dict[str, Sequence[Block]],
-                  ) -> tuple[dict[str, list[Extracted]], DropReport]:
+                  ) -> tuple[dict[str, Extraction], DropReport]:
     """Match batch results back to their groups.
 
-    Results come back in arbitrary order, so they are keyed by `custom_id` and
-    never by position — reading them positionally would silently attach one
-    chunk's entities to another chunk's paragraph ids, which the citation
-    guardrail would then dutifully drop as uncited.
+    Keyed by `custom_id`, never by position: results come back in arbitrary
+    order, and reading them positionally would attach one chunk's entities to
+    another chunk's paragraph ids — which the citation guard would then
+    dutifully drop as uncited, turning an ordering bug into a quality mystery.
     """
-    report = DropReport()
-    out: dict[str, list[Extracted]] = {}
+    overall = DropReport()
+    out: dict[str, Extraction] = {}
     for result in results:
         key = result.custom_id
         blocks = groups.get(key)
         if blocks is None:
-            report.reasons.append(f"batch returned unknown custom_id {key!r}")
+            overall.rejected += 1
+            overall.reasons.append(f"batch returned unknown custom_id {key!r}")
             continue
         if result.result.type != "succeeded":
-            report.reasons.append(f"{key}: batch request {result.result.type}")
+            overall.rejected += 1
+            overall.reasons.append(f"{key}: batch request {result.result.type}")
             continue
-        out[key] = parse_response(result.result.message, blocks, report)
-    return out, report
+        message = getattr(result.result, "message", None)
+        if message is None:
+            # a succeeded result should always carry one; if it does not, that
+            # is a rejection rather than an exception that kills the batch
+            overall.rejected += 1
+            overall.reasons.append(f"{key}: succeeded result carried no message")
+            continue
+        try:
+            parsed = parse_response(message)
+        except ExtractionRejected as exc:
+            overall.rejected += 1
+            overall.reasons.append(f"{key}: {exc.reason}")
+            continue
+
+        valid = {b.paragraph_id for b in blocks}
+        report = DropReport()
+        entities = validate_entities(parsed.entities, valid, report)
+        relationships = validate_relationships(parsed.relationships, entities,
+                                               valid, report)
+        out[key] = Extraction(entities, relationships, report)
+        overall.kept += report.kept
+        overall.dropped += report.dropped
+        overall.bad_ids += report.bad_ids
+        overall.reasons += [f"{key}: {r}" for r in report.reasons]
+    return out, overall
 
 
 def cache_hit_rate(usage: Any) -> float:
     """Share of input tokens served from cache, for one response.
 
-    Zero across repeated calls means the cached prefix is being invalidated —
-    or that the system prompt is under the ~1024-token minimum and never cached
-    at all. Both are worth knowing before assuming the saving is real.
+    Zero across repeated calls means the cached prefix is being invalidated, or
+    that the system prompt is under the ~1024-token minimum and never cached at
+    all. Both are worth knowing before assuming the saving is real.
     """
     read = getattr(usage, "cache_read_input_tokens", 0) or 0
     fresh = getattr(usage, "input_tokens", 0) or 0

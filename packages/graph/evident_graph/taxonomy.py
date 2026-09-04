@@ -77,6 +77,43 @@ TYPE_NAMES: tuple[str, ...] = tuple(t.name for t in ENTITY_TYPES)
 _BY_NAME = {t.name: t for t in ENTITY_TYPES}
 
 
+#: Asserted edges use a closed vocabulary for the same reason entities do. A
+#: free-text relationship_type is free-form output wearing a column name, and
+#: produces `competes_with`, `competitor_of` and `rivals` for one relation.
+#:
+#: `co_occurs` is deliberately absent: it is *derived* from shared documents by
+#: the graph engine, never asserted by the model, and mixing the two would let
+#: a claim the filing never made look like one it did.
+RELATIONSHIP_TYPES: tuple[EntityType, ...] = (
+    EntityType("drives_investment",
+               "The source is why the company is spending on the target.",
+               ("AI Infrastructure -> CapEx",)),
+    EntityType("constrains",
+               "The source limits what the target can do.",
+               ("Export Controls -> China",)),
+    EntityType("competes_with",
+               "The two contend for the same customers.", ("NVIDIA -> AMD",)),
+    EntityType("supplies",
+               "The source provides something the target depends on.",
+               ("TSMC -> Blackwell",)),
+    EntityType("depends_on",
+               "The source needs the target to work or to sell.",
+               ("Blackwell -> CUDA",)),
+    EntityType("part_of",
+               "The source is a component or subdivision of the target.",
+               ("Blackwell -> Data Center",)),
+    EntityType("replaces",
+               "The source supersedes the target.", ("Blackwell -> Hopper",)),
+)
+
+RELATIONSHIP_NAMES: tuple[str, ...] = tuple(r.name for r in RELATIONSHIP_TYPES)
+_BY_REL = {r.name: r for r in RELATIONSHIP_TYPES}
+
+
+def is_valid_relationship(name: str) -> bool:
+    return name in _BY_REL
+
+
 def is_valid_type(name: str) -> bool:
     return name in _BY_NAME
 

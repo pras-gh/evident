@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Sequence
 
-from evident_ai.extract import extract_from_blocks
+from evident_ai.extract import ExtractionRejected, extract_from_blocks
 from evident_memory.entities import (CompanyMemory, DocumentRef, Evidence,
                                      Person, Product, Risk, Topic)
 from evident_memory.resolve import (build_timeline, merge_metrics, merge_people,
@@ -83,11 +83,19 @@ def build_memory(
     as_of = as_of or date.today()
     memory = CompanyMemory(company_id=company_id, ticker=ticker)
     topics, people, products, risks, promises, metric_rows = [], [], [], [], [], []
-    dropped = 0
+    dropped = rejected = 0
 
     for ref, blocks in sorted(documents, key=lambda d: d[0].filed_date):
         memory.documents.append(ref)
-        extracted, report = extract_from_blocks(blocks, client=client)
+        try:
+            result = extract_from_blocks(blocks, client=client)
+        except ExtractionRejected as exc:
+            # Nothing from an unusable response is kept; the document simply
+            # contributes no entities to the projection.
+            rejected += 1
+            log.error("rejected extraction for %s: %s", ref.accession, exc.reason)
+            continue
+        extracted, report = result.entities, result.report
         dropped += report.dropped
         if report.dropped:
             # A rising drop rate means extraction started inventing citations.

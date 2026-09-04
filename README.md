@@ -38,8 +38,10 @@ createdb evident && psql evident -c 'create extension vector'
 export DATABASE_URL=postgresql+psycopg://localhost/evident
 cd db && alembic upgrade head        # or: psql "$DATABASE_URL" -f db/schema.sql
 
-# tests: the core is standard-library only and runs on a clean checkout
-python3 -m unittest discover -s tests
+# tests: needs the project's dependencies. Extraction is validated through
+# pydantic models, which are imported at module load, so the suite no longer
+# runs on a bare interpreter the way the parser-only core used to.
+python -m unittest discover -s tests
 
 # api
 cd apps/api && uv sync && uvicorn main:app --reload

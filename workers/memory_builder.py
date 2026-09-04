@@ -18,12 +18,13 @@ from typing import Any, Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from evident_ai.extract import extract_from_blocks
+from evident_ai.extract import extract_document
 from evident_db import Chunk, Document, Entity, session_scope
 from evident_db.repositories import (add_entity_mention, add_metric_observation,
                                      add_timeline_event, mark_dropped_entities,
-                                     upsert_entity)
+                                     upsert_entity, upsert_relationship)
 from evident_graph.normalize import display_label
+from evident_graph.taxonomy import slug as entity_slug
 from evident_parser.models import Block
 
 log = logging.getLogger("evident.memory_builder")
@@ -40,6 +41,8 @@ class BuildStats:
     relationships: int = 0
     dropped_uncited: int = 0
     risks_marked_dropped: int = 0
+    #: whole responses refused — distinct from individual items dropped
+    responses_rejected: int = 0
     #: A name already stored under a different type. First write wins, so this
     #: counts the extractions that were overruled — a high number means the
     #: taxonomy is ambiguous for this corpus, not that the run failed.
@@ -52,30 +55,58 @@ class BuildStats:
 
 def build_for_document(db: Session, *, company_id: int, document: Document,
                        client: Any | None = None,
-                       stats: BuildStats | None = None) -> BuildStats:
+                       stats: BuildStats | None = None,
+                       limit: int | None = None) -> BuildStats:
+    """Extract one document into memory.
+
+    `limit` caps how many chunks are sent, for a cheap first run against the
+    real API. It is a real parameter rather than a caller-side slice because
+    this function owns the chunk query; slicing outside it would silently do
+    nothing.
+    """
     stats = stats or BuildStats()
-    chunks = list(db.execute(
-        select(Chunk).where(Chunk.document_id == document.id).order_by(Chunk.ordinal)
-    ).scalars())
+    stmt = (select(Chunk).where(Chunk.document_id == document.id)
+            .order_by(Chunk.ordinal))
+    if limit is not None:
+        stmt = stmt.limit(limit)
+    chunks = list(db.execute(stmt).scalars())
     if not chunks:
         return stats
 
     by_paragraph = {(c.paragraph_ids or [c.chunk_hash])[0]: c for c in chunks}
-    blocks = []
-    for c in chunks:
-        block = Block(paragraph_id=(c.paragraph_ids or [c.chunk_hash])[0],
-                      ordinal=c.ordinal, text=c.text, page_number=c.page_number)
-        # carried so extracted entities can record the chunk they came from
-        block.chunk_hash = c.chunk_hash            # type: ignore[attr-defined]
-        blocks.append(block)
+    # Block is a slots dataclass, so nothing can be stapled onto it. The chunk
+    # an entity came from is recovered through `by_paragraph` instead, which is
+    # the same lookup the mention write already uses.
+    blocks = [Block(paragraph_id=(c.paragraph_ids or [c.chunk_hash])[0],
+                    ordinal=c.ordinal, text=c.text, page_number=c.page_number)
+              for c in chunks]
 
-    extracted, report = extract_from_blocks(blocks, client=client)
     stats.documents += 1
+
+    # One request per chunk, not one per document. A 10-K is a few hundred
+    # chunks; asking for all of their entities in a single response needs far
+    # more output tokens than any max_tokens allows, so the response truncates,
+    # gets rejected whole, and the filing stores nothing. Per chunk also makes
+    # the rejection semantics work as designed: one bad response costs that
+    # chunk, not the other 473.
+    #
+    # This is the synchronous path. `submit_batch` is half the price for
+    # backfills and nothing about a 2019 filing is latency-sensitive.
+    groups = {b.paragraph_id: [b] for b in blocks}
+    per_chunk, report = extract_document(groups, client=client)
+
+    stats.responses_rejected += report.rejected
+    for reason in report.reasons[:5] if report.rejected else []:
+        log.error("rejected extraction in %s: %s", document.accession, reason)
+
+    extracted = [e for r in per_chunk.values() for e in r.entities]
+    relationships = [rel for r in per_chunk.values() for rel in r.relationships]
     stats.dropped_uncited += report.dropped
     if report.dropped:
         # The one failure that looks like success — loud on purpose.
-        log.warning("dropped %d uncited entities from %s (ids: %s)",
-                    report.dropped, document.accession, report.bad_ids[:5])
+        log.warning("dropped %d items from %s (ids: %s; first reason: %s)",
+                    report.dropped, document.accession, report.bad_ids[:5],
+                    report.reasons[0] if report.reasons else "-")
 
     pages = {(c.paragraph_ids or [c.chunk_hash])[0]: c.page_number for c in chunks}
 
@@ -84,8 +115,9 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     # times, rather than fighting the unique constraint six times.
     by_slug: dict[str, list] = {}
     for item in extracted:
-        by_slug.setdefault(item.slug, []).append(item)
+        by_slug.setdefault(entity_slug(item.name), []).append(item)
 
+    entity_ids: dict[str, int] = {}
     for slug, items in by_slug.items():
         head = items[0]
         row = upsert_entity(
@@ -94,6 +126,7 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
             description=next((i.description for i in items if i.description), None),
             observed_at=document.filed_at)
         db.flush()
+        entity_ids[slug] = row.id
         stats.entities += 1
         stats.by_type[row.entity_type] = stats.by_type.get(row.entity_type, 0) + 1
 
@@ -127,6 +160,32 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
                     unit=item.unit, page_number=pages.get(item.paragraph_id),
                     paragraph_id=item.paragraph_id, confidence=item.confidence)
                 stats.metrics += 1
+
+    # ------------------------------------------------------- relationships
+    # Asserted edges, resolved from names to ids now that every entity in this
+    # response has a row. Endpoints were already checked to exist during
+    # validation; a miss here means the entity upsert collapsed two names onto
+    # one slug, which is legitimate and just leaves fewer edges.
+    ids_by_slug = {slug: row_id for slug, row_id in entity_ids.items()}
+    for r in relationships:
+        src = ids_by_slug.get(entity_slug(r.source_name))
+        dst = ids_by_slug.get(entity_slug(r.target_name))
+        if src is None or dst is None or src == dst:
+            continue
+        chunk = by_paragraph.get(r.paragraph_id)
+        edge = upsert_relationship(
+            db, company_id=company_id, source_entity_id=src,
+            target_entity_id=dst, relationship_type=r.relationship_type,
+            # The model's confidence, not a corpus-relative score. Both are
+            # 0-1, and a graph rebuild recomputes strength for the edges it
+            # derives — `asserted` marks the ones it must not overwrite.
+            strength=r.confidence, observed_at=document.filed_at,
+            evidence_chunk_id=chunk.id if chunk else None,
+            document_ids=[document.id],
+            attributes={"asserted": True, "quote": r.quote,
+                        "paragraph_id": r.paragraph_id})
+        if edge is not None:
+            stats.relationships += 1
 
     add_timeline_event(db, company_id=company_id, kind="filing",
                        headline=f"{document.form_type} filed",
