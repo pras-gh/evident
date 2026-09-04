@@ -25,6 +25,7 @@ async def search(req: SearchRequest,
     model makes that non-optional.
     """
     from evident_retrieval.embed import default_provider
+    from evident_retrieval.rerank import rerank
 
     started = time.perf_counter()
     embedder = default_provider()
@@ -42,7 +43,9 @@ async def search(req: SearchRequest,
                    Chunk.embedding_provider == embedder.name,
                    Chunk.embedding_model == embedder.model)
             .order_by(distance)
-            .limit(req.k))
+            # over-fetch so re-ranking has room to move things; ordering by
+            # distance alone would fix the top k before recency is considered
+            .limit(req.k * 3))
     if req.ticker:
         stmt = stmt.join(Company, Company.id == Document.company_id).where(
             Company.ticker == req.ticker.upper())
@@ -57,6 +60,10 @@ async def search(req: SearchRequest,
         filed_at=d.filed_at, page_number=c.page_number,
         section_title=c.section_title, citation=c.citation(),
     ) for c, d, dist in rows]
+
+    # a near-tie goes to the newer filing: a risk disclosed in 2019 and
+    # restated in 2025 is mostly interesting in its 2025 form
+    hits = rerank(hits)[:req.k]
 
     return SearchResponse(query=req.query, hits=hits,
                           took_ms=round((time.perf_counter() - started) * 1000, 2),

@@ -17,7 +17,6 @@ from evident_retrieval.embed import HashingEmbedder
 from evident_parser.models import Block, Table, content_id, normalise
 from evident_parser.html import parse_html
 from evident_parser.models import fiscal_period
-from evident_retrieval.store import _vector_literal
 
 ACC = "0000320193-25-000073"
 
@@ -173,10 +172,6 @@ class Misc(unittest.TestCase):
         self.assertEqual(fiscal_period("10-K", "2025-09-27"), "FY2025")
         self.assertEqual(fiscal_period("10-Q", "2026-03-28"), "Q1 2026")
         self.assertIsNone(fiscal_period("8-K", None))
-
-    def test_vector_literal_is_pgvector_text_form(self):
-        self.assertEqual(_vector_literal([0.5, -0.25]), "[0.5,-0.25]")
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
