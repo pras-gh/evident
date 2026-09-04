@@ -83,6 +83,31 @@ handled.
 - 474 chunks ingested into a real database, and `tools/extract_live.py
   --dry-run` renders the exact request against them
 
+### The whole-pipeline test, and what it caught
+
+`tests/test_pipeline_e2e.py` runs the real thing end to end —
+**ingest -> extract -> persist -> `GET /v1/companies/NVDA/memory`** — with only
+the Claude call faked, and faked against real ingested data: the response cites
+paragraph ids read back out of the database after ingestion, so the citation
+guard is doing real work. A response citing invented ids would be dropped and
+the test would fail.
+
+It found a bug on its first run. `build_for_document` was sending **the entire
+filing in a single request** — every chunk's blocks in one call. A 474-chunk
+10-K is roughly 284K input tokens asking for entities across all 474 chunks
+against `max_tokens=16000`; the response truncates, gets rejected whole, and
+the filing stores nothing. Meanwhile `extract_document` and `submit_batch`
+already existed to chunk the work properly and **nothing called either of
+them**.
+
+It is now one request per chunk, which is also what makes the rejection
+semantics work as designed: one bad response costs that chunk, not the other
+473. `submit_batch` remains the half-price path for backfills.
+
+No per-stage test could have caught this. Each one builds its own fixtures
+rather than consuming the previous stage's output, so none of them ever handed
+the extractor a whole document.
+
 ### Found while doing this
 
 `build_for_document` had never run. It assigned `block.chunk_hash` onto a
