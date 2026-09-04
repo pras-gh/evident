@@ -1,6 +1,6 @@
-"""extraction_runs — one row per Claude call, response kept verbatim
+"""extraction_calls — one row per Claude call, response kept verbatim
 
-The benchmark table. Every request is recorded with the exact text that came
+The call log. One row per request, recorded with the exact text that came
 back, the prompt version and model that produced it, what it cost, and how many
 items survived validation.
 
@@ -21,6 +21,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 revision: str = "0007"
 down_revision: Union[str, None] = "0006"
@@ -30,9 +31,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.create_table(
-        "extraction_runs",
+        "extraction_calls",
         sa.Column("id", sa.BigInteger(), primary_key=True),
-        sa.Column("run_id", sa.String(64), nullable=False),
+        # the run this call belongs to; the run row carries the totals
+        sa.Column("run_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("company_id", sa.BigInteger(), nullable=False),
         sa.Column("document_id", sa.BigInteger(), nullable=False),
         sa.Column("chunk_id", sa.BigInteger(), nullable=True),
@@ -54,24 +56,24 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False,
                   server_default=sa.func.now()),
         sa.ForeignKeyConstraint(["company_id"], ["companies.id"], ondelete="CASCADE",
-                                name="fk_extraction_runs_company_id_companies"),
+                                name="fk_extraction_calls_company_id_companies"),
         sa.ForeignKeyConstraint(["document_id"], ["documents.id"], ondelete="CASCADE",
-                                name="fk_extraction_runs_document_id_documents"),
+                                name="fk_extraction_calls_document_id_documents"),
         sa.ForeignKeyConstraint(["chunk_id"], ["chunks.id"], ondelete="SET NULL",
-                                name="fk_extraction_runs_chunk_id_chunks"),
-        sa.PrimaryKeyConstraint("id", name="pk_extraction_runs"),
+                                name="fk_extraction_calls_chunk_id_chunks"),
+        sa.PrimaryKeyConstraint("id", name="pk_extraction_calls"),
         sa.UniqueConstraint("run_id", "chunk_id",
-                            name="uq_extraction_runs_run_id_chunk_id"),
+                            name="uq_extraction_calls_run_id_chunk_id"),
         sa.CheckConstraint("status in ('accepted','rejected')",
-                           name="ck_extraction_runs_status"),
+                           name="ck_extraction_calls_status"),
     )
-    op.create_index("ix_extraction_runs_run_id", "extraction_runs", ["run_id"])
-    op.create_index("ix_extraction_runs_company_id", "extraction_runs", ["company_id"])
-    op.create_index("ix_extraction_runs_document_id", "extraction_runs", ["document_id"])
-    op.create_index("ix_extraction_runs_chunk_id", "extraction_runs", ["chunk_id"])
-    op.create_index("ix_extraction_runs_run_id_status", "extraction_runs",
+    op.create_index("ix_extraction_calls_run_id", "extraction_calls", ["run_id"])
+    op.create_index("ix_extraction_calls_company_id", "extraction_calls", ["company_id"])
+    op.create_index("ix_extraction_calls_document_id", "extraction_calls", ["document_id"])
+    op.create_index("ix_extraction_calls_chunk_id", "extraction_calls", ["chunk_id"])
+    op.create_index("ix_extraction_calls_run_id_status", "extraction_calls",
                     ["run_id", "status"])
 
 
 def downgrade() -> None:
-    op.drop_table("extraction_runs")
+    op.drop_table("extraction_calls")

@@ -2,7 +2,8 @@
 from .base import Base
 from .models import (ALL_TABLES, EMBEDDING_DIM, ENTITY_KINDS,
                      RELATIONSHIP_KINDS, Chunk, Company, Document, Entity,
-                     EntityMention, ExtractionRun, MetricObservation, Relationship,
+                     EntityMention, ExtractionCall, ExtractionRun,
+                     MetricObservation, Relationship,
                      TimelineEvent)
 from .session import (async_session_factory, database_url, make_async_engine,
                       make_engine, session_scope)
@@ -10,7 +11,7 @@ from .session import (async_session_factory, database_url, make_async_engine,
 __version__ = "0.2.0"
 __all__ = ["Base", "ALL_TABLES", "EMBEDDING_DIM", "ENTITY_KINDS",
            "RELATIONSHIP_KINDS", "Chunk", "Company", "Document", "Entity",
-           "ExtractionRun",
+           "ExtractionCall", "ExtractionRun",
            "EntityMention", "MetricObservation", "Relationship",
            "TimelineEvent", "async_session_factory", "database_url",
            "make_async_engine", "make_engine", "session_scope"]

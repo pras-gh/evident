@@ -19,6 +19,38 @@ one real 10-K section  ->  N chunks  ->  N Claude calls
                               report: rates, tokens, cost
 ```
 
+## Two tables, two grains
+
+| table | grain | answers |
+|---|---|---|
+| `extraction_runs` | one row per run | what did this run cost, how much was accepted, how long did it take |
+| `extraction_calls` | one row per request | what exactly did the model return for chunk 7, and why was it refused |
+
+The run row is what gets compared across time; the call rows are what you read
+when a number on it looks wrong. Keeping them in one table would mean either
+losing the raw responses or re-aggregating fourteen rows to answer "what did
+this cost", and "acceptance rate" would quietly mean two different things
+depending on who was asking.
+
+`extraction_calls.run_id` is a foreign key to the run, so a deleted run takes
+its calls with it.
+
+### Two departures from the specified shape
+
+**`document_id` is BIGINT, not UUID.** Every primary key in this schema is
+BIGINT, `documents.id` included, so a UUID column could not reference it. The
+run's own `id` *is* a UUID, which is where it earns its keep: the caller
+generates it before the first request, so calls can reference their run while
+the run is still in flight.
+
+**`prompt_id` was added.** A rate change with no prompt change and no model
+change is a signal about the model; one where the prompt moved is a signal
+about the prompt. Recording only provider and model cannot tell those apart,
+and telling them apart is the whole reason to keep numbers over time.
+
+`cost_usd` is `NUMERIC(12,6)` and computed in `Decimal` end to end, because it
+is money — binary floating point produces totals that do not add up.
+
 ## Why the raw response is stored
 
 `extraction_runs` keeps the exact text Claude returned, per chunk, alongside
@@ -95,6 +127,13 @@ that a benchmark script works.
 - `--report-only` regenerates a report from stored rows with no API call
 
 ### Found while building it
+
+The run row was originally written inside the extraction transaction, so a
+crashed run rolled it back and left no trace — while the docstring claimed the
+opposite. It is now committed in its own transaction before the first request,
+and a run that dies leaves a row with `chunks_processed = 0` and a null
+`finished_at`. Verified by making the client raise mid-run.
+
 
 Rejected responses and dropped items were sharing one `reasons` list, so the
 worker logged `"rejected extraction: 'Ghost' cites paragraph 999_9"` — calling

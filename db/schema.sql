@@ -590,9 +590,9 @@ CREATE INDEX ix_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_o
 UPDATE alembic_version SET version_num='0006' WHERE alembic_version.version_num = '0005';
 
 
-CREATE TABLE extraction_runs (
+CREATE TABLE extraction_calls (
     id BIGSERIAL NOT NULL, 
-    run_id VARCHAR(64) NOT NULL, 
+    run_id UUID NOT NULL, 
     company_id BIGINT NOT NULL, 
     document_id BIGINT NOT NULL, 
     chunk_id BIGINT, 
@@ -612,24 +612,54 @@ CREATE TABLE extraction_runs (
     relationships_returned INTEGER DEFAULT '0' NOT NULL, 
     relationships_kept INTEGER DEFAULT '0' NOT NULL, 
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
-    CONSTRAINT pk_extraction_runs PRIMARY KEY (id), 
-    CONSTRAINT fk_extraction_runs_company_id_companies FOREIGN KEY(company_id) REFERENCES companies (id) ON DELETE CASCADE, 
-    CONSTRAINT fk_extraction_runs_document_id_documents FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE, 
-    CONSTRAINT fk_extraction_runs_chunk_id_chunks FOREIGN KEY(chunk_id) REFERENCES chunks (id) ON DELETE SET NULL, 
-    CONSTRAINT uq_extraction_runs_run_id_chunk_id UNIQUE (run_id, chunk_id), 
-    CONSTRAINT ck_extraction_runs_ck_extraction_runs_status CHECK (status in ('accepted','rejected'))
+    CONSTRAINT pk_extraction_calls PRIMARY KEY (id), 
+    CONSTRAINT fk_extraction_calls_company_id_companies FOREIGN KEY(company_id) REFERENCES companies (id) ON DELETE CASCADE, 
+    CONSTRAINT fk_extraction_calls_document_id_documents FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE, 
+    CONSTRAINT fk_extraction_calls_chunk_id_chunks FOREIGN KEY(chunk_id) REFERENCES chunks (id) ON DELETE SET NULL, 
+    CONSTRAINT uq_extraction_calls_run_id_chunk_id UNIQUE (run_id, chunk_id), 
+    CONSTRAINT ck_extraction_calls_ck_extraction_calls_status CHECK (status in ('accepted','rejected'))
 );
 
-CREATE INDEX ix_extraction_runs_run_id ON extraction_runs (run_id);
+CREATE INDEX ix_extraction_calls_run_id ON extraction_calls (run_id);
 
-CREATE INDEX ix_extraction_runs_company_id ON extraction_runs (company_id);
+CREATE INDEX ix_extraction_calls_company_id ON extraction_calls (company_id);
+
+CREATE INDEX ix_extraction_calls_document_id ON extraction_calls (document_id);
+
+CREATE INDEX ix_extraction_calls_chunk_id ON extraction_calls (chunk_id);
+
+CREATE INDEX ix_extraction_calls_run_id_status ON extraction_calls (run_id, status);
+
+UPDATE alembic_version SET version_num='0007' WHERE alembic_version.version_num = '0006';
+
+
+CREATE TABLE extraction_runs (
+    id UUID NOT NULL, 
+    provider VARCHAR(64) NOT NULL, 
+    model VARCHAR(64) NOT NULL, 
+    prompt_id VARCHAR(64), 
+    document_id BIGINT NOT NULL, 
+    chunks_processed INTEGER DEFAULT '0' NOT NULL, 
+    chunks_accepted INTEGER DEFAULT '0' NOT NULL, 
+    chunks_rejected INTEGER DEFAULT '0' NOT NULL, 
+    cached_input_tokens INTEGER DEFAULT '0' NOT NULL, 
+    input_tokens INTEGER DEFAULT '0' NOT NULL, 
+    output_tokens INTEGER DEFAULT '0' NOT NULL, 
+    cost_usd NUMERIC(12, 6) DEFAULT '0' NOT NULL, 
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    finished_at TIMESTAMP WITH TIME ZONE, 
+    CONSTRAINT pk_extraction_runs PRIMARY KEY (id), 
+    CONSTRAINT fk_extraction_runs_document_id_documents FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE, 
+    CONSTRAINT ck_extraction_runs_ck_extraction_runs_chunk_counts CHECK (chunks_accepted + chunks_rejected <= chunks_processed), 
+    CONSTRAINT ck_extraction_runs_ck_extraction_runs_cost_usd CHECK (cost_usd >= 0)
+);
 
 CREATE INDEX ix_extraction_runs_document_id ON extraction_runs (document_id);
 
-CREATE INDEX ix_extraction_runs_chunk_id ON extraction_runs (chunk_id);
+CREATE INDEX ix_extraction_runs_document_id_started_at ON extraction_runs (document_id, started_at);
 
-CREATE INDEX ix_extraction_runs_run_id_status ON extraction_runs (run_id, status);
+ALTER TABLE extraction_calls ADD CONSTRAINT fk_extraction_calls_run_id_extraction_runs FOREIGN KEY(run_id) REFERENCES extraction_runs (id) ON DELETE CASCADE;
 
-UPDATE alembic_version SET version_num='0007' WHERE alembic_version.version_num = '0006';
+UPDATE alembic_version SET version_num='0008' WHERE alembic_version.version_num = '0007';
 
 COMMIT;
