@@ -17,7 +17,6 @@ from evident_retrieval.embed import HashingEmbedder
 from evident_parser.models import Block, Table, content_id, normalise
 from evident_parser.html import parse_html
 from evident_parser.models import fiscal_period
-from evident_retrieval.store import _vector_literal
 
 ACC = "0000320193-25-000073"
 
@@ -149,21 +148,23 @@ class Embedding(unittest.TestCase):
         self.e = HashingEmbedder(dim=256)
 
     def test_is_deterministic(self):
-        a = self.e.embed(["capital expenditure"]).vectors[0]
-        b = self.e.embed(["capital expenditure"]).vectors[0]
+        a = self.e.embed(["capital expenditure"])[0]
+        b = self.e.embed(["capital expenditure"])[0]
         self.assertEqual(a, b)
 
     def test_reports_its_provenance(self):
-        batch = self.e.embed(["x"])
-        self.assertEqual((batch.provider, batch.model, batch.dim),
+        # provenance moved onto the provider: `embed` returns plain vectors,
+        # but the row still records what produced it
+        self.assertEqual((self.e.name, self.e.model, self.e.dim),
                          ("local", "hashing-v1", 256))
+        self.assertEqual(len(self.e.embed(["x"])[0]), 256)
 
     def test_vectors_are_unit_length(self):
-        v = self.e.embed(["data centre capacity expansion"]).vectors[0]
+        v = self.e.embed(["data centre capacity expansion"])[0]
         self.assertAlmostEqual(sum(x * x for x in v) ** 0.5, 1.0, places=6)
 
     def test_one_vector_per_input(self):
-        self.assertEqual(len(self.e.embed(["a", "b", "c"]).vectors), 3)
+        self.assertEqual(len(self.e.embed(["a", "b", "c"])), 3)
 
 
 class Misc(unittest.TestCase):
@@ -171,10 +172,6 @@ class Misc(unittest.TestCase):
         self.assertEqual(fiscal_period("10-K", "2025-09-27"), "FY2025")
         self.assertEqual(fiscal_period("10-Q", "2026-03-28"), "Q1 2026")
         self.assertIsNone(fiscal_period("8-K", None))
-
-    def test_vector_literal_is_pgvector_text_form(self):
-        self.assertEqual(_vector_literal([0.5, -0.25]), "[0.5,-0.25]")
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

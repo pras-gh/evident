@@ -30,7 +30,10 @@ from evident_graph.taxonomy import check_constraint
 
 from .base import Base, created_at, str16, str64, str255, updated_at
 
-EMBEDDING_DIM = 1536
+#: The one width every supported embedding provider can emit. It is 1024
+#: because `voyage-finance-2` is 1024-only; OpenAI shortens to match. Changing
+#: it means a migration and a full re-embed, never a constant edit.
+EMBEDDING_DIM = 1024
 
 
 # `strategy` is in the graph contract's node types, so it is a first-class kind

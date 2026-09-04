@@ -8,3 +8,10 @@ fastapi>=0.115
 uvicorn[standard]>=0.32
 pydantic>=2.9
 httpx>=0.27
+
+# Embedding providers. Both are optional: the module imports them lazily and
+# raises a message naming the missing package, so installing only the one you
+# configured is fine. Neither is needed for the test suite, which drives fake
+# clients.
+voyageai>=0.3        # EMBEDDING_PROVIDER=voyage  (default)
+openai>=1.60         # EMBEDDING_PROVIDER=openai  (fallback)

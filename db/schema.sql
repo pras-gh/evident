@@ -578,4 +578,15 @@ CREATE INDEX ix_relationships_company_id_relationship_type ON relationships (com
 
 UPDATE alembic_version SET version_num='0005' WHERE alembic_version.version_num = '0004';
 
+
+DROP INDEX ix_chunks_embedding;
+
+update chunks set embedding = null, embedding_provider = null, embedding_model = null where embedding is not null;
+
+ALTER TABLE chunks ALTER COLUMN embedding TYPE VECTOR(1024) USING null;
+
+CREATE INDEX ix_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
+
+UPDATE alembic_version SET version_num='0006' WHERE alembic_version.version_num = '0005';
+
 COMMIT;
