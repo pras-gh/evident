@@ -51,12 +51,16 @@ class ExtractionRejected(RuntimeError):
     """
 
     def __init__(self, reason: str, *, stop_reason: str | None = None,
-                 raw: str | None = None):
+                 raw: str | None = None, usage: "Usage | None" = None):
         super().__init__(reason)
         self.reason = reason
         self.stop_reason = stop_reason
         # kept for diagnosis, never parsed further
         self.raw = raw
+        # A rejected response was still generated and still billed. Dropping
+        # its tokens from the accounting would understate the cost of exactly
+        # the runs you most want to notice.
+        self.usage = usage
 
 
 @dataclass(slots=True)
@@ -76,11 +80,40 @@ class DropReport:
 
 
 @dataclass(slots=True)
+class Usage:
+    """Token accounting, summed across requests.
+
+    `cache_read` is the number that answers "is prompt caching actually
+    working". It is reported rather than assumed, because the cached prefix
+    only engages above roughly 1024 tokens and a prompt that falls just under
+    caches nothing while looking exactly like one that does.
+    """
+    requests: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read: int = 0
+    cache_created: int = 0
+
+    def add(self, usage: Any) -> None:
+        self.requests += 1
+        self.input_tokens += getattr(usage, "input_tokens", 0) or 0
+        self.output_tokens += getattr(usage, "output_tokens", 0) or 0
+        self.cache_read += getattr(usage, "cache_read_input_tokens", 0) or 0
+        self.cache_created += getattr(usage, "cache_creation_input_tokens", 0) or 0
+
+    @property
+    def hit_rate(self) -> float:
+        total = self.cache_read + self.input_tokens + self.cache_created
+        return self.cache_read / total if total else 0.0
+
+
+@dataclass(slots=True)
 class Extraction:
     """One chunk's worth of validated output."""
     entities: list[ExtractedEntity] = field(default_factory=list)
     relationships: list[ExtractedRelationship] = field(default_factory=list)
     report: DropReport = field(default_factory=DropReport)
+    usage: Usage = field(default_factory=Usage)
 
 
 def drop_uncited(items: Sequence[Any], valid_ids: set[str],
@@ -266,14 +299,24 @@ def extract_from_blocks(
 
     response = _client(client).messages.create(
         **request_params(blocks, max_tokens=max_tokens, effort=effort))
-    parsed = parse_response(response)
+
+    # Counted before parsing, so a rejected response still reports what it cost.
+    usage = Usage()
+    if getattr(response, "usage", None) is not None:
+        usage.add(response.usage)
+
+    try:
+        parsed = parse_response(response)
+    except ExtractionRejected as exc:
+        exc.usage = usage
+        raise
 
     valid = {b.paragraph_id for b in blocks}
     report = DropReport()
     entities = validate_entities(parsed.entities, valid, report)
     relationships = validate_relationships(parsed.relationships, entities,
                                            valid, report)
-    return Extraction(entities, relationships, report)
+    return Extraction(entities, relationships, report, usage)
 
 
 def extract_document(
@@ -282,7 +325,7 @@ def extract_document(
     client: Any | None = None,
     max_tokens: int = MAX_TOKENS,
     effort: str | None = None,
-) -> tuple[dict[str, Extraction], DropReport]:
+) -> tuple[dict[str, Extraction], DropReport, Usage]:
     """Every chunk of a document, one call each, rejections survived.
 
     The synchronous path. For backfilling a whole filing, `submit_batch` is
@@ -290,6 +333,7 @@ def extract_document(
     """
     out: dict[str, Extraction] = {}
     overall = DropReport()
+    total = Usage()
     for key, blocks in groups.items():
         try:
             result = extract_from_blocks(blocks, client=client,
@@ -297,13 +341,24 @@ def extract_document(
         except ExtractionRejected as exc:
             overall.rejected += 1
             overall.reasons.append(f"{key}: {exc.reason}")
+            if exc.usage is not None:
+                total.requests += exc.usage.requests
+                total.input_tokens += exc.usage.input_tokens
+                total.output_tokens += exc.usage.output_tokens
+                total.cache_read += exc.usage.cache_read
+                total.cache_created += exc.usage.cache_created
             continue
         out[key] = result
         overall.kept += result.report.kept
         overall.dropped += result.report.dropped
         overall.bad_ids += result.report.bad_ids
         overall.reasons += [f"{key}: {r}" for r in result.report.reasons]
-    return out, overall
+        total.requests += result.usage.requests
+        total.input_tokens += result.usage.input_tokens
+        total.output_tokens += result.usage.output_tokens
+        total.cache_read += result.usage.cache_read
+        total.cache_created += result.usage.cache_created
+    return out, overall, total
 
 
 def submit_batch(groups: dict[str, Sequence[Block]], *,
@@ -359,6 +414,12 @@ def collect_batch(results: Iterable[Any], groups: dict[str, Sequence[Block]],
         except ExtractionRejected as exc:
             overall.rejected += 1
             overall.reasons.append(f"{key}: {exc.reason}")
+            if exc.usage is not None:
+                total.requests += exc.usage.requests
+                total.input_tokens += exc.usage.input_tokens
+                total.output_tokens += exc.usage.output_tokens
+                total.cache_read += exc.usage.cache_read
+                total.cache_created += exc.usage.cache_created
             continue
 
         valid = {b.paragraph_id for b in blocks}

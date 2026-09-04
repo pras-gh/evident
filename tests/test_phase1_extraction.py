@@ -233,6 +233,9 @@ class _Response:
     def __init__(self, payload, *, stop_reason="end_turn", thinking=True,
                  raw=None, stop_details=None):
         text = raw if raw is not None else json.dumps(payload)
+        self.usage = type("U", (), {"input_tokens": 100, "output_tokens": 50,
+                                    "cache_read_input_tokens": 0,
+                                    "cache_creation_input_tokens": 0})()
         self.content = [_Text(text)]
         if thinking:   # responses lead with thinking; JSON is not at index 0
             self.content.insert(0, type("T", (), {"type": "thinking"})())
@@ -351,10 +354,14 @@ class EndToEnd(unittest.TestCase):
         groups = {"a": self.blocks, "b": self.blocks}
         client = _Client(_Response(None, stop_reason="max_tokens", raw="{"),
                          _Response({"entities": [ent()]}))
-        out, report = extract_document(groups, client=client)
+        out, report, usage = extract_document(groups, client=client)
         self.assertEqual(list(out), ["b"])
         self.assertEqual(report.rejected, 1)
         self.assertIn("a:", " ".join(report.reasons))
+        # both chunks are counted: the rejected one was still generated and
+        # still billed, and hiding that would understate exactly the runs you
+        # most want to notice
+        self.assertEqual(usage.requests, 2)
 
 
 class Batch(unittest.TestCase):
