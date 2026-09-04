@@ -26,8 +26,9 @@ signal that a prompt or model change has started inventing things.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Sequence
+from typing import Any, Callable, Iterable, Sequence
 
 from evident_graph.taxonomy import slug as slugify
 from evident_parser.models import Block
@@ -51,7 +52,8 @@ class ExtractionRejected(RuntimeError):
     """
 
     def __init__(self, reason: str, *, stop_reason: str | None = None,
-                 raw: str | None = None, usage: "Usage | None" = None):
+                 raw: str | None = None, usage: "Usage | None" = None,
+                 latency_ms: int | None = None, stop: str | None = None):
         super().__init__(reason)
         self.reason = reason
         self.stop_reason = stop_reason
@@ -61,6 +63,7 @@ class ExtractionRejected(RuntimeError):
         # its tokens from the accounting would understate the cost of exactly
         # the runs you most want to notice.
         self.usage = usage
+        self.latency_ms = latency_ms
 
 
 @dataclass(slots=True)
@@ -69,9 +72,14 @@ class DropReport:
     kept: int = 0
     dropped: int = 0
     bad_ids: list[str] = field(default_factory=list)
+    #: why individual items were dropped
     reasons: list[str] = field(default_factory=list)
-    #: whole responses rejected — distinct from individual items dropped
+    #: whole responses rejected — distinct from individual items dropped, and
+    #: kept in its own list because the two have different causes and different
+    #: fixes. A log that calls a dropped citation a "rejected response" sends
+    #: someone looking for a truncation that never happened.
     rejected: int = 0
+    rejections: list[str] = field(default_factory=list)
 
     @property
     def drop_rate(self) -> float:
@@ -114,6 +122,13 @@ class Extraction:
     relationships: list[ExtractedRelationship] = field(default_factory=list)
     report: DropReport = field(default_factory=DropReport)
     usage: Usage = field(default_factory=Usage)
+    #: exactly what came back, kept so a schema change can be replayed offline
+    raw: str | None = None
+    stop_reason: str | None = None
+    latency_ms: int | None = None
+    #: returned vs kept is the acceptance rate for this chunk
+    entities_returned: int = 0
+    relationships_returned: int = 0
 
 
 def drop_uncited(items: Sequence[Any], valid_ids: set[str],
@@ -297,18 +312,26 @@ def extract_from_blocks(
     if not blocks:
         return Extraction()
 
+    started = time.perf_counter()
     response = _client(client).messages.create(
         **request_params(blocks, max_tokens=max_tokens, effort=effort))
+    latency_ms = int((time.perf_counter() - started) * 1000)
 
     # Counted before parsing, so a rejected response still reports what it cost.
     usage = Usage()
     if getattr(response, "usage", None) is not None:
         usage.add(response.usage)
 
+    stop = getattr(response, "stop_reason", None)
+    raw = next((b.text for b in response.content if b.type == "text"), None)
+
     try:
         parsed = parse_response(response)
     except ExtractionRejected as exc:
         exc.usage = usage
+        exc.latency_ms = latency_ms
+        if exc.raw is None:
+            exc.raw = raw
         raise
 
     valid = {b.paragraph_id for b in blocks}
@@ -316,7 +339,10 @@ def extract_from_blocks(
     entities = validate_entities(parsed.entities, valid, report)
     relationships = validate_relationships(parsed.relationships, entities,
                                            valid, report)
-    return Extraction(entities, relationships, report, usage)
+    return Extraction(entities, relationships, report, usage, raw=raw,
+                      stop_reason=stop, latency_ms=latency_ms,
+                      entities_returned=len(parsed.entities),
+                      relationships_returned=len(parsed.relationships))
 
 
 def extract_document(
@@ -325,8 +351,14 @@ def extract_document(
     client: Any | None = None,
     max_tokens: int = MAX_TOKENS,
     effort: str | None = None,
+    on_result: "Callable[[str, Extraction | ExtractionRejected], None] | None" = None,
 ) -> tuple[dict[str, Extraction], DropReport, Usage]:
     """Every chunk of a document, one call each, rejections survived.
+
+    `on_result` is called once per chunk with either the `Extraction` or the
+    `ExtractionRejected` — so a benchmark can record what came back, including
+    the raw text of a response that failed, without reimplementing the loop or
+    the persistence that follows it.
 
     The synchronous path. For backfilling a whole filing, `submit_batch` is
     half the price and nothing about a 2019 10-K is latency-sensitive.
@@ -339,8 +371,10 @@ def extract_document(
             result = extract_from_blocks(blocks, client=client,
                                          max_tokens=max_tokens, effort=effort)
         except ExtractionRejected as exc:
+            if on_result is not None:
+                on_result(key, exc)
             overall.rejected += 1
-            overall.reasons.append(f"{key}: {exc.reason}")
+            overall.rejections.append(f"{key}: {exc.reason}")
             if exc.usage is not None:
                 total.requests += exc.usage.requests
                 total.input_tokens += exc.usage.input_tokens
@@ -348,6 +382,8 @@ def extract_document(
                 total.cache_read += exc.usage.cache_read
                 total.cache_created += exc.usage.cache_created
             continue
+        if on_result is not None:
+            on_result(key, result)
         out[key] = result
         overall.kept += result.report.kept
         overall.dropped += result.report.dropped
@@ -381,6 +417,8 @@ def submit_batch(groups: dict[str, Sequence[Block]], *,
 
 
 def collect_batch(results: Iterable[Any], groups: dict[str, Sequence[Block]],
+                  *,
+                  on_result: "Callable[[str, Extraction | ExtractionRejected], None] | None" = None,
                   ) -> tuple[dict[str, Extraction], DropReport]:
     """Match batch results back to their groups.
 
@@ -396,24 +434,26 @@ def collect_batch(results: Iterable[Any], groups: dict[str, Sequence[Block]],
         blocks = groups.get(key)
         if blocks is None:
             overall.rejected += 1
-            overall.reasons.append(f"batch returned unknown custom_id {key!r}")
+            overall.rejections.append(f"batch returned unknown custom_id {key!r}")
             continue
         if result.result.type != "succeeded":
             overall.rejected += 1
-            overall.reasons.append(f"{key}: batch request {result.result.type}")
+            overall.rejections.append(f"{key}: batch request {result.result.type}")
             continue
         message = getattr(result.result, "message", None)
         if message is None:
             # a succeeded result should always carry one; if it does not, that
             # is a rejection rather than an exception that kills the batch
             overall.rejected += 1
-            overall.reasons.append(f"{key}: succeeded result carried no message")
+            overall.rejections.append(f"{key}: succeeded result carried no message")
             continue
         try:
             parsed = parse_response(message)
         except ExtractionRejected as exc:
+            if on_result is not None:
+                on_result(key, exc)
             overall.rejected += 1
-            overall.reasons.append(f"{key}: {exc.reason}")
+            overall.rejections.append(f"{key}: {exc.reason}")
             if exc.usage is not None:
                 total.requests += exc.usage.requests
                 total.input_tokens += exc.usage.input_tokens
@@ -427,7 +467,10 @@ def collect_batch(results: Iterable[Any], groups: dict[str, Sequence[Block]],
         entities = validate_entities(parsed.entities, valid, report)
         relationships = validate_relationships(parsed.relationships, entities,
                                                valid, report)
-        out[key] = Extraction(entities, relationships, report)
+        result = Extraction(entities, relationships, report)
+        if on_result is not None:
+            on_result(key, result)
+        out[key] = result
         overall.kept += report.kept
         overall.dropped += report.dropped
         overall.bad_ids += report.bad_ids

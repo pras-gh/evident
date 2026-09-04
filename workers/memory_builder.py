@@ -62,13 +62,18 @@ class BuildStats:
 def build_for_document(db: Session, *, company_id: int, document: Document,
                        client: Any | None = None,
                        stats: BuildStats | None = None,
-                       limit: int | None = None) -> BuildStats:
+                       limit: int | None = None,
+                       on_result=None) -> BuildStats:
     """Extract one document into memory.
 
     `limit` caps how many chunks are sent, for a cheap first run against the
     real API. It is a real parameter rather than a caller-side slice because
     this function owns the chunk query; slicing outside it would silently do
     nothing.
+
+    `on_result(paragraph_id, Extraction | ExtractionRejected)` fires per chunk,
+    so a benchmark can record what came back without a second copy of this
+    function drifting away from the one production runs.
     """
     stats = stats or BuildStats()
     stmt = (select(Chunk).where(Chunk.document_id == document.id)
@@ -99,7 +104,8 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     # This is the synchronous path. `submit_batch` is half the price for
     # backfills and nothing about a 2019 filing is latency-sensitive.
     groups = {b.paragraph_id: [b] for b in blocks}
-    per_chunk, report, usage = extract_document(groups, client=client)
+    per_chunk, report, usage = extract_document(groups, client=client,
+                                               on_result=on_result)
 
     stats.responses_rejected += report.rejected
     stats.requests += usage.requests
@@ -107,8 +113,8 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     stats.output_tokens += usage.output_tokens
     stats.cache_read += usage.cache_read
     stats.cache_created += usage.cache_created
-    for reason in report.reasons[:5] if report.rejected else []:
-        log.error("rejected extraction in %s: %s", document.accession, reason)
+    for reason in report.rejections[:5]:
+        log.error("rejected response in %s: %s", document.accession, reason)
 
     extracted = [e for r in per_chunk.values() for e in r.entities]
     relationships = [rel for r in per_chunk.values() for rel in r.relationships]
