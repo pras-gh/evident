@@ -348,5 +348,61 @@ class Relationship(Base):
     updated_at: Mapped[updated_at]
 
 
+class ExtractionRun(Base):
+    """One Claude call, kept verbatim.
+
+    The raw response is stored because three questions are otherwise
+    unanswerable. Whether a schema change would have caught more entities —
+    replayable offline against these rows, for free. Whether a drop-rate change
+    came from the prompt or the model — both versions are on the row. And
+    whether a wrong entity in the graph was the model's error or ours — without
+    the original text those are indistinguishable, so the pipeline gets blamed
+    for prompt problems and vice versa.
+
+    Rejected responses are stored too. A response that failed to parse is the
+    most useful artefact there is when working out why.
+    """
+    __tablename__ = "extraction_runs"
+    __table_args__ = (
+        UniqueConstraint("run_id", "chunk_id", name="uq_extraction_runs_run_id_chunk_id"),
+        CheckConstraint("status in ('accepted','rejected')", name="status"),
+        Index("ix_extraction_runs_run_id_status", "run_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    #: groups the chunks of one benchmark run, so runs can be compared
+    run_id: Mapped[str64] = mapped_column(index=True)
+    company_id: Mapped[int] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    document_id: Mapped[int] = mapped_column(
+        ForeignKey("documents.id", ondelete="CASCADE"), index=True)
+    chunk_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey("chunks.id", ondelete="SET NULL"), index=True)
+
+    #: name@version — a prompt change must be visible as the cause of a rate change
+    prompt_id: Mapped[str64]
+    model: Mapped[str64]
+
+    status: Mapped[str16]
+    rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+    stop_reason: Mapped[Optional[str16]]
+    #: exactly what came back, unparsed
+    raw_response: Mapped[Optional[str]] = mapped_column(Text)
+
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    cache_created_tokens: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    latency_ms: Mapped[Optional[int]]
+
+    # returned vs kept is the acceptance rate, per chunk
+    entities_returned: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    entities_kept: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    relationships_returned: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    relationships_kept: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+
+    created_at: Mapped[created_at]
+
+
 ALL_TABLES = (Company, Document, Chunk, Entity, EntityMention, Relationship,
-              TimelineEvent, MetricObservation)
+              TimelineEvent, MetricObservation, ExtractionRun)

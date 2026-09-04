@@ -64,3 +64,53 @@ missed entity matters most, because it is where the company writes down what
 could go wrong.
 
 The paragraphs are unedited. Sections are the filing's own risk headings.
+
+## Running it
+
+```bash
+export ANTHROPIC_API_KEY=...
+export DATABASE_URL=postgresql+psycopg://localhost/evident
+python tools/benchmark.py --seed            # ingest the corpus, then extract it
+python tools/benchmark.py --report-only     # re-render, no API calls
+```
+
+`--seed` ingests the corpus over a local origin, so the run needs no sec.gov
+access. It produces **14 chunks**. The report lands in `docs/benchmarks/<run
+id>.md`; commit it, because a benchmark that exists only on the machine that
+produced it cannot be compared with anything.
+
+The tool drives `build_for_document` with a recorder attached rather than
+reimplementing extraction, so a green benchmark says the pipeline works, not
+that a benchmark script works.
+
+## Verified
+
+- migration `0007` applied; `db/schema.sql` and `alembic upgrade head` produce
+  identical 10-table schemas
+- the corpus ingests to 14 chunks from 32 verbatim Risk Factors paragraphs
+- 210 tests pass
+- the recorder fires for accepted *and* rejected chunks, and a rejection
+  carries its raw text, latency and token cost — a response that failed to
+  parse is the most useful artefact there is when working out why
+- `--report-only` regenerates a report from stored rows with no API call
+
+### Found while building it
+
+Rejected responses and dropped items were sharing one `reasons` list, so the
+worker logged `"rejected extraction: 'Ghost' cites paragraph 999_9"` — calling
+a dropped citation a rejected response. They have different causes and
+different fixes, and that log would send someone hunting a truncation that
+never happened. `DropReport.rejections` is now separate from
+`DropReport.reasons`.
+
+## Not run
+
+No API call has been made — there are still no Anthropic credentials in this
+environment. The tool was exercised against a stub that returns varied
+confidences, one truncated response and one hallucinated citation, which proved
+the rows are written, the rates compute, the rejection path records its raw
+text, and the report renders every branch.
+
+That is the instrument working. **There is no benchmark yet** — the numbers a
+stub produces are not a measurement of anything, and no report has been
+committed for exactly that reason.

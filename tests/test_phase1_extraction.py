@@ -357,11 +357,63 @@ class EndToEnd(unittest.TestCase):
         out, report, usage = extract_document(groups, client=client)
         self.assertEqual(list(out), ["b"])
         self.assertEqual(report.rejected, 1)
-        self.assertIn("a:", " ".join(report.reasons))
+        self.assertIn("a:", " ".join(report.rejections))
         # both chunks are counted: the rejected one was still generated and
         # still billed, and hiding that would understate exactly the runs you
         # most want to notice
         self.assertEqual(usage.requests, 2)
+
+
+class Recording(unittest.TestCase):
+    """The hook the benchmark uses to record what came back."""
+
+    def setUp(self):
+        self.blocks = [Block(paragraph_id="7_1", ordinal=0, page_number=7,
+                             text="NVIDIA invests in AI infrastructure.")]
+
+    def test_fires_for_accepted_and_rejected_alike(self):
+        # a response that failed is the most useful artefact there is when
+        # working out why, so it must reach the recorder too
+        seen = []
+        client = _Client(_Response(None, stop_reason="max_tokens", raw="{"),
+                         _Response({"entities": [ent()]}))
+        out, report, usage = extract_document(
+            {"a": self.blocks, "b": self.blocks}, client=client,
+            on_result=lambda key, r: seen.append((key, type(r).__name__)))
+        self.assertEqual([k for k, _ in seen], ["a", "b"])
+        self.assertEqual(
+            {n for _, n in seen}, {"ExtractionRejected", "Extraction"})
+
+    def test_an_extraction_carries_what_a_benchmark_needs(self):
+        client = _Client(_Response({"entities": [ent(), ent(name="China",
+                                                          entity_type="geography")]}))
+        out = extract_from_blocks(self.blocks, client=client)
+        self.assertIsNotNone(out.raw, "the raw response must be kept verbatim")
+        self.assertEqual(out.entities_returned, 2)
+        self.assertEqual(len(out.entities), 2)
+        self.assertEqual(out.stop_reason, "end_turn")
+        self.assertIsNotNone(out.latency_ms)
+
+    def test_a_rejection_carries_its_raw_text_and_cost(self):
+        client = _Client(_Response(None, stop_reason="max_tokens", raw='{"ent'))
+        with self.assertRaises(ExtractionRejected) as ctx:
+            extract_from_blocks(self.blocks, client=client)
+        exc = ctx.exception
+        self.assertEqual(exc.raw, '{"ent')
+        self.assertIsNotNone(exc.latency_ms)
+        self.assertEqual(exc.usage.requests, 1)
+
+    def test_dropped_items_are_not_reported_as_rejected_responses(self):
+        # they have different causes and different fixes; a log calling a
+        # dropped citation a rejected response sends someone hunting a
+        # truncation that never happened
+        client = _Client(_Response({"entities": [
+            ent(), ent(name="Ghost", paragraph_id="99_9")]}))
+        out, report, usage = extract_document({"a": self.blocks}, client=client)
+        self.assertEqual(report.rejected, 0)
+        self.assertEqual(report.rejections, [])
+        self.assertEqual(report.dropped, 1)
+        self.assertIn("Ghost", " ".join(report.reasons))
 
 
 class Batch(unittest.TestCase):
