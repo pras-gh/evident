@@ -19,7 +19,7 @@ from dataclasses import dataclass
 
 from evident_db import EMBEDDING_DIM, session_scope
 from evident_db.repositories import chunks_without_embeddings, set_embeddings
-from evident_retrieval.embed import Embedder, default_embedder
+from evident_retrieval.embed import EmbeddingProvider, default_provider
 
 log = logging.getLogger("evident.embedding_worker")
 
@@ -32,13 +32,13 @@ class EmbedResult:
     model: str
 
 
-def run(*, url: str | None = None, embedder: Embedder | None = None,
+def run(*, url: str | None = None, embedder: EmbeddingProvider | None = None,
         batch_size: int = 128, max_chunks: int | None = None,
         company_id: int | None = None) -> EmbedResult:
-    embedder = embedder or default_embedder()
+    embedder = embedder or default_provider()
     if embedder.dim != EMBEDDING_DIM:
         raise ValueError(
-            f"{embedder.provider}/{embedder.model} produces dim {embedder.dim}, "
+            f"{embedder.name}/{embedder.model} produces dim {embedder.dim}, "
             f"but chunks.embedding is vector({EMBEDDING_DIM}). Add a migration "
             f"for the new dimension rather than writing vectors that will not "
             f"index correctly."
@@ -55,21 +55,21 @@ def run(*, url: str | None = None, embedder: Embedder | None = None,
             if not pending:
                 break
 
-            result = embedder.embed([c.text for c in pending])
-            if len(result.vectors) != len(pending):
+            vectors = embedder.embed([c.text for c in pending])
+            if len(vectors) != len(pending):
                 raise RuntimeError(
-                    f"embedder returned {len(result.vectors)} vectors for "
+                    f"embedder returned {len(vectors)} vectors for "
                     f"{len(pending)} chunks — refusing to write a misaligned batch"
                 )
             embedded += set_embeddings(
-                db, zip((c.id for c in pending), result.vectors),
-                provider=result.provider, model=result.model)
+                db, zip((c.id for c in pending), vectors),
+                provider=embedder.name, model=embedder.model)
             batches += 1
             db.flush()
             log.info("embedded batch %d (%d chunks) via %s/%s",
-                     batches, len(pending), result.provider, result.model)
+                     batches, len(pending), embedder.name, embedder.model)
 
-    return EmbedResult(embedded, batches, embedder.provider, embedder.model)
+    return EmbedResult(embedded, batches, embedder.name, embedder.model)
 
 
 if __name__ == "__main__":

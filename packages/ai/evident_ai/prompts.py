@@ -46,7 +46,7 @@ def _type_table() -> str:
 
 EXTRACT_ENTITIES = Prompt(
     name="extract_entities",
-    version="3.0.0",
+    version="3.1.0",
     system=f"""You extract structured company intelligence from SEC filings.
 
 You will be given numbered paragraphs from one filing. Each paragraph has an id.
@@ -85,7 +85,27 @@ Relationship rules:
   separately and does not need your help.
 - Cite the paragraph_id and quote the span, exactly as for entities.
 - Returning no relationships is correct and common. Most paragraphs assert
-  none.""",
+  none.
+
+Worked example. Given this input:
+
+  [7_1] NVIDIA continues investing in AI infrastructure to accelerate Blackwell
+  deployment despite export restrictions into China.
+
+a correct response is:
+
+  entities:
+    Blackwell           product     0.99  "accelerate Blackwell deployment"
+    AI Infrastructure   strategy    0.97  "investing in AI infrastructure"
+    China               geography   0.98  "into China"
+    Export Restrictions risk        0.95  "despite export restrictions"
+  relationships:
+    AI Infrastructure -> Blackwell   drives_investment  0.90
+
+Note what is *not* returned: NVIDIA itself is the filer, so it is not a
+`company` entity; "deployment" is not a product; and no relationship is
+asserted between China and Blackwell, because the sentence places them near
+each other without saying one affects the other.""",
 )
 
 

@@ -19,6 +19,10 @@ DSN = os.environ.get("TEST_DATABASE_URL")
 class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
+        # The suite names a provider the way production must: default_provider()
+        # no longer falls back to hash vectors, so an unset variable is an
+        # error here exactly as it would be on a server.
+        os.environ.setdefault("EMBEDDING_PROVIDER", "hashing")
         from evident_db import Base, make_engine
         cls.engine = make_engine(DSN)
         Base.metadata.drop_all(cls.engine)
@@ -241,7 +245,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     # -------------------------------------------------------------- embedding
     def test_embedding_worker_writes_vectors_with_provenance(self):
         from sqlalchemy import select
-        from evident_db import Chunk, session_scope
+        from evident_db import Chunk, EMBEDDING_DIM, session_scope
         from workers import embedding_worker
 
         result = embedding_worker.run(url=DSN, batch_size=2)
@@ -251,16 +255,35 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
             rows = list(db.execute(select(Chunk).where(
                 Chunk.document_id == self.document_id)).scalars())
         self.assertTrue(all(r.embedding is not None for r in rows))
-        self.assertTrue(all(len(r.embedding) == 1536 for r in rows))
+        self.assertTrue(all(len(r.embedding) == EMBEDDING_DIM for r in rows))
         self.assertTrue(all(r.embedding_provider and r.embedding_model
                             for r in rows), "vectors stored without provenance")
 
     def test_worker_refuses_a_dimension_mismatch(self):
+        """A width the column cannot hold is refused before anything is written."""
         from evident_retrieval.embed import HashingEmbedder
         from workers import embedding_worker
         with self.assertRaises(ValueError) as ctx:
             embedding_worker.run(url=DSN, embedder=HashingEmbedder(dim=768))
         self.assertIn("Add a migration", str(ctx.exception))
+
+    def test_default_provider_refuses_to_guess(self):
+        """Unconfigured must fail loudly, not fall back to hash vectors.
+
+        A search index quietly full of HashingEmbedder output answers every
+        query with something plausible and wrong, and nothing looks broken
+        while it happens.
+        """
+        import os
+        from evident_retrieval.embed import EmbeddingError, default_provider
+        old = os.environ.pop("EMBEDDING_PROVIDER", None)
+        try:
+            with self.assertRaises(EmbeddingError) as ctx:
+                default_provider()
+            self.assertIn("EMBEDDING_PROVIDER", str(ctx.exception))
+        finally:
+            if old is not None:
+                os.environ["EMBEDDING_PROVIDER"] = old
 
     # -------------------------------------------------------------------- api
     async def _client(self):
@@ -392,6 +415,80 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(before, after, "a rejected response wrote rows")
         self.assertEqual(stats.as_dict()["responses_rejected"], 1)
+
+    def test_a_run_row_records_what_a_run_cost(self):
+        """The row a benchmark is compared against.
+
+        Grain matters here: `extraction_runs` is one row per run, and
+        `extraction_calls` is one row per request beneath it. Confusing the two
+        is how "acceptance rate" comes to mean two different numbers.
+        """
+        import uuid
+        from datetime import datetime, timezone
+        from decimal import Decimal
+        from sqlalchemy import select
+        from evident_db import ExtractionCall, ExtractionRun, session_scope
+
+        run_id = uuid.uuid4()
+        with session_scope(DSN) as db:
+            db.add(ExtractionRun(
+                id=run_id, provider="anthropic", model="claude-opus-5",
+                prompt_id="extract_entities@3.1.0", document_id=self.document_id,
+                chunks_processed=3, chunks_accepted=2, chunks_rejected=1,
+                cached_input_tokens=1120, input_tokens=800, output_tokens=400,
+                cost_usd=Decimal("0.014560"),
+                started_at=datetime(2026, 9, 4, 12, 0, tzinfo=timezone.utc),
+                finished_at=datetime(2026, 9, 4, 12, 0, 9, tzinfo=timezone.utc)))
+            db.flush()
+            db.add(ExtractionCall(
+                run_id=run_id, company_id=self.company_id,
+                document_id=self.document_id, prompt_id="extract_entities@3.1.0",
+                model="claude-opus-5", status="accepted",
+                raw_response='{"entities": []}'))
+
+        with session_scope(DSN) as db:
+            run = db.get(ExtractionRun, run_id)
+            calls = list(db.execute(select(ExtractionCall).where(
+                ExtractionCall.run_id == run_id)).scalars())
+
+            self.assertEqual(run.provider, "anthropic")
+            # NUMERIC, not float: it is money and it has to add up
+            self.assertIsInstance(run.cost_usd, Decimal)
+            self.assertEqual(run.cost_usd, Decimal("0.014560"))
+            self.assertAlmostEqual(run.acceptance_rate, 2 / 3)
+            self.assertEqual(run.duration_s, 9.0)
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0].run_id, run_id)
+
+    def test_a_run_that_never_finished_is_distinguishable(self):
+        """A null finished_at is the marker for a crash, not for 'not started'."""
+        import uuid
+        from evident_db import ExtractionRun, session_scope
+
+        run_id = uuid.uuid4()
+        with session_scope(DSN) as db:
+            db.add(ExtractionRun(id=run_id, provider="anthropic",
+                                 model="claude-opus-5",
+                                 document_id=self.document_id))
+        with session_scope(DSN) as db:
+            run = db.get(ExtractionRun, run_id)
+            self.assertIsNone(run.finished_at)
+            self.assertIsNone(run.duration_s)
+            self.assertIsNotNone(run.started_at, "a run must record when it began")
+
+    def test_counts_that_do_not_add_up_are_refused(self):
+        """accepted + rejected can never exceed processed."""
+        import uuid
+        from sqlalchemy.exc import IntegrityError
+        from evident_db import ExtractionRun, session_scope
+
+        with self.assertRaises(IntegrityError):
+            with session_scope(DSN) as db:
+                db.add(ExtractionRun(id=uuid.uuid4(), provider="anthropic",
+                                     model="claude-opus-5",
+                                     document_id=self.document_id,
+                                     chunks_processed=2, chunks_accepted=2,
+                                     chunks_rejected=1))
 
     async def test_unknown_company_is_404_not_empty_200(self):
         async with await self._client() as c:

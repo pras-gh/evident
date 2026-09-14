@@ -131,3 +131,52 @@ saves nothing and `cache_hit_rate()` will report zero.
 inline-XBRL structure and word-salad prose, which is right for testing the
 parser and useless for testing extraction. A real run needs a real filing
 ingested from SEC, which this network blocks at the edge.
+
+## The live run
+
+`tools/extract_live.py` drives the real pipeline and checks each success
+criterion:
+
+```bash
+export ANTHROPIC_API_KEY=...        # or: ant auth login
+export DATABASE_URL=postgresql+psycopg://localhost/evident
+python tools/extract_live.py --ticker NVDA --limit 3 --seed --verify
+```
+
+`--seed` ingests `tests/fixtures/edgar-real/` — verbatim paragraphs from
+NVIDIA's FY2025 10-K, accession `0001045810-25-000023`, three sections and
+therefore three chunks. It exists because the sibling `edgar/` fixture is
+synthetic word-salad: right for testing the parser, useless for testing
+extraction. Seeding locally also means the run does not need sec.gov, which
+blocks many networks at the edge.
+
+`--verify` prints each criterion with a PASS/FAIL and exits non-zero on
+failure. Run it twice — the first run writes the prompt cache, the second reads
+it.
+
+### The cache criterion needed a fix first
+
+"Second run hits cache" would have failed for a reason that is not a bug: the
+cached prefix only engages above roughly 1024 tokens, and the system prompt was
+4,261 characters... after this change. It was 3,429 — about 857 tokens, under
+the floor, so nothing would ever have been cached.
+
+The fix is a worked example in the prompt rather than padding: the four
+entities and one relationship from the spec's own NVIDIA sentence, plus what a
+correct response *omits* (the filer is not a `company`, and two things named in
+one sentence are not a relationship). Few-shot examples improve structured
+extraction on their own; clearing the cache floor is the second benefit, not
+the reason. The run reports actual cached tokens either way, so the criterion is
+measured rather than assumed.
+
+### Not run against Claude
+
+No API call has been made. There are no Anthropic credentials in the
+environment this was built in — `api.anthropic.com` answers, it just answers
+401 — so the command above has never been executed for real.
+
+The harness itself was exercised against a stub that returns canned responses
+with token counts, which proved the report renders, entities deduplicate across
+chunks, edges persist with their evidence chunk, and a second run adds no
+duplicate rows. That is the plumbing working. It is not evidence that Claude
+returns good entities, and nothing here should be read as if it were.
