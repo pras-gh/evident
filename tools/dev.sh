@@ -19,8 +19,11 @@ fi
 
 case "$1" in
   api)
-    : "${DATABASE_URL:?set DATABASE_URL in .env}"
+    : "${DATABASE_URL:?set DATABASE_URL in .env — tools/db.sh up creates a database and prints it}"
+    [ -x .venv/bin/python ] || { echo "dev: no .venv — run tools/setup.sh" >&2; exit 1; }
     export PYTHONPATH="packages/db:packages/parser:packages/memory:packages/retrieval:packages/graph:packages/ai:apps:.${PYTHONPATH:+:$PYTHONPATH}"
+    # Fail here, with the fix, rather than on the first request.
+    .venv/bin/python tools/check_db.py || exit 1
     exec .venv/bin/uvicorn api.main:app --port "${API_PORT:-8000}" \
       --reload --reload-dir apps --reload-dir packages
     ;;

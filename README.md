@@ -32,28 +32,51 @@ docs/
 
 ## Running
 
+Needs Python 3.11+, Node 18.18+, and **PostgreSQL 15+ with pgvector** — migration
+0009 uses `NULLS NOT DISTINCT`, so 14 will not do. On macOS:
+`brew install postgresql@17 pgvector`.
+
 ```bash
-# database — needs pgvector
-createdb evident && psql evident -c 'create extension vector'
-export DATABASE_URL=postgresql+psycopg://localhost/evident
-
-# embeddings: required, no default. 'hashing' is for tests only and has no
-# semantics -- it will make retrieval look like it works.
-export EMBEDDING_PROVIDER=voyage        # or: openai, hashing
-export VOYAGE_API_KEY=...               # or OPENAI_API_KEY
-cd db && alembic upgrade head        # or: psql "$DATABASE_URL" -f db/schema.sql
-
-# tests: needs the project's dependencies. Extraction is validated through
-# pydantic models, which are imported at module load, so the suite no longer
-# runs on a bare interpreter the way the parser-only core used to.
-python -m unittest discover -s tests
-
-# api
-cd apps/api && uv sync && uvicorn main:app --reload
-
-# web
-cd apps/web && npm install && npm run dev
+tools/setup.sh      # .venv, web packages, a local database in .pgdata/, demo data
+tools/dev.sh api    # http://localhost:8000/docs  (one terminal)
+tools/dev.sh web    # http://localhost:3000       (another)
 ```
+
+`tools/setup.sh` is three steps you can also run alone:
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+tools/db.sh up      # create, start and migrate PostgreSQL on :5434; writes .env
+tools/db.sh seed    # three NVIDIA 10-Ks, keyword-extracted — no API key needed
+```
+
+The database is a private cluster in `.pgdata/` (git-ignored) on its own port;
+nothing system-wide is installed or started. `tools/db.sh status|stop` manage
+it. To use another PostgreSQL instead, put its URL in `.env` as
+`DATABASE_URL` — see `.env.example` for every setting — and run
+`cd db && ../.venv/bin/alembic upgrade head`. `tools/dev.sh api` checks the
+database before starting and says what is wrong if it cannot serve from it.
+
+Optional, per feature: `SEC_USER_AGENT` to ingest from EDGAR,
+`ANTHROPIC_API_KEY` for live extraction with Claude, and `EMBEDDING_PROVIDER`
+with a Voyage or OpenAI key for search. There is deliberately no default
+embedding provider: `hashing` is for tests only and has no semantics — it would
+make retrieval look like it works.
+
+```bash
+# tests — the database suites run when TEST_DATABASE_URL points at an empty,
+# disposable database; they drop and recreate its tables
+PYTHONPATH=packages/db:packages/parser:packages/memory:packages/retrieval:packages/graph:packages/ai:apps:.:tests \
+  .venv/bin/python -m unittest discover -s tests
+cd apps/web && npm test
+```
+
+| Page | What it shows | Backed by |
+| --- | --- | --- |
+| `/` | companies with memory | `GET /v1/companies` |
+| `/memory/{ticker}` | memory cards and recent changes | `GET /v1/companies/{t}`, `/cards`, `/cards/{kind}`, `/v1/company/{t}/timeline` |
+| `/timeline/{ticker}` | what changed between filings | `GET /v1/company/{t}/timeline` |
+| `/evidence/{ticker}/{entity}` | the filing, at the cited paragraph | `GET /v1/companies/{t}/entities/{slug}`, `POST /v1/evidence/resolve`, `GET /v1/documents/{id}/pages` |
 
 ## Layers
 
