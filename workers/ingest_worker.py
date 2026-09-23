@@ -123,7 +123,9 @@ def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
             page_number=c.page_start,
             section_title=section.title if section else None,
             section_path=section.path if section else None,
-            text=c.text, char_count=len(c.text), token_estimate=c.token_estimate))
+            text=c.text, char_count=len(c.text), token_estimate=c.token_estimate,
+            paragraph_boxes=({pid: box.to_json() for pid, box in c.paragraph_boxes.items()}
+                             or None)))
     # chunk_hash is globally unique, so identical text on the same page of the
     # same filing is one row. Deduping here rather than letting the constraint
     # abort the whole document: on a real 10-K this collapses roughly one

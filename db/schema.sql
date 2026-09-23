@@ -669,4 +669,9 @@ ALTER TABLE entity_mentions ADD CONSTRAINT uq_entity_mentions_entity_id_chunk_id
 
 UPDATE alembic_version SET version_num='0009' WHERE alembic_version.version_num = '0008';
 
+
+ALTER TABLE chunks ADD COLUMN paragraph_boxes JSONB;
+
+UPDATE alembic_version SET version_num='0010' WHERE alembic_version.version_num = '0009';
+
 COMMIT;
