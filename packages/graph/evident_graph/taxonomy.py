@@ -76,6 +76,21 @@ ENTITY_TYPES: tuple[EntityType, ...] = (
 TYPE_NAMES: tuple[str, ...] = tuple(t.name for t in ENTITY_TYPES)
 _BY_NAME = {t.name: t for t in ENTITY_TYPES}
 
+#: The colour a citation of each type is highlighted in, unless the entity sets
+#: its own (`entities.highlight_color`). The web app's palette, so a Risk card
+#: and a Risk highlight are the same red.
+HIGHLIGHT_COLORS: dict[str, str] = {
+    "strategy": "#34d399", "product": "#818cf8", "executive": "#fbbf24",
+    "risk": "#f87171", "metric": "#2dd4bf", "segment": "#a78bfa",
+    "company": "#60a5fa", "geography": "#22d3ee",
+}
+#: For a citation with no entity behind it.
+DEFAULT_HIGHLIGHT = "#34d399"
+
+
+def highlight_color(entity_type: str | None, override: str | None = None) -> str:
+    return override or HIGHLIGHT_COLORS.get(entity_type or "", DEFAULT_HIGHLIGHT)
+
 
 #: Asserted edges use a closed vocabulary for the same reason entities do. A
 #: free-text relationship_type is free-form output wearing a column name, and

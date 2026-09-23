@@ -674,4 +674,35 @@ ALTER TABLE chunks ADD COLUMN paragraph_boxes JSONB;
 
 UPDATE alembic_version SET version_num='0010' WHERE alembic_version.version_num = '0009';
 
+
+ALTER TABLE documents ADD COLUMN source_path TEXT;
+
+ALTER TABLE documents ADD COLUMN pdf_path TEXT;
+
+ALTER TABLE documents ADD COLUMN rendered_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE entities ADD COLUMN highlight_color VARCHAR(7);
+
+ALTER TABLE entities ADD CONSTRAINT ck_entities_highlight_color CHECK (highlight_color ~ '^#[0-9a-fA-F]{6}$');
+
+CREATE TABLE document_pages (
+    id BIGSERIAL NOT NULL, 
+    document_id BIGINT NOT NULL, 
+    page INTEGER NOT NULL, 
+    width FLOAT NOT NULL, 
+    height FLOAT NOT NULL, 
+    image_path TEXT, 
+    thumbnail_path TEXT, 
+    paragraph_count INTEGER DEFAULT '0' NOT NULL, 
+    rendered_at TIMESTAMP WITH TIME ZONE, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_document_pages PRIMARY KEY (id), 
+    CONSTRAINT uq_document_pages_document_id_page UNIQUE (document_id, page), 
+    CONSTRAINT fk_document_pages_document_id_documents FOREIGN KEY(document_id) REFERENCES documents (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_document_pages_document_id ON document_pages (document_id);
+
+UPDATE alembic_version SET version_num='0011' WHERE alembic_version.version_num = '0010';
+
 COMMIT;
