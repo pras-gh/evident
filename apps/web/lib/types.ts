@@ -189,3 +189,72 @@ export interface EntityDetail {
   latest_seen: string | null;
   mentions: EntityMention[];
 }
+
+// ------------------------------------------------------------------ timeline
+// GET /v1/company/{ticker}/timeline — what changed between filings.
+
+export type TimelineKind =
+  | "newly_disclosed"
+  | "disclosed_again"
+  | "expanded"
+  | "narrowed"
+  | "no_longer_disclosed"
+  | "filed";
+
+export interface TimelineFilingRef {
+  document_id: number;
+  accession: string;
+  form_type: string;
+  fiscal_period: string | null;
+  filed_at: string;
+}
+
+export interface TimelineFiling extends TimelineFilingRef {
+  page_count: number | null;
+  /** baseline: the earliest of its form, so nothing in it is marked new */
+  coverage: "baseline" | "compared" | "not compared";
+  /** the filing's index page on EDGAR */
+  url: string;
+}
+
+export interface TimelineEvidence {
+  chunk_id: number | null;
+  paragraph_id: string | null;
+  document_id: number;
+  page: number | null;
+  quote: string | null;
+  confidence: number | null;
+  /** true when last year's filing has no close match for this paragraph */
+  new_paragraph: boolean | null;
+  citation: string;
+}
+
+export interface TimelineEvent {
+  id: string;
+  date: string;
+  /** "Feb 2025" */
+  date_label: string;
+  kind: TimelineKind;
+  /** "Risk", "Product", … or "Filing" */
+  category: string;
+  title: string;
+  summary: string;
+  topic: { slug: string; name: string; entity_type: string } | null;
+  filing: TimelineFilingRef;
+  compared_with: TimelineFilingRef | null;
+  paragraphs: number | null;
+  previous_paragraphs: number | null;
+  /** null only for `filed` events; every change points at a paragraph */
+  evidence: TimelineEvidence | null;
+}
+
+export interface CompanyTimeline {
+  ticker: string;
+  company: string;
+  filings: TimelineFiling[];
+  thresholds: { min_delta: number; min_ratio: number };
+  /** events per category, ignoring the category filter */
+  categories: Record<string, number>;
+  total: number;
+  events: TimelineEvent[];
+}

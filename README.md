@@ -72,3 +72,18 @@ asserts it.**
 clicking a citation scrolls to its page and holds the paragraph highlighted.
 To run it without an API key, see `docs/evidence-viewer.md` → *Running it
 locally*.
+
+## Timeline
+
+`/timeline/{ticker}`, over `GET /v1/company/{ticker}/timeline` — what changed
+between a company's filings: newly disclosed, expanded, narrowed and dropped
+topics, each linked to the paragraph that shows the change. Events come from
+comparing each filing with the previous one of the same form, never from
+`first_seen`, so a single filing produces no false "new" events. See
+`docs/timeline-engine.md`, including how the thresholds were chosen.
+
+```bash
+# three real NVIDIA 10-Ks, keyword-extracted — no API key needed
+DATABASE_URL=... python tools/seed_demo.py --corpus timeline
+open http://localhost:3000/timeline/nvda
+```

@@ -1,6 +1,7 @@
 import type {
   CardDetail,
   CitationRef,
+  CompanyTimeline,
   DocumentView,
   EntityDetail,
   MemoryCard,
@@ -47,3 +48,11 @@ export const getDocumentPages = (documentId: number) =>
 export const resolveCitations = (citations: CitationRef[]) =>
   post<{ citations: ResolvedCitation[] }>("/evidence/resolve", { citations })
     .then((r) => r.citations);
+
+/** What changed between a company's filings. Filtering by category happens in
+ *  the API so the facet counts stay honest. */
+export const getCompanyTimeline = (t: string, category?: string) => {
+  const q = new URLSearchParams({ limit: "500" });
+  if (category) q.set("category", category);
+  return get<CompanyTimeline>(`/company/${encodeURIComponent(t)}/timeline?${q}`);
+};
