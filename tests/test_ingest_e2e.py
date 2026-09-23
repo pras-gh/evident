@@ -24,9 +24,9 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "edgar"
 
 
 @contextlib.contextmanager
-def fixture_origin():
+def fixture_origin(root: Path = FIXTURES):
     handler = functools.partial(http.server.SimpleHTTPRequestHandler,
-                                directory=str(FIXTURES))
+                                directory=str(root))
     with socketserver.TCPServer(("127.0.0.1", 0), handler) as httpd:
         port = httpd.server_address[1]
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)

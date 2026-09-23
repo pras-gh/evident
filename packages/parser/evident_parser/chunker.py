@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 
+from .anchors import PARAGRAPH_SEP
 from .models import Block, Chunk, Section, Table, content_id
 
 DEFAULT_TARGET_TOKENS = 350
@@ -178,7 +179,8 @@ def _chunk_section(
     estimates and comparing that to the ceiling silently under-counts by two
     characters per join, which is how chunks kept landing just over the limit.
     """
-    SEP = "\n\n"
+    # shared with anchors.split_chunk, which splits on the same string
+    SEP = PARAGRAPH_SEP
     target_chars, max_chars = target_tokens * 4, max_tokens * 4
 
     out: list[Chunk] = []

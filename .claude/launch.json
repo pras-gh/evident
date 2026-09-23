@@ -12,6 +12,24 @@
         "apps/marketing"
       ],
       "port": 4321
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "tools/dev.sh",
+        "api"
+      ],
+      "port": 8000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "tools/dev.sh",
+        "web"
+      ],
+      "port": 3000
     }
   ]
 }

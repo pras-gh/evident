@@ -25,6 +25,7 @@ from evident_db.repositories import (add_entity_mention, add_metric_observation,
                                      upsert_entity, upsert_relationship)
 from evident_graph.normalize import display_label
 from evident_graph.taxonomy import slug as entity_slug
+from evident_parser.anchors import split_chunk
 from evident_parser.models import Block
 
 log = logging.getLogger("evident.memory_builder")
@@ -71,7 +72,7 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     this function owns the chunk query; slicing outside it would silently do
     nothing.
 
-    `on_result(paragraph_id, Extraction | ExtractionRejected)` fires per chunk,
+    `on_result(chunk_id_str, Extraction | ExtractionRejected)` fires per chunk,
     so a benchmark can record what came back without a second copy of this
     function drifting away from the one production runs.
     """
@@ -84,13 +85,39 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     if not chunks:
         return stats
 
-    by_paragraph = {(c.paragraph_ids or [c.chunk_hash])[0]: c for c in chunks}
-    # Block is a slots dataclass, so nothing can be stapled onto it. The chunk
-    # an entity came from is recovered through `by_paragraph` instead, which is
-    # the same lookup the mention write already uses.
-    blocks = [Block(paragraph_id=(c.paragraph_ids or [c.chunk_hash])[0],
-                    ordinal=c.ordinal, text=c.text, page_number=c.page_number)
-              for c in chunks]
+    # Each chunk goes to Claude as its own numbered paragraphs, not as one
+    # block. Labelled with only the chunk's first paragraph id, the model could
+    # only ever cite that id — so every mention recorded the chunk's first
+    # paragraph and first page, even for an entity three paragraphs and two
+    # pages later, and the evidence viewer highlighted the wrong paragraph.
+    # Still one request per chunk; only what is inside the request changed.
+    #
+    # Requests are keyed by chunk id. Keying by first paragraph id worked only
+    # because no two chunks in the fixtures happen to share one; overlapping
+    # chunks share paragraphs, and a collision would drop a chunk silently.
+    groups: dict[str, list[Block]] = {}
+    chunk_by_key: dict[str, Chunk] = {}
+    by_paragraph: dict[str, Chunk] = {}
+    pages: dict[str, int | None] = {}
+    for c in chunks:
+        key = str(c.id)
+        paragraphs = split_chunk(c.text, c.paragraph_ids, c.page_number)
+        if paragraphs is None:
+            # A table, or text that does not line up with its ids: one unit,
+            # cited as before. Guessing an alignment would put the wrong text
+            # under a citation.
+            units = [((c.paragraph_ids or [c.chunk_hash])[0], c.page_number, c.text)]
+        else:
+            units = [(pg.paragraph_id, pg.page, pg.text) for pg in paragraphs]
+        groups[key] = [Block(paragraph_id=pid, ordinal=i, text=text, page_number=page)
+                       for i, (pid, page, text) in enumerate(units)]
+        chunk_by_key[key] = c
+        for pid, page, _ in units:
+            # An overlap paragraph appears in two chunks; the first one wins,
+            # so the same paragraph cited from either request is one mention
+            # rather than two.
+            by_paragraph.setdefault(pid, c)
+            pages.setdefault(pid, page)
 
     stats.documents += 1
 
@@ -103,7 +130,6 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     #
     # This is the synchronous path. `submit_batch` is half the price for
     # backfills and nothing about a 2019 filing is latency-sensitive.
-    groups = {b.paragraph_id: [b] for b in blocks}
     per_chunk, report, usage = extract_document(groups, client=client,
                                                on_result=on_result)
 
@@ -124,8 +150,6 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
         log.warning("dropped %d items from %s (ids: %s; first reason: %s)",
                     report.dropped, document.accession, report.bad_ids[:5],
                     report.reasons[0] if report.reasons else "-")
-
-    pages = {(c.paragraph_ids or [c.chunk_hash])[0]: c.page_number for c in chunks}
 
     # One upsert per distinct entity, one mention per citation. Grouping first
     # means an entity named in six paragraphs is written once and cited six

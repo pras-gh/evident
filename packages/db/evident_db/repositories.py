@@ -201,7 +201,8 @@ def add_entity_mention(db: Session, *, entity_id: int, document_id: int,
                     paragraph_id=paragraph_id, chunk_hash=chunk_hash,
                     confidence=confidence)
             .on_conflict_do_nothing(
-                index_elements=[EntityMention.entity_id, EntityMention.chunk_id])
+                index_elements=[EntityMention.entity_id, EntityMention.chunk_id,
+                                EntityMention.paragraph_id])
             .returning(EntityMention.id))
     inserted = db.execute(stmt).scalar_one_or_none() is not None
     if inserted:

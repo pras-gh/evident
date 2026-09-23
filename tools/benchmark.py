@@ -153,7 +153,7 @@ def main() -> int:
             if document is None:
                 _die(f"no documents for {ticker}")
 
-            by_paragraph = {(c.paragraph_ids or [c.chunk_hash])[0]: c
+            by_key = {str(c.id): c
                             for c in db.execute(select(Chunk).where(
                                 Chunk.document_id == document.id)).scalars()}
 
@@ -174,7 +174,7 @@ def main() -> int:
             document = db.get(Document, document_id)
             company = db.get(Company, company_id)
             run = db.get(ExtractionRun, run_id)
-            by_paragraph = {(c.paragraph_ids or [c.chunk_hash])[0]: c
+            by_key = {str(c.id): c
                             for c in db.execute(select(Chunk).where(
                                 Chunk.document_id == document_id)).scalars()}
 
@@ -182,7 +182,7 @@ def main() -> int:
 
             def record(key: str, result) -> None:
                 """Every call, accepted or not — a failed response is evidence."""
-                chunk = by_paragraph.get(key)
+                chunk = by_key.get(key)  # requests are keyed by chunk id
                 rejected = isinstance(result, ExtractionRejected)
                 u = result.usage
                 rows.append(ExtractionCall(
@@ -207,7 +207,7 @@ def main() -> int:
                 ))
 
             print(f"  run {run_id}: extracting "
-                  f"{args.limit or len(by_paragraph)} chunk(s) with "
+                  f"{args.limit or len(by_key)} chunk(s) with "
                   f"{EXTRACT_ENTITIES.id} on {MODEL}")
             build_for_document(db, company_id=company.id, document=document,
                                limit=args.limit, on_result=record)
