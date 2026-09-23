@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from .routers import evidence, graph, ingest, memory, search
+from .routers import evidence, graph, ingest, memory, search, timeline
 
 API_VERSION = "1.0.0"
 
@@ -37,6 +37,7 @@ app.include_router(graph.router, prefix="/v1")
 app.include_router(ingest.router, prefix="/v1")
 app.include_router(memory.router, prefix="/v1")
 app.include_router(search.router, prefix="/v1")
+app.include_router(timeline.router, prefix="/v1")
 
 
 @app.get("/health", tags=["meta"])

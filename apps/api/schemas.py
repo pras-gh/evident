@@ -241,3 +241,95 @@ class DocumentPagesOut(BaseModel):
     ticker: str
     page_count: int | None
     pages: list[DocumentPageOut]
+
+
+# --------------------------------------------------------------------------
+# Timeline: what changed between filings, derived on read
+
+
+TimelineKind = Literal["newly_disclosed", "disclosed_again", "expanded", "narrowed",
+                       "no_longer_disclosed", "filed"]
+
+
+class TimelineFilingOut(BaseModel):
+    document_id: int
+    accession: str
+    form_type: str
+    fiscal_period: str | None = None
+    filed_at: date
+    page_count: int | None = None
+    #: baseline — the earliest filing of its form, compared with nothing, so
+    #: nothing in it is reported as new; compared — against the previous
+    #: filing of its form; not compared — an amendment or a non-periodic form
+    coverage: Literal["baseline", "compared", "not compared"]
+    #: the filing's index page on EDGAR
+    url: str
+
+
+class TimelineFilingRef(BaseModel):
+    document_id: int
+    accession: str
+    form_type: str
+    fiscal_period: str | None = None
+    filed_at: date
+
+
+class TimelineTopicOut(BaseModel):
+    slug: str
+    name: str
+    entity_type: str
+
+
+class TimelineEvidenceOut(BaseModel):
+    """The paragraph that shows the change. Resolve it with
+    GET /v1/evidence/{chunk_id}?paragraph_id=…, or open it in the viewer."""
+    chunk_id: int | None
+    paragraph_id: str | None
+    document_id: int
+    page: int | None
+    quote: str | None
+    confidence: float | None = None
+    #: true when no paragraph with this text cited the topic in the filing this
+    #: one was compared with; null when there was nothing to compare
+    new_paragraph: bool | None = None
+    citation: str
+
+
+class TimelineEntryOut(BaseModel):
+    #: stable across requests: accession, kind and entity slug
+    id: str
+    date: date
+    #: "Feb 2025"
+    date_label: str
+    kind: TimelineKind
+    #: the entity's type, title-cased ("Risk"), or "Filing"
+    category: str
+    title: str
+    summary: str
+    topic: TimelineTopicOut | None = None
+    filing: TimelineFilingRef
+    compared_with: TimelineFilingRef | None = None
+    #: paragraphs citing the topic in this filing, and in the one compared with
+    paragraphs: int | None = None
+    previous_paragraphs: int | None = None
+    #: null only for `filed` events; every change points at a paragraph
+    evidence: TimelineEvidenceOut | None = None
+
+
+class TimelineThresholds(BaseModel):
+    min_delta: int
+    min_ratio: float
+
+
+class CompanyTimelineOut(BaseModel):
+    ticker: str
+    company: str
+    #: every filing considered, newest first, with how it was used
+    filings: list[TimelineFilingOut]
+    thresholds: TimelineThresholds
+    #: events per category among those matching every filter but `category`,
+    #: so filter chips can show what each would return
+    categories: dict[str, int]
+    #: events matching the filters, before `limit`
+    total: int
+    events: list[TimelineEntryOut]
