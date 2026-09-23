@@ -83,3 +83,109 @@ export interface MemorySummary {
   counts: Record<string, number>;
   built_at: string | null;
 }
+
+// ------------------------------------------------------------ evidence viewer
+// Mirrors EvidenceOut, ResolvedCitation and DocumentPagesOut in
+// apps/api/schemas.py.
+
+/** A rectangle on a page. Always null today — see BoundingBox in the API. */
+export interface BoundingBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface ResolvedEvidence {
+  chunk_id: number;
+  document_id: number;
+  accession: string;
+  form_type: string;
+  filed_at: string;
+  source_format: string;
+  /** The page the cited paragraph is on, not the page its chunk starts on. */
+  page: number | null;
+  paragraph_id: string | null;
+  paragraph_ids: string[];
+  /** What the viewer highlights, in document order. The first is the scroll target. */
+  anchors: string[];
+  section_title: string | null;
+  text: string;
+  confidence: number | null;
+  bounding_box: BoundingBox | null;
+  citation: string;
+}
+
+export interface CitationRef {
+  chunk_id: number;
+  paragraph_id?: string | null;
+  entity?: string | null;
+}
+
+/** One citation's outcome. Unresolved ones are kept, so indices still line up. */
+export interface ResolvedCitation {
+  index: number;
+  resolved: boolean;
+  evidence: ResolvedEvidence | null;
+  error: string | null;
+}
+
+export interface DocumentBlock {
+  anchor: string;
+  kind: "paragraph" | "table";
+  chunk_id: number;
+  paragraph_id: string | null;
+  section_title: string | null;
+  text: string;
+}
+
+export interface DocumentPage {
+  page: number | null;
+  blocks: DocumentBlock[];
+}
+
+export interface DocumentView {
+  document_id: number;
+  accession: string;
+  form_type: string;
+  filed_at: string;
+  source_format: string;
+  ticker: string;
+  page_count: number | null;
+  pages: DocumentPage[];
+}
+
+/** Anything that makes a claim and cites its evidence. `[n]` markers in the
+ *  text are rendered as links to citation n (1-based). */
+export interface Answer {
+  text: string;
+  citations: ResolvedCitation[];
+}
+
+export interface EntityMention {
+  observed_at: string;
+  quote: string;
+  accession: string;
+  form_type: string;
+  section_title: string | null;
+  provenance: {
+    chunk_id: number | null;
+    chunk_hash: string | null;
+    document_id: number;
+    page: number | null;
+    paragraph_id: string | null;
+    confidence: number | null;
+  };
+}
+
+export interface EntityDetail {
+  id: number;
+  entity_type: string;
+  slug: string;
+  name: string;
+  description: string | null;
+  mention_count: number;
+  first_seen: string | null;
+  latest_seen: string | null;
+  mentions: EntityMention[];
+}

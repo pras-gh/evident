@@ -662,4 +662,11 @@ ALTER TABLE extraction_calls ADD CONSTRAINT fk_extraction_calls_run_id_extractio
 
 UPDATE alembic_version SET version_num='0008' WHERE alembic_version.version_num = '0007';
 
+
+ALTER TABLE entity_mentions DROP CONSTRAINT uq_entity_mentions_entity_id_chunk_id;
+
+ALTER TABLE entity_mentions ADD CONSTRAINT uq_entity_mentions_entity_id_chunk_id_paragraph_id UNIQUE NULLS NOT DISTINCT (entity_id, chunk_id, paragraph_id);
+
+UPDATE alembic_version SET version_num='0009' WHERE alembic_version.version_num = '0008';
+
 COMMIT;

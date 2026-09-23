@@ -282,8 +282,15 @@ class EntityMention(Base):
     """
     __tablename__ = "entity_mentions"
     __table_args__ = (
-        UniqueConstraint("entity_id", "chunk_id",
-                         name="uq_entity_mentions_entity_id_chunk_id"),
+        # One mention per entity per *paragraph*, not per chunk. Keyed on the
+        # chunk alone, the first paragraph cited in a chunk won and every other
+        # citation of the same entity in that chunk was silently dropped — six
+        # of ten for export controls in the benchmark corpus. NULLS NOT
+        # DISTINCT keeps a paragraph-less citation (a table) to one row, so a
+        # rerun still cannot inflate the count.
+        UniqueConstraint("entity_id", "chunk_id", "paragraph_id",
+                         name="uq_entity_mentions_entity_id_chunk_id_paragraph_id",
+                         postgresql_nulls_not_distinct=True),
         Index("ix_entity_mentions_entity_id_observed_at",
               "entity_id", "observed_at"),
         Index("ix_entity_mentions_paragraph_id", "paragraph_id"),

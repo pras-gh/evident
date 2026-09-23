@@ -310,6 +310,82 @@ class Confidence(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(DSN, "set TEST_DATABASE_URL to run")
+class OneMentionPerParagraph(unittest.TestCase):
+    """Regression: mentions were unique per chunk, not per paragraph.
+
+    Harmless while every citation named the chunk's first paragraph. Once they
+    named the real one, the constraint kept the first paragraph cited in a
+    chunk and dropped the rest — six of ten for export controls in the
+    benchmark corpus, including every paragraph about the licensing rules.
+    """
+
+    def setUp(self):
+        from datetime import date
+        from sqlalchemy import select
+        from evident_db import Chunk, Company, Document, session_scope
+        from evident_db.repositories import upsert_entity
+        from workers.ingest_worker import ingest_ticker
+
+        _reset_schema()
+        with fixture_origin():
+            ingest_ticker(TICKER, limit=1, url=DSN)
+        with session_scope(DSN) as db:
+            self.company_id = db.execute(select(Company)).scalar_one().id
+            self.document_id = db.execute(select(Document)).scalar_one().id
+            chunk = next(c for c in db.execute(select(Chunk).order_by(Chunk.ordinal))
+                         .scalars() if len(c.paragraph_ids or []) >= 3)
+            self.chunk_id, self.pids = chunk.id, list(chunk.paragraph_ids)
+            e = upsert_entity(db, company_id=self.company_id, entity_type="risk",
+                              slug="export_controls", name="Export Controls",
+                              observed_at=date(2025, 2, 26))
+            db.flush()
+            self.entity_id = e.id
+
+    def _mention(self, db, paragraph_id):
+        from datetime import date
+        from evident_db.repositories import add_entity_mention
+        return add_entity_mention(db, entity_id=self.entity_id,
+                                  document_id=self.document_id,
+                                  chunk_id=self.chunk_id,
+                                  observed_at=date(2025, 2, 26), quote="q",
+                                  paragraph_id=paragraph_id)
+
+    def _count(self):
+        from sqlalchemy import func, select
+        from evident_db import Entity, EntityMention, session_scope
+        with session_scope(DSN) as db:
+            rows = db.execute(select(func.count(EntityMention.id))).scalar_one()
+            counter = db.get(Entity, self.entity_id).mention_count
+        return rows, counter
+
+    def test_every_paragraph_citing_an_entity_in_one_chunk_is_kept(self):
+        from evident_db import session_scope
+        with session_scope(DSN) as db:
+            added = [self._mention(db, pid) for pid in self.pids[:3]]
+        self.assertEqual(added, [True, True, True])
+        self.assertEqual(self._count(), (3, 3))
+
+    def test_citing_the_same_paragraph_again_is_still_a_no_op(self):
+        """What the old constraint was for, and still has to do."""
+        from evident_db import session_scope
+        with session_scope(DSN) as db:
+            first = self._mention(db, self.pids[0])
+            again = self._mention(db, self.pids[0])
+        self.assertEqual((first, again), (True, False))
+        self.assertEqual(self._count(), (1, 1))
+
+    def test_a_citation_with_no_paragraph_is_deduplicated_too(self):
+        # NULL is distinct from NULL by default in a unique constraint, which
+        # would let a rerun insert a table citation twice
+        from evident_db import session_scope
+        with session_scope(DSN) as db:
+            first = self._mention(db, None)
+            again = self._mention(db, None)
+        self.assertEqual((first, again), (True, False))
+        self.assertEqual(self._count(), (1, 1))
+
+
+@unittest.skipUnless(DSN, "set TEST_DATABASE_URL to run")
 class ExtractionCitesParagraphs(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     """Regression: mentions used to record the chunk's first paragraph.
 

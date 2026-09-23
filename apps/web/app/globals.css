@@ -296,3 +296,93 @@ body:has(input[name="open"]:checked:not(#open-none)) .scrim{opacity:1;pointer-ev
 @media (prefers-reduced-motion: reduce){
   *{animation:none!important;transition-duration:.01ms!important}
 }
+
+/* ============================================================ evidence viewer */
+/* Split screen: the claim on the left, the filing on the right. Each side
+   scrolls on its own so reading the document never scrolls the citations away. */
+/* The row is pinned to the viewport and every pane gets min-height:0. Without
+   both, the grid row sizes to its content, the document pane grows to the full
+   height of the filing instead of scrolling, and scrollTo has nothing to move —
+   which a DOM test cannot see, because jsdom has no layout. */
+.ev-shell{display:grid;grid-template-columns:minmax(320px,38%) 1fr;
+  grid-template-rows:minmax(0,1fr);height:100vh;overflow:hidden}
+.ev-answer,.ev-doc,.ev-pages{min-height:0}
+
+.ev-answer{overflow:auto;padding:28px clamp(18px,2.4vw,34px) 40px;
+  border-right:1px solid var(--line);background:var(--surface)}
+.ev-kicker{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:8px}
+.ev-title{font-size:26px;font-weight:600;letter-spacing:-.025em;line-height:1.15;margin-bottom:14px}
+.ev-text{color:var(--ink-2);font-size:15px;line-height:1.65;margin-bottom:22px}
+.ev-marker{font:inherit;font-size:.78em;font-weight:600;vertical-align:.35em;padding:0 2px;
+  color:var(--emerald);background:none;border:0;cursor:pointer}
+.ev-marker:disabled{color:var(--faint);cursor:not-allowed}
+
+.ev-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
+.ev-chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 5px;
+  border-radius:999px;border:1px solid var(--line-2);background:var(--surface-2);
+  color:var(--ink-2);font:500 12.5px/1 var(--sans);cursor:pointer;
+  transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease)}
+.ev-chip:hover{border-color:rgba(52,211,153,.45);color:var(--ink)}
+.ev-chip:focus-visible,.ev-marker:focus-visible,.ev-tab:focus-visible{
+  outline:2px solid var(--emerald);outline-offset:2px}
+.ev-chip-n{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;
+  background:var(--raise);color:var(--ink);font-size:11px;font-weight:600}
+.ev-chip.is-active{border-color:var(--emerald);background:rgba(52,211,153,.10);color:var(--ink)}
+.ev-chip.is-active .ev-chip-n{background:var(--emerald);color:#04130d}
+.ev-chip.is-unresolved{opacity:.55;cursor:not-allowed;text-decoration:line-through}
+
+.ev-quote{margin:0;padding:14px 16px;border-radius:var(--r);border:1px solid var(--line-2);
+  background:var(--surface-2)}
+.ev-quote blockquote{margin:0 0 10px;color:var(--ink);font-size:13.5px;line-height:1.6;
+  max-height:12.8em;overflow:auto}
+.ev-quote figcaption{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  color:var(--muted);font-size:12px}
+.ev-conf{color:var(--ink-2)}
+
+.ev-doc{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
+.ev-doc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;
+  height:52px;padding:0 20px;border-bottom:1px solid var(--line);background:var(--surface)}
+.ev-doc-name{font-weight:600;font-size:13px}
+.ev-tabs{display:flex;gap:4px;min-width:0;overflow-x:auto}
+.ev-tab{height:30px;padding:0 11px;border-radius:8px;border:1px solid transparent;background:none;
+  color:var(--muted);font:500 12.5px/1 var(--sans);white-space:nowrap;cursor:pointer}
+.ev-tab[aria-selected="true"]{border-color:var(--line-2);background:var(--surface-2);color:var(--ink)}
+.ev-pageind{flex:none;font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:12.5px}
+
+.ev-pages{flex:1;overflow:auto;padding:24px clamp(14px,3vw,48px) 60vh;scroll-padding-top:24px}
+.ev-page{max-width:760px;margin:0 auto 22px;padding:22px 28px 26px;border-radius:var(--r);
+  background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
+.ev-page-no{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:14px}
+
+.ev-block{position:relative;margin:0 -12px;padding:6px 12px;border-radius:10px;
+  transition:background .2s var(--ease),box-shadow .2s var(--ease)}
+.ev-block + .ev-block{margin-top:4px}
+.ev-block p{color:var(--ink-2);font-size:14px;line-height:1.7}
+.ev-block.is-referenced{box-shadow:inset 2px 0 0 rgba(52,211,153,.35)}
+/* The highlight is a steady state, not an animation, so it is still there
+   after scrolling away and back. Only the flash on arrival animates. */
+.ev-block.is-cited{background:rgba(52,211,153,.12);box-shadow:inset 3px 0 0 var(--emerald)}
+.ev-block.is-cited p{color:var(--ink)}
+.ev-gutter{position:absolute;left:-30px;top:8px;font-size:10.5px;font-weight:600;
+  color:var(--emerald);font-variant-numeric:tabular-nums}
+.ev-flash{position:absolute;inset:0;border-radius:inherit;pointer-events:none;
+  animation:ev-flash 1.1s var(--ease) both}
+@keyframes ev-flash{0%{background:rgba(52,211,153,.34)}100%{background:rgba(52,211,153,0)}}
+
+.ev-table{margin:0;padding:10px 12px;border-radius:8px;background:var(--surface-2);
+  color:var(--ink-2);font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
+  white-space:pre-wrap;overflow-x:auto}
+.ev-empty{margin:auto;color:var(--muted)}
+
+@media (prefers-reduced-motion:reduce){
+  .ev-flash{animation:none}
+  .ev-chip,.ev-block{transition:none}
+}
+@media (max-width:900px){
+  .ev-shell{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:100dvh}
+  .ev-answer{max-height:42dvh;border-right:0;border-bottom:1px solid var(--line)}
+  .ev-page{padding:18px 18px 20px}
+  .ev-gutter{position:static;display:inline-block;margin-right:6px}
+}

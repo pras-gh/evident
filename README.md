@@ -65,3 +65,10 @@ cd apps/web && npm install && npm run dev
 
 **The invariant across all three: nothing enters memory without a paragraph that
 asserts it.**
+
+## Evidence viewer
+
+`/evidence/{ticker}/{entity}` — a claim on the left, the filing on the right;
+clicking a citation scrolls to its page and holds the paragraph highlighted.
+To run it without an API key, see `docs/evidence-viewer.md` → *Running it
+locally*.
