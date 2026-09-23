@@ -132,6 +132,12 @@ class Chunk(Base):
     text: Mapped[str] = mapped_column(Text)
     char_count: Mapped[int] = mapped_column(Integer)
     token_estimate: Mapped[int] = mapped_column(Integer)
+    #: paragraph_id → {page, x0, y0, x1, y1, page_width, page_height}: where each
+    #: paragraph sits on its page, in points from the top-left. PDFs only; an
+    #: HTML filing has no page geometry, so this is null rather than invented.
+    #: none_as_null: without it SQLAlchemy writes None as the JSON value
+    #: `null`, which IS NOT NULL — and every HTML chunk would claim geometry.
+    paragraph_boxes: Mapped[Optional[dict]] = mapped_column(JSONB(none_as_null=True))
     embedding: Mapped[Optional[list[float]]] = mapped_column(Vector(EMBEDDING_DIM))
     # provenance for the vector itself, so a re-embed or an A/B never has to
     # guess what produced a row

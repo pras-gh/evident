@@ -28,11 +28,30 @@ This is also the more precise option. A PDF highlight is a rectangle drawn over
 glyphs at coordinates; an HTML highlight is the paragraph element itself, which
 reflows correctly at any width and cannot drift off its text.
 
-**There are no bounding boxes.** Neither parser records coordinates — the HTML
-path has none to record, and the PDF path uses `extract_text()`. The API returns
-`bounding_box: null` rather than inventing one, and documents what populating it
-would need: storing raw PDFs and extracting word coordinates at parse time. The
-field is in the contract so a PDF source can fill it without a breaking change.
+**Bounding boxes exist only where a page has geometry.** A PDF filing's
+paragraphs are measured at parse time — each line from its first glyph's origin
+to its last glyph's advance, using the font's own widths, and from the font's
+ascent to its descent — and every paragraph's box is stored with its chunk
+(migration 0010). An HTML filing has no geometry until a browser lays it out,
+so its boxes are `null`, and the paragraph anchor is the exact target. A box
+invented server-side for HTML would look precise and be wrong.
+
+Boxes are in points from the page's top-left, y down, with the page's size —
+the convention pdf.js draws in — so a client scales by `rendered_width /
+page_width` and draws. They are checked against PDFs written with known
+geometry (`tests/pdfgen.py`) to a hundredth of a point, including irregular
+font widths read from the file, sizes set through either matrix, shifted page
+origins and non-ASCII characters. Rotated pages get `null`.
+
+Building this found that **the PDF parser returned one paragraph per page.**
+It split `extract_text()` on blank lines, and pypdf's plain text has none
+between paragraphs. It now segments paragraphs from the same geometry — gaps,
+indents, bullets, font-size changes — and gives them positional ids
+(`{page}_{index}`) like the HTML parser, so a PDF paragraph's page is read from
+its id as well.
+
+What is still missing for drawing boxes over a rendered PDF: the raw PDF. Only
+its URL and hash are stored, and sec.gov does not allow cross-origin fetches.
 
 **There are no AI answers yet.** Nothing in the API generates an answer; `/v1/search`
 returns chunks. The viewer renders an `Answer` — text plus citations — and does
@@ -76,9 +95,17 @@ entity, and the mention records that paragraph and its page.
 
 | | |
 |---|---|
-| `GET /v1/evidence/{chunk_id}` | one citation: page, paragraph, document, confidence, bounding box |
-| `POST /v1/evidence/resolve` | many citations in one call, order preserved, unresolvable ones flagged rather than failing the answer |
-| `GET /v1/documents/{id}/pages` | the paged reading view the viewer renders |
+| `GET /v1/evidence/{chunk_id}` | one citation: page, paragraph, document, confidence, bounding box, and `highlights` — every anchor to light up, each with its own page and box |
+| `POST /v1/evidence/resolve` | up to 1,000 citations in one call, order preserved, repeats resolved once, unresolvable ones flagged rather than failing the answer |
+| `GET /v1/company/{ticker}/documents` | a company's filings, newest first: pages with text, paragraph count, whether paragraphs have boxes, EDGAR link |
+| `GET /v1/document/{id}/page/{page}` | one page: its paragraphs with anchors and boxes, the page size, and the nearest pages with text either side |
+| `GET /v1/documents/{id}/pages` | the whole filing as the paged reading view the viewer renders |
+
+Every one of them builds paragraphs through the same function, so an anchor a
+citation resolves to is always a block on the page it names.
+`tests/test_evidence_backend_e2e.py` resolves every stored mention and checks
+exactly that, and that each page from the page API equals that page of the
+full reading view.
 
 ## Running it locally
 
@@ -154,16 +181,14 @@ that is fragile; it now uses a flag instead.
 
 ## Not done
 
-- **No PDF rendering and no bounding boxes** — see the top of this document.
+- **No PDF rendering.** Boxes are there for PDF filings; the raw PDF to draw
+  them over is not stored — see the top of this document.
 - **No AI answers.** The viewer is ready for them; nothing produces them.
 - **Existing `mention_count` values** were counting chunks, not paragraphs.
   `0009` does not recompute them; re-extracting a document corrects its counts.
 
 ## Already broken, not touched here
 
-- `/` redirects to `/memory/AAPL`, whose page calls `/v1/companies/{t}` and
-  `/v1/companies/{t}/cards`. Neither endpoint exists — the memory-card layer
-  was never ported to the current schema — so the app's home page returns 500.
 - `npm audit` reports advisories in `next`, `postcss` and `sharp`, all
   pre-existing dependencies. Fixing them means a Next.js upgrade, which belongs
   in its own change.

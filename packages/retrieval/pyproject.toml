@@ -3,7 +3,13 @@ name = "evident-retrieval"
 version = "0.1.0"
 description = "Embeddings and vector search over evidence spans."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+]
+
+[project.optional-dependencies]
+# Imported lazily; install the one EMBEDDING_PROVIDER names.
+voyage = ["voyageai>=0.3"]
+openai = ["openai>=1.60"]
 
 [build-system]
 requires = ["hatchling"]

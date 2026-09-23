@@ -20,6 +20,7 @@ function block(pid: string, text = `paragraph ${pid}`) {
     paragraph_id: pid,
     section_title: "Item 1A",
     text,
+    bounding_box: null,
   };
 }
 
@@ -49,6 +50,21 @@ const tenQ: DocumentView = {
 };
 
 function evidence(over: Partial<ResolvedEvidence>): ResolvedEvidence {
+  const e = base(over);
+  // one highlight per anchor, as the API returns them
+  return {
+    highlights: e.anchors.map((anchor) => ({
+      anchor,
+      paragraph_id: anchor.slice(2),
+      page: e.page,
+      bounding_box: null,
+    })),
+    ...e,
+  };
+}
+
+function base(over: Partial<ResolvedEvidence>): Omit<ResolvedEvidence, "highlights"> &
+  Partial<Pick<ResolvedEvidence, "highlights">> {
   return {
     chunk_id: 1,
     document_id: 1,

@@ -1,17 +1,24 @@
-# Runtime deps live in each package's pyproject. This is for running the
-# integration suite and the API locally.
-sqlalchemy[asyncio]>=2.0
+# Everything the backend needs, for the API, the workers and the test suite.
+# The packages themselves are not installed: tools/dev.sh and the test command
+# put packages/* on PYTHONPATH. Each package's pyproject declares the same
+# dependencies for anyone installing one on its own.
+#
+#   python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+
+# --- required
+sqlalchemy[asyncio]>=2.0     # the API is async; [asyncio] brings greenlet
 alembic>=1.13
 psycopg[binary,pool]>=3.2
 pgvector>=0.3
 fastapi>=0.115
 uvicorn[standard]>=0.32
 pydantic>=2.9
-httpx>=0.27
+httpx>=0.27                  # the API tests' ASGI client
+pypdf>=6.0,<7              # PDF filings; box widths use its font model, verified on 6.x
 
-# Embedding providers. Both are optional: the module imports them lazily and
-# raises a message naming the missing package, so installing only the one you
-# configured is fine. Neither is needed for the test suite, which drives fake
-# clients.
-voyageai>=0.3        # EMBEDDING_PROVIDER=voyage  (default)
-openai>=1.60         # EMBEDDING_PROVIDER=openai  (fallback)
+# --- needed only for the feature that uses them. Each is imported lazily and
+# fails with a message naming the package, so the demo and the test suite run
+# without any of them.
+anthropic>=0.40              # live extraction (ANTHROPIC_API_KEY)
+voyageai>=0.3                # EMBEDDING_PROVIDER=voyage — search
+openai>=1.60                 # EMBEDDING_PROVIDER=openai — search

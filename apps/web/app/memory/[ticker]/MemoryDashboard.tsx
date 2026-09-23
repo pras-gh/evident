@@ -5,7 +5,7 @@ import { MemoryCardTile } from "@/components/MemoryCardTile";
 import { RevisionDrawer } from "@/components/RevisionDrawer";
 import { TimelineRail } from "@/components/TimelineRail";
 import { getCard } from "@/lib/api";
-import type { CardDetail, MemoryCard, MemorySummary, TimelineEntry } from "@/lib/types";
+import type { CardDetail, MemoryCard, MemorySummary, TimelineEvent } from "@/lib/types";
 
 export function MemoryDashboard({
   company,
@@ -14,7 +14,7 @@ export function MemoryDashboard({
 }: {
   company: MemorySummary;
   cards: MemoryCard[];
-  timeline: TimelineEntry[];
+  timeline: TimelineEvent[];
 }) {
   const [open, setOpen] = useState<CardDetail | null>(null);
 
@@ -24,16 +24,42 @@ export function MemoryDashboard({
     setOpen(await getCard(company.ticker ?? "", kind));
   }
 
+  const t = (company.ticker ?? "").toLowerCase();
+
   return (
     <div className="shell">
+      {/* .shell is a sidebar-and-content grid; without the sidebar the whole
+          dashboard would render inside its 214px column */}
+      <aside className="side" aria-label="Navigation">
+        <a className="brand" href="/">
+          <span className="brand-mark" aria-hidden />
+          <span>Evident</span>
+        </a>
+        <nav className="nav">
+          <a className="nav-item is-on" href={`/memory/${t}`} aria-current="page">
+            <span className="nav-dot" aria-hidden />
+            Memory
+          </a>
+          <a className="nav-item" href={`/timeline/${t}`}>
+            <span className="nav-dot" aria-hidden />
+            Timeline
+          </a>
+        </nav>
+      </aside>
+
       <main className="main">
         <header className="head">
           <span className="tickmark">{company.ticker}</span>
           <div className="head-id">
             <h1>{company.ticker}</h1>
-            <p className="head-sub">Company Memory</p>
+            <p className="head-sub">{company.name} · Company Memory</p>
             <p className="head-meta">
               Memory built from <b>{company.document_count.toLocaleString()} documents</b>
+              {company.earliest_filing && company.latest_filing && (
+                <>
+                  , filed {company.earliest_filing} to {company.latest_filing}
+                </>
+              )}
             </p>
           </div>
         </header>
@@ -56,12 +82,16 @@ export function MemoryDashboard({
           </section>
 
           <aside className="rails">
-            <TimelineRail entries={timeline} />
+            <TimelineRail ticker={company.ticker ?? ""} events={timeline} />
           </aside>
         </div>
       </main>
 
-      <RevisionDrawer card={open} onClose={() => setOpen(null)} />
+      <RevisionDrawer
+        card={open}
+        ticker={company.ticker ?? ""}
+        onClose={() => setOpen(null)}
+      />
     </div>
   );
 }

@@ -11,10 +11,39 @@ from evident_db import (Chunk, Company, Document, Entity, EntityMention,
                         TimelineEvent)
 
 from ..deps import get_company, get_db
-from ..schemas import (CompanyMemoryOut, EntityDetailOut, EntityOut, MentionOut,
-                       Provenance, TimelineEventOut)
+from ..schemas import (CompanyListItem, CompanyMemoryOut, CompanySummaryOut,
+                       EntityDetailOut, EntityOut, MentionOut, Provenance,
+                       TimelineEventOut)
 
 router = APIRouter(prefix="/companies", tags=["memory"])
+
+
+@router.get("", response_model=list[CompanyListItem], summary="Companies with memory")
+async def list_companies(db: AsyncSession = Depends(get_db)) -> list[CompanyListItem]:
+    rows = (await db.execute(
+        select(Company, func.count(Document.id), func.max(Document.filed_at))
+        .outerjoin(Document, Document.company_id == Company.id)
+        .group_by(Company.id).order_by(Company.ticker))).all()
+    return [CompanyListItem(ticker=c.ticker, name=c.name, cik=c.cik,
+                            document_count=n, latest_filing=latest)
+            for c, n, latest in rows]
+
+
+@router.get("/{ticker}", response_model=CompanySummaryOut, summary="Company summary")
+async def company_summary(company: Company = Depends(get_company),
+                          db: AsyncSession = Depends(get_db)) -> CompanySummaryOut:
+    docs = (await db.execute(
+        select(func.count(), func.min(Document.filed_at), func.max(Document.filed_at))
+        .where(Document.company_id == company.id))).one()
+    counts = dict((await db.execute(
+        select(Entity.entity_type, func.count())
+        .where(Entity.company_id == company.id).group_by(Entity.entity_type))).all())
+    built_at = (await db.execute(
+        select(func.max(Entity.updated_at)).where(Entity.company_id == company.id))).scalar()
+    return CompanySummaryOut(
+        company_id=company.id, cik=company.cik, ticker=company.ticker, name=company.name,
+        document_count=docs[0], earliest_filing=docs[1], latest_filing=docs[2],
+        counts={k: int(v) for k, v in counts.items()}, built_at=built_at)
 
 
 @router.get("/{ticker}/memory", response_model=CompanyMemoryOut,

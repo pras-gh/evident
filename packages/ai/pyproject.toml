@@ -3,7 +3,16 @@ name = "evident-ai"
 version = "0.1.0"
 description = "Claude prompts and entity extraction."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "pydantic>=2.9",
+  "anthropic>=0.40",
+  "evident-graph",
+  "evident-parser",
+]
+
+[tool.uv.sources]
+evident-graph  = { path = "../graph", editable = true }
+evident-parser = { path = "../parser", editable = true }
 
 [build-system]
 requires = ["hatchling"]

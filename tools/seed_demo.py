@@ -146,7 +146,8 @@ def main(argv: list[str] | None = None) -> int:
     # oldest first, so first_seen and latest_seen advance the way they would
     # if each filing had been processed the day it was published
     for filing in sorted(ingested, key=lambda f: f.filed_at):
-        print(f"  ingested {filing.form_type} {filing.accession}: {filing.chunks} chunks")
+        print(f"  {filing.form_type} {filing.accession}: "
+              + ("already ingested, unchanged" if filing.skipped else f"{filing.chunks} chunks"))
         with session_scope(dsn) as db:
             company = db.execute(select(Company).where(Company.ticker == "NVDA")).scalar_one()
             document = db.execute(select(Document).where(

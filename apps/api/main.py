@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
-from .routers import evidence, graph, ingest, memory, search, timeline
+from .routers import cards, evidence, graph, ingest, memory, search, timeline
 
 API_VERSION = "1.0.0"
 
@@ -32,6 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(cards.router, prefix="/v1")
 app.include_router(evidence.router, prefix="/v1")
 app.include_router(graph.router, prefix="/v1")
 app.include_router(ingest.router, prefix="/v1")

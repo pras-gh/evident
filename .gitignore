@@ -11,3 +11,6 @@ __pycache__/
 venv/
 .env
 .env.local
+
+# local PostgreSQL cluster from tools/db.sh
+.pgdata/

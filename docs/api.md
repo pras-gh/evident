@@ -18,15 +18,24 @@ that had none to give.
 
 ## Endpoints
 
-### `GET /v1/companies/{ticker}`
+### `GET /v1/companies`
 
-Memory summary — document count and per-entity counts.
+Every company with memory — what the home page lists.
 
 ```json
-{ "company_id": "0000320193", "ticker": "AAPL", "document_count": 1248,
-  "counts": { "topics": 34, "people": 12, "metrics": 61, "risks": 12,
-              "promises": 5, "products": 7, "events": 28 },
-  "built_at": "2025-02-01" }
+[{ "ticker": "NVDA", "name": "NVIDIA CORP", "cik": "0001045810",
+   "document_count": 3, "latest_filing": "2026-02-25" }]
+```
+
+### `GET /v1/companies/{ticker}`
+
+Memory summary — documents, entities per type, and when extraction last wrote.
+
+```json
+{ "company_id": 1, "cik": "0001045810", "ticker": "NVDA", "name": "NVIDIA CORP",
+  "document_count": 3, "earliest_filing": "2024-02-21", "latest_filing": "2026-02-25",
+  "counts": { "risk": 6, "geography": 4, "product": 3 },
+  "built_at": "2026-09-24T00:36:46+05:30" }
 ```
 
 ### `GET /v1/companies/{ticker}/cards`
@@ -48,6 +57,24 @@ a card without moving anything still earns a revision, marked immaterial, so a
 client can say "4 updates, 3 material" rather than implying every filing
 mattered.
 
+Cards are **computed on read** from filings and entity mentions
+(`evident_memory.projection`); the card tables in `db/legacy-design` were never
+migrated, and a derived read model does not need them. What that data can fill
+today is **Risks** (risk entities cited in Item 1A of annual filings) and
+**Litigation** (entities cited in Legal Proceedings). The others have no
+history and say why in `unavailable` — Revenue and CapEx need metric values,
+which nothing extracts yet; Products and Guidance route on earnings-call
+transcripts, which are not ingested:
+
+```json
+{ "kind": "revenue", "revision_count": 0, "current": null,
+  "unavailable": "Needs reported metric values, and nothing extracts them yet." }
+```
+
+The first revision of a card is a baseline and says "First on record: …",
+never "N new …". Every fact's evidence carries `chunk_id` and `entity_slug`,
+so it opens in the evidence viewer.
+
 ### `GET /v1/companies/{ticker}/cards/{kind}`
 
 One card with its full `history`, oldest first. Add `?materially=true` to drop
@@ -58,9 +85,14 @@ of payload for something most readers open one of.
 
 ### `GET /v1/companies/{ticker}/timeline`
 
-`?limit=50&kind=promise`. The materialised spine over every dated entity.
+`?limit=50&kind=promise`. The raw `timeline_events` log. For what changed
+between filings — computed, with evidence — use `GET /v1/company/{ticker}/timeline`
+(see `docs/timeline-engine.md`).
 
 ### `GET /v1/companies/{ticker}/promises`
+
+**Not built — returns 501.** Designed and tested in `evident_memory`, but
+nothing extracts promises and their tables were never migrated.
 
 `?status=open|kept|broken|abandoned|unclear`.
 
@@ -91,6 +123,33 @@ hit carries the document, page and paragraph ids it came from.
 Ranking is hybrid — cosine similarity finds the passage, recency breaks
 near-ties. A 10-K and a stale 10-Q often carry the same sentence, and the newer
 one is almost always what was wanted.
+
+### Evidence
+
+The evidence viewer's endpoints — see `docs/evidence-viewer.md` for the rules
+behind them.
+
+| | |
+| --- | --- |
+| `GET /v1/evidence/{chunk_id}?paragraph_id=&entity=` | one citation |
+| `POST /v1/evidence/resolve` | up to 1,000 citations, order preserved; a bad one is flagged, not raised |
+| `GET /v1/company/{ticker}/documents?form_type=&limit=` | a company's filings, newest first |
+| `GET /v1/document/{id}/page/{page}` | one page: paragraphs, anchors, boxes, prev/next page with text |
+| `GET /v1/documents/{id}/pages` | the whole filing as a paged reading view |
+
+```json
+{ "chunk_id": 22, "document_id": 1, "page": 27, "paragraph_id": "27_2",
+  "anchors": ["p-27_2"],
+  "bounding_box": null,
+  "highlights": [{ "anchor": "p-27_2", "paragraph_id": "27_2", "page": 27,
+                   "bounding_box": null }],
+  "citation": "10-K · p. 27 · Item 1A. Risk Factors", "...": "..." }
+```
+
+A **bounding box** is `{page, x0, y0, x1, y1, page_width, page_height}` in
+points from the page's top-left, y down. PDF filings have them; HTML filings
+have `null`, and the anchor is the exact target. A page inside the filing with
+no stored text is an empty `200`; a page outside it is a `404` naming the range.
 
 ### `GET /health`
 

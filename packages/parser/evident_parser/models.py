@@ -99,6 +99,34 @@ class Section:
     end_page: int | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class BBox:
+    """Where a paragraph sits on its page.
+
+    Points (1/72 in), origin at the **top-left** of the page as a viewer shows
+    it (the PDF's CropBox), y increasing downward — the convention pdf.js and
+    every screen use, so a client scales by `rendered_width / page_width` and
+    draws. `y0` is the top edge, `y1` the bottom. PDF user space is
+    bottom-left and y-up; the parser converts, so nobody else has to.
+
+    Only PDFs have one. An HTML filing has no page geometry until a browser
+    lays it out, and a box invented for it would look exact and be wrong.
+    """
+    page: int
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+    page_width: float
+    page_height: float
+
+    def to_json(self) -> dict[str, float | int]:
+        return {"page": self.page, "x0": round(self.x0, 2), "y0": round(self.y0, 2),
+                "x1": round(self.x1, 2), "y1": round(self.y1, 2),
+                "page_width": round(self.page_width, 2),
+                "page_height": round(self.page_height, 2)}
+
+
 @dataclass(slots=True)
 class Block:
     """One paragraph of prose."""
@@ -107,6 +135,8 @@ class Block:
     text: str
     page_number: int | None = None
     section_ordinal: int | None = None
+    #: the paragraph's rectangle on its page; PDFs only
+    bbox: BBox | None = None
 
     @property
     def char_count(self) -> int:
@@ -148,6 +178,8 @@ class Chunk:
     page_start: int | None = None
     page_end: int | None = None
     section_ordinal: int | None = None
+    #: paragraph_id → its BBox, for the paragraphs that have one
+    paragraph_boxes: dict[str, BBox] = field(default_factory=dict)
 
     @property
     def token_estimate(self) -> int:
