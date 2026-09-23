@@ -3,7 +3,16 @@ name = "evident-db"
 version = "0.1.0"
 description = "SQLAlchemy models, sessions and repositories for the memory engine."
 requires-python = ">=3.11"
-dependencies = ["sqlalchemy>=2.0", "psycopg[binary]>=3.2", "pgvector>=0.3", "alembic>=1.13"]
+dependencies = [
+  "sqlalchemy[asyncio]>=2.0",
+  "psycopg[binary]>=3.2",
+  "pgvector>=0.3",
+  "alembic>=1.13",
+  "evident-graph",   # the taxonomy the check constraints are generated from
+]
+
+[tool.uv.sources]
+evident-graph  = { path = "../graph", editable = true }
 
 [build-system]
 requires = ["hatchling"]

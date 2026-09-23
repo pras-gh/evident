@@ -2,12 +2,20 @@
 name = "evident-api"
 version = "1.0.0"
 requires-python = ">=3.11"
+# Everything the API process imports, including the ingest worker behind
+# POST /v1/ingest. Run it with tools/dev.sh api, which puts the packages and
+# the repository root (for `workers`) on the path.
 dependencies = [
   "fastapi>=0.115", "uvicorn[standard]>=0.32", "pydantic>=2.9",
-  "sqlalchemy>=2.0", "psycopg[binary]>=3.2", "pgvector>=0.3",
-  "evident-db", "evident-retrieval",
+  "sqlalchemy[asyncio]>=2.0", "psycopg[binary]>=3.2", "pgvector>=0.3",
+  "evident-db", "evident-parser", "evident-graph", "evident-memory",
+  "evident-ai", "evident-retrieval",
 ]
 
 [tool.uv.sources]
 evident-db        = { path = "../../packages/db",        editable = true }
+evident-parser    = { path = "../../packages/parser",    editable = true }
+evident-graph     = { path = "../../packages/graph",     editable = true }
+evident-memory    = { path = "../../packages/memory",    editable = true }
+evident-ai        = { path = "../../packages/ai",        editable = true }
 evident-retrieval = { path = "../../packages/retrieval", editable = true }

@@ -3,7 +3,9 @@ name = "evident-parser"
 version = "0.1.0"
 description = "HTML and PDF filing parsing, chunking, and stable paragraph ids."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+  "pypdf>=4.0",
+]
 
 [build-system]
 requires = ["hatchling"]
