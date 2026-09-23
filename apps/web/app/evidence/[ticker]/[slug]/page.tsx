@@ -30,10 +30,13 @@ export async function generateMetadata({
  */
 export default async function EntityEvidencePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ ticker: string; slug: string }>;
+  searchParams: Promise<{ cite?: string | string[] }>;
 }) {
   const { ticker, slug } = await params;
+  const cite = parseCite((await searchParams).cite);
 
   let entity;
   try {
@@ -71,12 +74,30 @@ export default async function EntityEvidencePage({
     citations,
   };
 
+  // Arriving from a link to one paragraph (the timeline's evidence chips),
+  // open with that citation selected, scrolled to and highlighted.
+  const initial = cite
+    ? refs.findIndex(
+        (r) =>
+          r.chunk_id === cite.chunk_id &&
+          (cite.paragraph_id == null || r.paragraph_id === cite.paragraph_id),
+      )
+    : -1;
+
   return (
     <EvidenceViewer
       kicker={`${ticker.toUpperCase()} · ${entity.entity_type}`}
       title={entity.name}
       answer={answer}
       documents={documents}
+      initialActive={initial >= 0 ? initial : null}
     />
   );
+}
+
+/** `?cite=12:26_1` or `?cite=12` → the citation to open with. */
+function parseCite(raw: string | string[] | undefined) {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const m = value?.match(/^(\d+)(?::(.+))?$/);
+  return m ? { chunk_id: Number(m[1]), paragraph_id: m[2] ?? null } : null;
 }

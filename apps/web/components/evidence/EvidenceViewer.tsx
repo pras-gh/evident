@@ -19,18 +19,25 @@ export function EvidenceViewer({
   title,
   answer,
   documents,
+  initialActive = null,
 }: {
   kicker?: string;
   title: string;
   answer: Answer;
   documents: Record<number, DocumentView>;
+  /** open with this citation selected — for links to one paragraph */
+  initialActive?: number | null;
 }) {
   const citations = answer.citations;
+  // an unresolvable initial citation is ignored rather than selected blank
+  const opening =
+    initialActive != null && citations[initialActive]?.evidence ? initialActive : null;
   const firstDoc =
+    (opening != null ? citations[opening].evidence?.document_id : undefined) ??
     citations.find((c) => c.evidence)?.evidence?.document_id ??
     Number(Object.keys(documents)[0]);
 
-  const [active, setActive] = useState<number | null>(null);
+  const [active, setActive] = useState<number | null>(opening);
   const [docId, setDocId] = useState<number | null>(
     Number.isFinite(firstDoc) ? firstDoc : null,
   );
@@ -95,7 +102,10 @@ export function EvidenceViewer({
     pane.scrollTo({
       // leave the page label and a line of context above the paragraph
       top: Math.max(0, offset - 96),
-      behavior: prefersReducedMotion() ? "auto" : "smooth",
+      // Arriving from a link (no click yet) lands on the paragraph: animating
+      // through thirty pages of filing is slow, and a hidden tab never
+      // finishes the animation at all.
+      behavior: prefersReducedMotion() || pulse === 0 ? "auto" : "smooth",
     });
   }, [activeEvidence, docId, pulse]);
 

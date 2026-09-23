@@ -327,6 +327,61 @@ describe("the highlight persists while scrolling", () => {
   });
 });
 
+describe("opening at a citation", () => {
+  // the viewer scrolls while mounting, before a test could stub the pane
+  beforeEach(() => {
+    HTMLElement.prototype.scrollTo = scrollTo as unknown as typeof HTMLElement.prototype.scrollTo;
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as Partial<HTMLElement>).scrollTo;
+  });
+
+  function open(initialActive: number | null) {
+    render(
+      <EvidenceViewer
+        title="Export Controls"
+        answer={answer}
+        documents={{ 1: tenK, 2: tenQ }}
+        initialActive={initialActive}
+      />,
+    );
+    return screen.getByTestId("document-pane");
+  }
+
+  it("selects, highlights and scrolls to it without a click", () => {
+    const pane = open(0);
+    expect(chip(1).getAttribute("aria-pressed")).toBe("true");
+    expect(highlighted(pane)).toEqual(["p-27_3"]);
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+  });
+
+  it("lands on it rather than animating there; clicks still animate", () => {
+    open(0);
+    expect(scrollTo.mock.calls[0][0].behavior).toBe("auto");
+    fireEvent.click(chip(2));
+    expect(scrollTo.mock.calls[1][0].behavior).toBe("smooth");
+  });
+
+  it("opens the filing the citation is in, not the first one", () => {
+    const pane = open(2);
+    expect(screen.getByRole("tab", { selected: true }).textContent).toBe("10-Q · 2024-11-20");
+    expect(highlighted(pane)).toEqual(["p-12_1"]);
+  });
+
+  it("ignores a citation that did not resolve", () => {
+    const pane = open(3);
+    expect(highlighted(pane)).toEqual([]);
+    expect(screen.getByRole("tab", { selected: true }).textContent).toBe("10-K · 2025-02-26");
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it("still lets the reader move to another citation", () => {
+    const pane = open(0);
+    fireEvent.click(chip(2));
+    expect(highlighted(pane)).toEqual(["p-28_1", "p-28_2"]);
+  });
+});
+
 describe("splitMarkers", () => {
   it("separates text from citation numbers", () => {
     expect(splitMarkers("a [1] b [12]c")).toEqual(["a ", 1, " b ", 12, "c"]);
