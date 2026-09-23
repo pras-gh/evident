@@ -3,7 +3,7 @@
 
     DATABASE_URL=... python tools/seed_demo.py                     # one filing
     DATABASE_URL=... python tools/seed_demo.py --corpus timeline   # three years
-    open http://localhost:3000/evidence/nvda/export_controls
+    open http://localhost:3000/evidence/1?entity=export_controls
     open http://localhost:3000/timeline/nvda
 
 **This is not Claude.** Entities are found by a keyword matcher, so the demo
@@ -158,16 +158,29 @@ def main(argv: list[str] | None = None) -> int:
                   f"{stats.mentions_new} new mentions, "
                   f"{stats.dropped_uncited} dropped by the citation guard")
 
+    # Pages, page images and a box for every paragraph, for the evidence viewer.
+    try:
+        from workers.render_worker import render
+    except ImportError:
+        print("  not rendered: the renderer needs playwright (pip install -r "
+              "requirements-dev.txt) and Chrome")
+    else:
+        for r in render(ticker="NVDA", url=dsn):
+            print(f"  rendered {r.accession}: " + (f"error: {r.error}" if r.error else
+                  f"{r.pages_with_images} pages with text, {r.boxed}/{r.paragraphs} "
+                  "paragraphs boxed"))
+
     with session_scope(dsn) as db:
         rows = db.execute(
-            select(Entity.slug, Entity.name, func.count(EntityMention.id))
+            select(Entity.slug, Entity.name, func.count(EntityMention.id),
+                   func.min(EntityMention.chunk_id))
             .join(EntityMention, EntityMention.entity_id == Entity.id)
             .group_by(Entity.slug, Entity.name)
             .order_by(func.count(EntityMention.id).desc())).all()
     web = os.environ.get("WEB_URL", "http://localhost:3000")
     print("\n  open:")
-    for slug, name, n in rows:
-        print(f"    {web}/evidence/nvda/{slug:<22} {name} — {n} citation(s)")
+    for slug, name, n, chunk_id in rows:
+        print(f"    {web}/evidence/{chunk_id}?entity={slug:<20} {name} — {n} citation(s)")
     if filings > 1:
         print(f"    {web}/timeline/nvda")
     return 0

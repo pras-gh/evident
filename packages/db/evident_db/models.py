@@ -85,6 +85,13 @@ class Document(Base):
     # lets a re-ingest detect unchanged bytes and skip the work
     content_sha256: Mapped[str] = mapped_column(String(64))
     page_count: Mapped[Optional[int]]
+    #: the filing's bytes as fetched, relative to the filing store
+    source_path: Mapped[Optional[str]] = mapped_column(Text)
+    #: a PDF of the filing: the source itself for PDF filings, Chrome's print
+    #: of it for HTML ones
+    pdf_path: Mapped[Optional[str]] = mapped_column(Text)
+    #: when page images and boxes were last made; null until the render worker runs
+    rendered_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[created_at]
 
     company: Mapped["Company"] = relationship(back_populates="documents")
@@ -249,6 +256,7 @@ class Entity(Base):
                         name="status"),
         CheckConstraint("importance_score between 0 and 100",
                         name="importance_score"),
+        CheckConstraint("highlight_color ~ '^#[0-9a-fA-F]{6}$'", name="highlight_color"),
         Index("ix_entities_company_id_entity_type", "company_id", "entity_type"),
     )
 
@@ -261,6 +269,9 @@ class Entity(Base):
     description: Mapped[Optional[str]] = mapped_column(Text)
     attributes: Mapped[dict] = mapped_column(JSONB, default=dict,
                                              server_default="{}")
+    #: `#rrggbb` its citations are highlighted in; null means the type's
+    #: colour (evident_graph.taxonomy.HIGHLIGHT_COLORS)
+    highlight_color: Mapped[Optional[str]] = mapped_column(String(7))
     status: Mapped[str16] = mapped_column(default="active",
                                           server_default="active")
     first_seen: Mapped[Optional[date]] = mapped_column(Date)

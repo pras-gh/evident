@@ -167,14 +167,28 @@ class HighlightOut(BaseModel):
     #: this paragraph's page — a chunk-wide citation can span pages
     page: int | None = None
     bounding_box: BoundingBox | None = None
+    #: `#rrggbb` to draw it in — the cited entity's colour, or the default
+    highlight_color: str = "#34d399"
+
+
+class EvidenceEntityOut(BaseModel):
+    """An entity extraction found in the cited paragraph."""
+    slug: str
+    name: str
+    entity_type: str
+    confidence: float | None = None
+    highlight_color: str
 
 
 class EvidenceOut(BaseModel):
     """One resolved citation: where it is, what it says, how sure we are."""
     chunk_id: int
     document_id: int
+    ticker: str | None = None
+    company: str | None = None
     accession: str
     form_type: str
+    fiscal_period: str | None = None
     filed_at: date
     source_format: str
     #: the page the *cited paragraph* is on — not the chunk's first page,
@@ -201,6 +215,10 @@ class EvidenceOut(BaseModel):
     #: every anchor to highlight, in document order, each with its own page
     #: and box — what a viewer needs to mark the citation exactly
     highlights: list[HighlightOut] = Field(default_factory=list)
+    #: `#rrggbb` for this citation — the named entity's colour, or the default
+    highlight_color: str = "#34d399"
+    #: entities extracted from the cited paragraph, most confident first
+    entities: list[EvidenceEntityOut] = Field(default_factory=list)
     citation: str
 
 
@@ -502,4 +520,39 @@ class PageOut(BaseModel):
     #: the nearest pages before and after this one that have text
     prev_page: int | None = None
     next_page: int | None = None
+    #: the page as rendered, when it has been (see DocumentDetailOut)
+    image_url: str | None = None
+    thumbnail_url: str | None = None
     blocks: list[DocumentBlockOut]
+
+
+class PageSummaryOut(BaseModel):
+    page: int
+    #: points; boxes on this page are in the same space
+    width: float
+    height: float
+    #: API paths, versioned by render time so they can be cached forever
+    image_url: str | None = None
+    thumbnail_url: str | None = None
+    paragraph_count: int
+
+
+class DocumentDetailOut(BaseModel):
+    """A filing and its pages, as the viewer shows them."""
+    document_id: int
+    ticker: str | None
+    company: str
+    accession: str
+    form_type: str
+    fiscal_period: str | None = None
+    filed_at: date
+    source_format: str
+    page_count: int | None = None
+    #: null until the render worker has run; the viewer then shows text
+    rendered_at: datetime | None = None
+    #: a PDF of the filing whose page N is page N
+    pdf_url: str | None = None
+    #: the filing's index page on EDGAR
+    url: str
+    #: every page, rendered or not, in order
+    pages: list[PageSummaryOut]
