@@ -124,6 +124,33 @@ Ranking is hybrid — cosine similarity finds the passage, recency breaks
 near-ties. A 10-K and a stale 10-Q often carry the same sentence, and the newer
 one is almost always what was wanted.
 
+### Evidence
+
+The evidence viewer's endpoints — see `docs/evidence-viewer.md` for the rules
+behind them.
+
+| | |
+| --- | --- |
+| `GET /v1/evidence/{chunk_id}?paragraph_id=&entity=` | one citation |
+| `POST /v1/evidence/resolve` | up to 1,000 citations, order preserved; a bad one is flagged, not raised |
+| `GET /v1/company/{ticker}/documents?form_type=&limit=` | a company's filings, newest first |
+| `GET /v1/document/{id}/page/{page}` | one page: paragraphs, anchors, boxes, prev/next page with text |
+| `GET /v1/documents/{id}/pages` | the whole filing as a paged reading view |
+
+```json
+{ "chunk_id": 22, "document_id": 1, "page": 27, "paragraph_id": "27_2",
+  "anchors": ["p-27_2"],
+  "bounding_box": null,
+  "highlights": [{ "anchor": "p-27_2", "paragraph_id": "27_2", "page": 27,
+                   "bounding_box": null }],
+  "citation": "10-K · p. 27 · Item 1A. Risk Factors", "...": "..." }
+```
+
+A **bounding box** is `{page, x0, y0, x1, y1, page_width, page_height}` in
+points from the page's top-left, y down. PDF filings have them; HTML filings
+have `null`, and the anchor is the exact target. A page inside the filing with
+no stored text is an empty `200`; a page outside it is a `404` naming the range.
+
 ### `GET /health`
 
 Liveness plus a real database round-trip.

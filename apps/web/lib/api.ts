@@ -3,10 +3,12 @@ import type {
   CitationRef,
   CompanyListItem,
   CompanyTimeline,
+  DocumentSummary,
   DocumentView,
   EntityDetail,
   MemoryCard,
   MemorySummary,
+  PageView,
   ResolvedCitation,
 } from "./types";
 
@@ -42,8 +44,19 @@ export const getEntity = (t: string, slug: string) =>
 export const getDocumentPages = (documentId: number) =>
   get<DocumentView>(`/documents/${documentId}/pages`, 300);
 
-/** The most citations POST /v1/evidence/resolve accepts in one call. */
-export const RESOLVE_BATCH = 100;
+/** A company's filings, newest first, with what each supports. */
+export const getCompanyDocuments = (t: string) =>
+  get<{ ticker: string | null; company: string; documents: DocumentSummary[] }>(
+    `/company/${encodeURIComponent(t)}/documents`,
+  );
+
+/** One page of a filing: its paragraphs, anchors and — for PDFs — boxes. */
+export const getDocumentPage = (documentId: number, page: number) =>
+  get<PageView>(`/document/${documentId}/page/${page}`, 300);
+
+/** The most citations POST /v1/evidence/resolve accepts in one call —
+ *  MAX_RESOLVE in apps/api/schemas.py. */
+export const RESOLVE_BATCH = 1000;
 
 /** Resolve an answer's citations, in as many calls as the API's per-request
  *  limit needs, in parallel. Order is preserved, and a bad citation comes

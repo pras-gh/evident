@@ -139,18 +139,34 @@ class ImportanceExplanation(BaseModel):
 
 # ------------------------------------------------------------------ evidence
 class BoundingBox(BaseModel):
-    """A rectangle on a page, in PDF points from the top-left.
+    """Where a paragraph sits on its page.
 
-    Always null today. HTML filings have no fixed layout to take coordinates
-    from, and the PDF parser does not record them. The field is part of the
-    contract so a PDF source can populate it later without a breaking change —
-    clients should fall back to the paragraph anchor when it is absent, which
-    for HTML is the more precise target anyway.
+    Points (1/72 in) from the **top-left** of the page as a viewer shows it
+    (the PDF's CropBox), y down — the convention of pdf.js and of screens. To
+    draw it over a page rendered `w` pixels wide, scale every coordinate by
+    `w / page_width`. `y0` is the top edge, `y1` the bottom.
+
+    Present for PDF filings, measured from the text's position and the font's
+    metrics. **Null for HTML filings**, which have no page geometry until a
+    browser lays them out; for those the paragraph `anchor` is the exact
+    target, and a box invented server-side would look precise and be wrong.
     """
+    page: int
     x0: float
     y0: float
     x1: float
     y1: float
+    page_width: float
+    page_height: float
+
+
+class HighlightOut(BaseModel):
+    """One thing to light up for a citation: a paragraph, or a whole table."""
+    anchor: str
+    paragraph_id: str | None = None
+    #: this paragraph's page — a chunk-wide citation can span pages
+    page: int | None = None
+    bounding_box: BoundingBox | None = None
 
 
 class EvidenceOut(BaseModel):
@@ -179,8 +195,17 @@ class EvidenceOut(BaseModel):
                      "paragraph (or this entity, if one was named); null when "
                      "nothing has been extracted from it. A self-report, not a "
                      "calibrated probability."))
+    #: the cited paragraph's box (the first paragraph's, for a chunk-wide
+    #: citation); null for HTML filings and tables — see BoundingBox
     bounding_box: BoundingBox | None = None
+    #: every anchor to highlight, in document order, each with its own page
+    #: and box — what a viewer needs to mark the citation exactly
+    highlights: list[HighlightOut] = Field(default_factory=list)
     citation: str
+
+
+#: The most citations one POST /v1/evidence/resolve accepts.
+MAX_RESOLVE = 1000
 
 
 class CitationIn(BaseModel):
@@ -191,7 +216,7 @@ class CitationIn(BaseModel):
 
 
 class ResolveIn(BaseModel):
-    citations: list[CitationIn] = Field(min_length=1, max_length=100)
+    citations: list[CitationIn] = Field(min_length=1, max_length=MAX_RESOLVE)
 
 
 class ResolvedCitation(BaseModel):
@@ -218,6 +243,8 @@ class DocumentBlockOut(BaseModel):
     paragraph_id: str | None = None
     section_title: str | None = None
     text: str
+    #: PDFs only — see BoundingBox
+    bounding_box: BoundingBox | None = None
 
 
 class DocumentPageOut(BaseModel):
@@ -425,3 +452,54 @@ class MemoryCardOut(BaseModel):
 class CardDetailOut(MemoryCardOut):
     #: oldest first
     history: list[CardRevisionOut]
+
+
+# --------------------------------------------------------------------------
+# Documents and pages: what the evidence viewer navigates
+
+
+class DocumentSummaryOut(BaseModel):
+    document_id: int
+    accession: str
+    form_type: str
+    fiscal_period: str | None = None
+    filed_at: date
+    #: when the filing became public (EDGAR acceptance time)
+    published_at: datetime
+    #: "html" or "pdf"
+    source_format: str
+    page_count: int | None = None
+    #: pages that have stored text; the rest of a filing may not be ingested
+    pages_with_text: int
+    first_page: int | None = None
+    paragraph_count: int
+    #: true when paragraphs carry bounding boxes (PDF filings)
+    has_bounding_boxes: bool
+    #: the filing's index page on EDGAR
+    url: str
+
+
+class CompanyDocumentsOut(BaseModel):
+    ticker: str | None
+    company: str
+    #: newest first
+    documents: list[DocumentSummaryOut]
+
+
+class PageOut(BaseModel):
+    """One page of a filing: its paragraphs, anchors and boxes."""
+    document_id: int
+    accession: str
+    form_type: str
+    filed_at: date
+    ticker: str | None
+    source_format: str
+    page: int
+    page_count: int | None = None
+    #: the page's size in points, when the filing has geometry (PDFs)
+    page_width: float | None = None
+    page_height: float | None = None
+    #: the nearest pages before and after this one that have text
+    prev_page: int | None = None
+    next_page: int | None = None
+    blocks: list[DocumentBlockOut]

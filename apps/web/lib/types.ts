@@ -101,11 +101,25 @@ export interface CompanyListItem {
 // apps/api/schemas.py.
 
 /** A rectangle on a page. Always null today — see BoundingBox in the API. */
+/** Where a paragraph sits on its page: points from the page's top-left, y
+ *  down, as pdf.js draws it. Scale by `renderedWidth / page_width` to overlay.
+ *  PDF filings only — null for HTML, where the anchor is the exact target. */
 export interface BoundingBox {
+  page: number;
   x0: number;
   y0: number;
   x1: number;
   y1: number;
+  page_width: number;
+  page_height: number;
+}
+
+/** One thing a citation lights up, with its own page and box. */
+export interface Highlight {
+  anchor: string;
+  paragraph_id: string | null;
+  page: number | null;
+  bounding_box: BoundingBox | null;
 }
 
 export interface ResolvedEvidence {
@@ -125,6 +139,9 @@ export interface ResolvedEvidence {
   text: string;
   confidence: number | null;
   bounding_box: BoundingBox | null;
+  /** every anchor to highlight, each on its own page — a chunk-wide
+   *  citation can cross a page break */
+  highlights: Highlight[];
   citation: string;
 }
 
@@ -149,6 +166,41 @@ export interface DocumentBlock {
   paragraph_id: string | null;
   section_title: string | null;
   text: string;
+  bounding_box: BoundingBox | null;
+}
+
+/** GET /v1/company/{ticker}/documents */
+export interface DocumentSummary {
+  document_id: number;
+  accession: string;
+  form_type: string;
+  fiscal_period: string | null;
+  filed_at: string;
+  published_at: string;
+  source_format: string;
+  page_count: number | null;
+  pages_with_text: number;
+  first_page: number | null;
+  paragraph_count: number;
+  has_bounding_boxes: boolean;
+  url: string;
+}
+
+/** GET /v1/document/{id}/page/{page} */
+export interface PageView {
+  document_id: number;
+  accession: string;
+  form_type: string;
+  filed_at: string;
+  ticker: string | null;
+  source_format: string;
+  page: number;
+  page_count: number | null;
+  page_width: number | null;
+  page_height: number | null;
+  prev_page: number | null;
+  next_page: number | null;
+  blocks: DocumentBlock[];
 }
 
 export interface DocumentPage {
