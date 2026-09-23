@@ -89,6 +89,7 @@ async def get_entity(slug: str, company: Company = Depends(get_company),
             form_type=d.form_type,
             section_title=c.section_title if c else None,
             provenance=Provenance(
+                chunk_id=m.chunk_id,
                 chunk_hash=m.chunk_hash or (c.chunk_hash if c else None),
                 document_id=d.id,
                 page=m.page or (c.page_number if c else None),

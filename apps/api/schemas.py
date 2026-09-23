@@ -7,6 +7,7 @@ omit it, and an uncited claim is the one failure this product cannot afford.
 from __future__ import annotations
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,8 @@ class EntityOut(BaseModel):
 
 class Provenance(BaseModel):
     """Where an extracted claim came from. Present on every extracted object."""
+    #: what a citation points at; resolve it with GET /v1/evidence/{chunk_id}
+    chunk_id: int | None = None
     chunk_hash: str | None = None
     document_id: int
     page: int | None = None
@@ -132,3 +135,109 @@ class ImportanceExplanation(BaseModel):
     importance: int
     components: dict[str, float]
     signals: dict
+
+
+# ------------------------------------------------------------------ evidence
+class BoundingBox(BaseModel):
+    """A rectangle on a page, in PDF points from the top-left.
+
+    Always null today. HTML filings have no fixed layout to take coordinates
+    from, and the PDF parser does not record them. The field is part of the
+    contract so a PDF source can populate it later without a breaking change —
+    clients should fall back to the paragraph anchor when it is absent, which
+    for HTML is the more precise target anyway.
+    """
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+
+class EvidenceOut(BaseModel):
+    """One resolved citation: where it is, what it says, how sure we are."""
+    chunk_id: int
+    document_id: int
+    accession: str
+    form_type: str
+    filed_at: date
+    source_format: str
+    #: the page the *cited paragraph* is on — not the chunk's first page,
+    #: which is wrong for any paragraph after a page break
+    page: int | None
+    #: the paragraph this citation points at; null for a table chunk
+    paragraph_id: str | None
+    #: every paragraph in the chunk, in order
+    paragraph_ids: list[str]
+    #: DOM anchors the viewer highlights, in document order
+    anchors: list[str]
+    section_title: str | None = None
+    #: the cited paragraph's text, or the whole chunk for a table
+    text: str
+    confidence: float | None = Field(
+        None, ge=0, le=1,
+        description=("highest extraction confidence among mentions citing this "
+                     "paragraph (or this entity, if one was named); null when "
+                     "nothing has been extracted from it. A self-report, not a "
+                     "calibrated probability."))
+    bounding_box: BoundingBox | None = None
+    citation: str
+
+
+class CitationIn(BaseModel):
+    chunk_id: int
+    paragraph_id: str | None = None
+    #: scope `confidence` to one entity's mentions
+    entity: str | None = None
+
+
+class ResolveIn(BaseModel):
+    citations: list[CitationIn] = Field(min_length=1, max_length=100)
+
+
+class ResolvedCitation(BaseModel):
+    """One citation's outcome. A bad citation is reported, not raised.
+
+    An answer with five citations where one points at a deleted chunk should
+    still show the other four; failing the whole request would hide good
+    evidence behind one stale reference.
+    """
+    index: int
+    resolved: bool
+    evidence: EvidenceOut | None = None
+    error: str | None = None
+
+
+class ResolveOut(BaseModel):
+    citations: list[ResolvedCitation]
+
+
+class DocumentBlockOut(BaseModel):
+    anchor: str
+    kind: Literal["paragraph", "table"]
+    chunk_id: int
+    paragraph_id: str | None = None
+    section_title: str | None = None
+    text: str
+
+
+class DocumentPageOut(BaseModel):
+    #: null collects text whose page was never recorded
+    page: int | None
+    blocks: list[DocumentBlockOut]
+
+
+class DocumentPagesOut(BaseModel):
+    """The filing as a paged reading view, rebuilt from stored chunks.
+
+    Not a facsimile: the raw filing is not stored, so layout, images and
+    styling are gone. Every paragraph is present exactly once, in order, on the
+    page it was parsed from, and addressable by its anchor.
+    """
+    document_id: int
+    accession: str
+    form_type: str
+    filed_at: date
+    source_format: str
+    ticker: str
+    page_count: int | None
+    pages: list[DocumentPageOut]
