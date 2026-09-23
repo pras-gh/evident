@@ -6,7 +6,7 @@ omit it, and an uncited claim is the one failure this product cannot afford.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -333,3 +333,95 @@ class CompanyTimelineOut(BaseModel):
     #: events matching the filters, before `limit`
     total: int
     events: list[TimelineEntryOut]
+
+
+# --------------------------------------------------------------------------
+# Companies and memory cards
+
+
+class CompanyListItem(BaseModel):
+    ticker: str | None
+    name: str
+    cik: str
+    document_count: int
+    latest_filing: date | None = None
+
+
+class CompanySummaryOut(BaseModel):
+    company_id: int
+    cik: str
+    ticker: str | None
+    name: str
+    document_count: int
+    earliest_filing: date | None = None
+    latest_filing: date | None = None
+    #: entities per type
+    counts: dict[str, int]
+    #: when extraction last wrote to this company's memory
+    built_at: datetime | None = None
+
+
+class CardFactOut(BaseModel):
+    key: str
+    label: str
+    value: str | None = None
+    unit: str | None = None
+    period: str | None = None
+    status: str | None = None
+
+
+class CardChangeOut(BaseModel):
+    label: str
+    before: str | None = None
+    after: str | None = None
+
+
+class CardDeltaOut(BaseModel):
+    added: list[str]
+    removed: list[str]
+    changed: list[CardChangeOut]
+
+
+class CardEvidenceOut(BaseModel):
+    """Where a card fact comes from. Open it with the evidence viewer via
+    chunk_id and paragraph_id."""
+    document_id: int
+    accession: str | None
+    form_type: str | None
+    page_number: int | None
+    paragraph_id: str | None
+    quote: str
+    section_path: list[str]
+    chunk_id: int | None = None
+    #: the entity the fact is about: /evidence/{ticker}/{entity_slug}?cite=…
+    entity_slug: str | None = None
+
+
+class CardRevisionOut(BaseModel):
+    revision: int
+    as_of: date
+    summary: str
+    source_note: str | None = None
+    #: false when a filing touched the card without moving anything
+    is_material: bool
+    facts: list[CardFactOut]
+    delta: CardDeltaOut
+    evidence: list[CardEvidenceOut]
+
+
+class MemoryCardOut(BaseModel):
+    kind: str
+    title: str
+    #: the routing binding — "Updates from"
+    source_label: str
+    revision_count: int
+    material_count: int
+    last_updated_at: date | None = None
+    current: CardRevisionOut | None = None
+    #: why the card has no history, when it cannot have one yet
+    unavailable: str | None = None
+
+
+class CardDetailOut(MemoryCardOut):
+    #: oldest first
+    history: list[CardRevisionOut]

@@ -219,7 +219,10 @@ class MemoryCard:
             document_id=document_id,
             facts=list(facts),
             delta=delta,
-            summary=summarise(self.kind, delta, facts),
+            # The first revision is a baseline: everything in it is "added"
+            # only because nothing came before, so it must not say "new".
+            summary=(summarise(self.kind, delta, facts) if self.revisions
+                     else summarise_first(self.kind, facts)),
             source_note=source_note,
         )
         self.revisions.append(revision)
@@ -250,6 +253,16 @@ def summarise(kind: str, delta: CardDelta, facts: Sequence[CardFact]) -> str:
         parts.append(f"{len(delta.removed)} {verb}: "
                      + ", ".join(f.label for f in delta.removed[:3]))
     return "; ".join(parts) + "."
+
+
+def summarise_first(kind: str, facts: Sequence[CardFact]) -> str:
+    """The first revision: what is on record, not what changed."""
+    if not facts:
+        return "First on record: nothing reported."
+    noun = {RISKS: "risk factor", LITIGATION: "matter"}.get(kind, "item")
+    more = f" and {len(facts) - 3} more" if len(facts) > 3 else ""
+    return (f"First on record: {len(facts)} {noun}{'s' if len(facts) != 1 else ''} — "
+            + ", ".join(f.label for f in facts[:3]) + more + ".")
 
 
 def _direction(before: str | None, after: str | None) -> str:

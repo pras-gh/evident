@@ -112,6 +112,22 @@ class Revisions(unittest.TestCase):
         self.assertEqual(self.card.current.revision, 2)
         self.assertEqual(self.card.current.as_of, date(2025, 2, 1))
 
+    def test_the_first_revision_is_a_baseline_not_news(self):
+        """Everything in revision 1 diffs as 'added' only because nothing came
+        before it. Saying "3 new risk factors" would repeat the first_seen
+        mistake the timeline exists to avoid."""
+        risks = build_cards()[RISKS]
+        rev = risks.apply(as_of=date(2024, 2, 21), document_id="d1",
+                          facts=[CardFact(f"risk:{n}", n) for n in ("Export Controls",
+                                 "Supply Chain", "Tariffs", "Climate")])
+        self.assertEqual(rev.summary, "First on record: 4 risk factors — Export Controls, "
+                                      "Supply Chain, Tariffs and 1 more.")
+        self.assertNotIn("new", rev.summary)
+        later = risks.apply(as_of=date(2025, 2, 26), document_id="d2",
+                            facts=[CardFact("risk:Export Controls", "Export Controls"),
+                                   CardFact("risk:AI", "AI Diffusion Rule")])
+        self.assertIn("1 new risk factor: AI Diffusion Rule", later.summary)
+
     def test_second_revision_diffs_against_the_first(self):
         self.card.apply(as_of=date(2024, 2, 1), document_id="d1",
                         facts=[CardFact("capex:FY", "CapEx", "10,922")])
