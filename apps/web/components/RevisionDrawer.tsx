@@ -1,5 +1,6 @@
 "use client";
 
+import { evidenceHref } from "@/components/timeline/CompanyTimeline";
 import type { CardDetail } from "@/lib/types";
 
 /**
@@ -8,9 +9,11 @@ import type { CardDetail } from "@/lib/types";
  */
 export function RevisionDrawer({
   card,
+  ticker,
   onClose,
 }: {
   card: CardDetail | null;
+  ticker: string;
   onClose: () => void;
 }) {
   if (!card) return null;
@@ -32,6 +35,9 @@ export function RevisionDrawer({
           </button>
         </header>
 
+        {card.history.length === 0 && card.unavailable && (
+          <p className="rev-sum">{card.unavailable}</p>
+        )}
         <ol className="revs">
           {card.history
             .slice()
@@ -54,13 +60,26 @@ export function RevisionDrawer({
                     </li>
                   ))}
                 </ul>
-                {r.evidence.map((e, i) => (
-                  <p className="rev-ev" key={i}>
-                    {e.form_type}
-                    {e.page_number ? ` · p. ${e.page_number}` : ""}
-                    {e.section_path.length ? ` · ${e.section_path.join(" › ")}` : ""}
-                  </p>
-                ))}
+                {r.evidence.map((e, i) => {
+                  const where =
+                    `${e.form_type ?? "Filing"}` +
+                    (e.page_number ? ` · p. ${e.page_number}` : "") +
+                    (e.section_path.length ? ` · ${e.section_path.join(" › ")}` : "");
+                  return (
+                    <p className="rev-ev" key={i}>
+                      {e.entity_slug && e.chunk_id != null ? (
+                        <a
+                          href={evidenceHref(ticker.toLowerCase(), e.entity_slug, e)}
+                          title={e.quote}
+                        >
+                          {where}
+                        </a>
+                      ) : (
+                        where
+                      )}
+                    </p>
+                  );
+                })}
               </li>
             ))}
         </ol>

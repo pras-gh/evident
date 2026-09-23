@@ -5,7 +5,15 @@ import { RevisionRail } from "./RevisionRail";
 
 const TONE: Record<string, string> = {
   revenue: "emerald", ai: "indigo", products: "orange", guidance: "teal",
-  risks: "red", capital: "cyan", promises: "amber", headcount: "blue", rd: "violet",
+  risks: "red", capex: "cyan", capital: "cyan", promises: "amber", headcount: "blue",
+  rd: "violet", litigation: "amber",
+};
+
+/** What a card's facts are, for cards whose facts are named things rather
+ *  than numbers — the headline is then how many there are. */
+const NOUN: Record<string, [string, string]> = {
+  risks: ["risk factor", "risk factors"],
+  litigation: ["matter", "matters"],
 };
 
 export function MemoryCardTile({
@@ -16,7 +24,8 @@ export function MemoryCardTile({
   onOpen: (kind: string) => void;
 }) {
   const current = card.current;
-  const headline = current?.facts[0];
+  const valued = current?.facts.find((f) => f.value != null);
+  const [one, many] = NOUN[card.kind] ?? ["item", "items"];
 
   return (
     <button
@@ -30,13 +39,21 @@ export function MemoryCardTile({
       </div>
 
       <div className="card-body">
-        {headline && (
+        {valued ? (
           <>
-            <p className="val">{headline.value ?? "—"}</p>
-            <p className="sub">{headline.period ?? headline.label}</p>
+            <p className="val">{valued.value}</p>
+            <p className="sub">{valued.period ?? valued.label}</p>
           </>
-        )}
+        ) : current ? (
+          <>
+            <p className="val">{current.facts.length}</p>
+            <p className="sub">
+              {current.facts.length === 1 ? one : many} disclosed
+            </p>
+          </>
+        ) : null}
         {current && <p className="body">{current.summary}</p>}
+        {!current && card.unavailable && <p className="body">{card.unavailable}</p>}
       </div>
 
       <RevisionRail
@@ -46,7 +63,11 @@ export function MemoryCardTile({
 
       <div className="card-foot">
         <span className="upd">
-          {card.last_updated_at ? `Updated ${card.last_updated_at}` : "Not yet built"}
+          {card.last_updated_at
+            ? `Updated ${card.last_updated_at}`
+            : card.unavailable
+              ? "No data yet"
+              : "Not yet built"}
         </span>
         {/* the routing binding from card_sources — "Updates from" */}
         <span className="src">

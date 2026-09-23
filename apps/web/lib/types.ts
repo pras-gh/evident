@@ -1,14 +1,18 @@
-// Mirrors apps/api/models.py. Evidence is required on anything that makes a
+// Mirrors apps/api/schemas.py. Evidence is required on anything that makes a
 // claim, so a component cannot render an uncited assertion by accident.
 
+/** Where a card fact comes from — CardEvidenceOut. */
 export interface Evidence {
   document_id: number;
-  accession: string;
-  form_type: string;
+  accession: string | null;
+  form_type: string | null;
   page_number: number | null;
   paragraph_id: string | null;
   quote: string;
   section_path: string[];
+  /** with entity_slug, opens the paragraph in the evidence viewer */
+  chunk_id: number | null;
+  entity_slug: string | null;
 }
 
 export interface CardFact {
@@ -47,19 +51,12 @@ export interface MemoryCard {
   material_count: number;
   last_updated_at: string | null;
   current: CardRevision | null;
+  /** why the card has no history, when the stored data cannot give it one */
+  unavailable: string | null;
 }
 
 export interface CardDetail extends MemoryCard {
   history: CardRevision[];
-}
-
-export interface TimelineEntry {
-  occurred_at: string;
-  kind: string;
-  headline: string;
-  ref: string;
-  topic_slug: string | null;
-  evidence: Evidence | null;
 }
 
 export type PromiseStatus = "open" | "kept" | "broken" | "abandoned" | "unclear";
@@ -76,12 +73,27 @@ export interface Promise {
   resolved_evidence: Evidence | null;
 }
 
+/** GET /v1/companies/{ticker} */
 export interface MemorySummary {
-  company_id: string;
+  company_id: number;
+  cik: string;
   ticker: string | null;
+  name: string;
   document_count: number;
+  earliest_filing: string | null;
+  latest_filing: string | null;
+  /** entities per type */
   counts: Record<string, number>;
   built_at: string | null;
+}
+
+/** GET /v1/companies */
+export interface CompanyListItem {
+  ticker: string | null;
+  name: string;
+  cik: string;
+  document_count: number;
+  latest_filing: string | null;
 }
 
 // ------------------------------------------------------------ evidence viewer
