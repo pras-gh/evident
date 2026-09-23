@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 """Seed a local database so the evidence viewer has something real to show.
 
-    DATABASE_URL=... python tools/seed_demo.py
+    DATABASE_URL=... python tools/seed_demo.py                     # one filing
+    DATABASE_URL=... python tools/seed_demo.py --corpus timeline   # three years
     open http://localhost:3000/evidence/nvda/export_controls
+    open http://localhost:3000/timeline/nvda
 
 **This is not Claude.** Entities are found by a keyword matcher, so the demo
 runs without an API key. What it produces is still truthful — every citation
@@ -15,11 +17,15 @@ Pydantic gate and citation guard, with the keyword matcher standing in only for
 the network call. So the viewer is exercised against the real storage path,
 not a hand-built fixture.
 
-The filing is the benchmark corpus: verbatim Risk Factors from NVIDIA's FY2025
-10-K, ingested over a local origin so sec.gov is never contacted.
+Two corpora, both verbatim Risk Factors from NVIDIA 10-Ks, ingested over a
+local origin so sec.gov is never contacted:
+
+    bench     FY2025 only — the extraction benchmark corpus
+    timeline  FY2024, FY2025 and FY2026 — real change for the timeline to find
 """
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -31,7 +37,11 @@ for pkg in ("db", "parser", "memory", "retrieval", "graph", "ai"):
     sys.path.insert(0, str(ROOT / "packages" / pkg))
 sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
 
-CORPUS = ROOT / "tests" / "fixtures" / "edgar-bench"
+CORPORA = {
+    # (fixture root, filings to ingest)
+    "bench": (ROOT / "tests" / "fixtures" / "edgar-bench", 1),
+    "timeline": (ROOT / "tests" / "fixtures" / "edgar-timeline", 3),
+}
 
 #: (pattern, canonical name, entity type). Deliberately small and literal.
 VOCABULARY = [
@@ -47,9 +57,15 @@ VOCABULARY = [
     (r"\bAI Diffusion\b", "AI Diffusion Rule", "risk"),
     (r"\bcyber-?attacks?\b|\bransomware\b", "Cybersecurity", "risk"),
     (r"\bclimate\b", "Climate Regulation", "risk"),
+    (r"\btariffs?\b", "Tariffs", "risk"),
+    (r"\bH20\b", "H20", "product"),
 ]
 
-_SENTENCE = re.compile(r"(?<=[.!?])\s+")
+#: Sentence ends, except after the abbreviations filings are full of — a
+#: quote starting "and foreign government bodies" because "U.S." ended a
+#: sentence reads as a broken citation.
+_SENTENCE = re.compile(r"(?<=[.!?])(?<!U\.S\.)(?<!\bInc\.)(?<!\bNo\.)"
+                       r"(?<!\be\.g\.)(?<!\bi\.e\.)\s+")
 
 
 def _looks_like_heading(text: str) -> bool:
@@ -106,7 +122,12 @@ class KeywordClient:
                                      "stop_reason": "end_turn"})()
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    ap.add_argument("--corpus", choices=sorted(CORPORA), default="bench")
+    args = ap.parse_args(argv)
+    corpus, filings = CORPORA[args.corpus]
+
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
         print("error: set DATABASE_URL (a migrated database)", file=sys.stderr)
@@ -119,19 +140,22 @@ def main() -> int:
     from workers.ingest_worker import ingest_ticker
     from workers.memory_builder import build_for_document
 
-    with fixture_origin(CORPUS):
-        filing = ingest_ticker("NVDA", limit=1, url=dsn).filings[0]
-    print(f"  ingested {filing.form_type} {filing.accession}: {filing.chunks} chunks")
-
-    with session_scope(dsn) as db:
-        company = db.execute(select(Company).where(Company.ticker == "NVDA")).scalar_one()
-        document = db.execute(select(Document).where(
-            Document.accession == filing.accession)).scalar_one()
-        stats = build_for_document(db, company_id=company.id, document=document,
-                                   client=KeywordClient())
-        print(f"  keyword-matched {stats.entities} entities, "
-              f"{stats.mentions_new} new mentions, "
-              f"{stats.dropped_uncited} dropped by the citation guard")
+    with fixture_origin(corpus):
+        ingested = ingest_ticker("NVDA", form_types=["10-K"], limit=filings,
+                                 url=dsn).filings
+    # oldest first, so first_seen and latest_seen advance the way they would
+    # if each filing had been processed the day it was published
+    for filing in sorted(ingested, key=lambda f: f.filed_at):
+        print(f"  ingested {filing.form_type} {filing.accession}: {filing.chunks} chunks")
+        with session_scope(dsn) as db:
+            company = db.execute(select(Company).where(Company.ticker == "NVDA")).scalar_one()
+            document = db.execute(select(Document).where(
+                Document.accession == filing.accession)).scalar_one()
+            stats = build_for_document(db, company_id=company.id, document=document,
+                                       client=KeywordClient())
+            print(f"    keyword-matched {stats.entities} entities, "
+                  f"{stats.mentions_new} new mentions, "
+                  f"{stats.dropped_uncited} dropped by the citation guard")
 
     with session_scope(dsn) as db:
         rows = db.execute(
@@ -143,6 +167,8 @@ def main() -> int:
     print("\n  open:")
     for slug, name, n in rows:
         print(f"    {web}/evidence/nvda/{slug:<22} {name} — {n} citation(s)")
+    if filings > 1:
+        print(f"    {web}/timeline/nvda")
     return 0
 
 
