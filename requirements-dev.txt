@@ -14,7 +14,7 @@ fastapi>=0.115
 uvicorn[standard]>=0.32
 pydantic>=2.9
 httpx>=0.27                  # the API tests' ASGI client
-pypdf>=4.0                   # filings whose primary document is a PDF
+pypdf>=6.0,<7              # PDF filings; box widths use its font model, verified on 6.x
 
 # --- needed only for the feature that uses them. Each is imported lazily and
 # fails with a message naming the package, so the demo and the test suite run

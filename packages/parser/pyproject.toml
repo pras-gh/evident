@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "HTML and PDF filing parsing, chunking, and stable paragraph ids."
 requires-python = ">=3.11"
 dependencies = [
-  "pypdf>=4.0",
+  "pypdf>=6.0,<7",   # font metrics for bounding boxes — verified on 6.x
 ]
 
 [build-system]

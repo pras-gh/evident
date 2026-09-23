@@ -67,9 +67,11 @@ def split_oversized(block: Block, *, max_tokens: int) -> list[Block]:
         parts.append(" ".join(current))
 
     return [
+        # each part keeps the whole paragraph's box: the geometry is known per
+        # paragraph, not per sentence, and the part is inside it
         Block(paragraph_id=f"{block.paragraph_id}#{i + 1}", ordinal=block.ordinal,
               text=text, page_number=block.page_number,
-              section_ordinal=block.section_ordinal)
+              section_ordinal=block.section_ordinal, bbox=block.bbox)
         for i, text in enumerate(parts)
     ]
 
@@ -212,6 +214,7 @@ def _chunk_section(
                 page_start=min(pages) if pages else None,
                 page_end=max(pages) if pages else None,
                 section_ordinal=section_ordinal,
+                paragraph_boxes={b.paragraph_id: b.bbox for b in window if b.bbox},
             )
         )
         # Carry the tail so a sentence split across a boundary stays retrievable
