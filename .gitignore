@@ -14,3 +14,6 @@ venv/
 
 # local PostgreSQL cluster from tools/db.sh
 .pgdata/
+
+# filing sources, page images and PDFs (FILING_STORE)
+data/filings/

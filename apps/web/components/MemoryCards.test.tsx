@@ -78,16 +78,16 @@ describe("revision drawer", () => {
   const detail: CardDetail = { ...risks, history: [rev3] };
 
   it("links each fact's evidence to the paragraph in the viewer", () => {
-    render(<RevisionDrawer card={detail} ticker="NVDA" onClose={() => {}} />);
+    render(<RevisionDrawer card={detail} onClose={() => {}} />);
     const links = screen.getAllByRole("link");
     expect(links.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
-      ["10-K · p. 16 · Item 1A. Risk Factors", "/evidence/nvda/export_controls?cite=12%3A16_1"],
-      ["10-K · p. 25 · Item 1A. Risk Factors", "/evidence/nvda/supply_chain?cite=30%3A25_1%232"],
+      ["10-K · p. 16 · Item 1A. Risk Factors", "/evidence/12?cite=12%3A16_1&entity=export_controls"],
+      ["10-K · p. 25 · Item 1A. Risk Factors", "/evidence/30?cite=30%3A25_1%232&entity=supply_chain"],
     ]);
   });
 
   it("explains an empty card", () => {
-    render(<RevisionDrawer card={{ ...revenue, history: [] }} ticker="NVDA" onClose={() => {}} />);
+    render(<RevisionDrawer card={{ ...revenue, history: [] }} onClose={() => {}} />);
     expect(screen.getByText(revenue.unavailable!)).toBeTruthy();
   });
 });

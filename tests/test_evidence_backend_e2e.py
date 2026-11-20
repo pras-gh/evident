@@ -20,6 +20,7 @@ Skipped unless TEST_DATABASE_URL is set.
 """
 from __future__ import annotations
 
+import io
 import json
 import re
 import shutil
@@ -195,6 +196,143 @@ class Batching(_ApiMixin, unittest.IsolatedAsyncioTestCase):
             r = await c.post("/v1/evidence/resolve",
                              json={"citations": (self.refs * 10)[:1001]})
         self.assertEqual(r.status_code, 422)
+
+
+def _browser():
+    try:
+        from workers.render_worker import BrowserThread
+        return BrowserThread()
+    except Exception:  # no Playwright, no Chrome
+        return None
+
+
+BROWSER = _browser() if DSN else None
+
+
+@unittest.skipUnless(DSN and BROWSER, "needs TEST_DATABASE_URL and Chrome")
+class RenderedFilings(_ApiMixin, unittest.IsolatedAsyncioTestCase):
+    """Three real 10-Ks: ingested, extracted, rendered, served. Every citation's
+    box, fetched through the API, is checked against the page image the API
+    serves for it."""
+
+    @classmethod
+    def setUpClass(cls):
+        import os
+        from sqlalchemy import select
+        from evident_db import Document, session_scope
+        from workers.render_worker import render_document
+
+        cls._store = tempfile.TemporaryDirectory()
+        cls._old = os.environ.get("FILING_STORE")
+        os.environ["FILING_STORE"] = cls._store.name
+        _ingest_and_extract(filings=3)
+        with session_scope(DSN) as db:
+            cls.results = {d.accession: render_document(db, d, BROWSER)
+                           for d in db.execute(select(Document)).scalars()}
+
+    @classmethod
+    def tearDownClass(cls):
+        import os
+        if cls._old is None:
+            os.environ.pop("FILING_STORE", None)
+        else:
+            os.environ["FILING_STORE"] = cls._old
+        cls._store.cleanup()
+
+    async def test_every_paragraph_of_every_filing_is_boxed(self):
+        for accession, r in self.results.items():
+            with self.subTest(accession):
+                self.assertIsNone(r.error)
+                self.assertEqual((r.missing, r.misplaced), ([], []))
+                self.assertEqual(r.boxed, r.paragraphs)
+                self.assertEqual(r.pdf_pages, r.pages)
+
+    async def test_document_detail_lists_every_page_with_images_where_there_is_text(self):
+        async with await self._client() as c:
+            docs = (await _get(self, c, "/v1/company/NVDA/documents"))["documents"]
+            for doc in docs:
+                d = await _get(self, c, f"/v1/document/{doc['document_id']}")
+                with self.subTest(d["accession"]):
+                    self.assertEqual(len(d["pages"]), d["page_count"])
+                    self.assertIsNotNone(d["rendered_at"])
+                    self.assertTrue(d["pdf_url"].startswith(f"/v1/document/{d['document_id']}/pdf"))
+                    imaged = [p["page"] for p in d["pages"] if p["image_url"]]
+                    self.assertGreaterEqual(len(imaged), doc["pages_with_text"])
+                    self.assertTrue(all(p["width"] == 612.0 for p in d["pages"]))
+                self.assertTrue(doc["has_bounding_boxes"], "HTML filings are boxed now")
+
+    async def test_every_citation_box_sits_on_ink_in_the_image_the_api_serves(self):
+        from PIL import Image
+        from sqlalchemy import select
+        from evident_db import Entity, EntityMention, session_scope
+        with session_scope(DSN) as db:
+            refs = [{"chunk_id": m.chunk_id, "paragraph_id": m.paragraph_id, "entity": slug}
+                    for m, slug in db.execute(select(EntityMention, Entity.slug)
+                                              .join(Entity)).all()]
+        images: dict[str, Image.Image] = {}
+        async with await self._client() as c:
+            out = (await c.post("/v1/evidence/resolve",
+                                json={"citations": refs})).json()["citations"]
+            for res in out:
+                ev = res["evidence"]
+                for h in ev["highlights"]:
+                    box = h["bounding_box"]
+                    self.assertIsNotNone(box, h["anchor"])
+                    page = await _get(self, c, f"/v1/document/{ev['document_id']}/page/{box['page']}")
+                    url = page["image_url"]
+                    if url not in images:
+                        r = await c.get(url)
+                        self.assertEqual((r.status_code, r.headers["content-type"]),
+                                         (200, "image/webp"))
+                        self.assertIn("immutable", r.headers["cache-control"])
+                        images[url] = Image.open(io.BytesIO(r.content)).convert("L")
+                    img = images[url]
+                    k = img.width / box["page_width"]
+                    inside = img.crop(tuple(round(box[a] * k) for a in ("x0", "y0", "x1", "y1")))
+                    self.assertLess(inside.getextrema()[0], 100, f"no ink under {h['anchor']}")
+                    self.assertAlmostEqual(img.height / k, box["page_height"], delta=1.0)
+                self.assertRegex(ev["highlight_color"], r"^#[0-9a-f]{6}$")
+        self.assertGreater(len(images), 30)
+
+    async def test_a_citation_is_coloured_by_the_entity_it_is_evidence_for(self):
+        from evident_graph.taxonomy import HIGHLIGHT_COLORS
+        async with await self._client() as c:
+            doc = (await _get(self, c, "/v1/company/NVDA/documents"))["documents"][0]
+            page = await _get(self, c, f"/v1/document/{doc['document_id']}/page/{doc['first_page']}")
+            b = page["blocks"][0]
+            plain = await _get(self, c, f"/v1/evidence/{b['chunk_id']}",
+                               paragraph_id=b["paragraph_id"])
+            self.assertTrue(plain["entities"], "extraction found something here")
+            top = plain["entities"][0]
+            named = await _get(self, c, f"/v1/evidence/{b['chunk_id']}",
+                               paragraph_id=b["paragraph_id"], entity=top["slug"])
+        self.assertEqual(plain["highlight_color"], "#34d399")
+        self.assertEqual(named["highlight_color"], HIGHLIGHT_COLORS[top["entity_type"]])
+        self.assertEqual(named["highlights"][0]["highlight_color"], named["highlight_color"])
+        self.assertEqual((named["ticker"], named["company"], named["fiscal_period"]),
+                         ("NVDA", "NVIDIA CORP", doc["fiscal_period"]))
+
+    async def test_pdf_is_served_and_has_the_filings_page_count(self):
+        from pypdf import PdfReader
+        async with await self._client() as c:
+            doc = (await _get(self, c, "/v1/company/NVDA/documents"))["documents"][0]
+            r = await c.get(f"/v1/document/{doc['document_id']}/pdf")
+        self.assertEqual((r.status_code, r.headers["content-type"]), (200, "application/pdf"))
+        self.assertEqual(len(PdfReader(io.BytesIO(r.content)).pages), doc["page_count"])
+
+    async def test_unrendered_or_missing_files_are_404_not_500(self):
+        from sqlalchemy import update
+        from evident_db import DocumentPage, session_scope
+        async with await self._client() as c:
+            doc = (await _get(self, c, "/v1/company/NVDA/documents"))["documents"][0]
+            await _get(self, c, f"/v1/document/{doc['document_id']}/page/1/image", status=404)
+            with session_scope(DSN) as db:
+                db.execute(update(DocumentPage)
+                           .where(DocumentPage.document_id == doc["document_id"],
+                                  DocumentPage.page == doc["first_page"])
+                           .values(image_path="../../.env"))
+            await _get(self, c, f"/v1/document/{doc['document_id']}/page/"
+                                f"{doc['first_page']}/image", status=404)
 
 
 @unittest.skipUnless(DSN, "set TEST_DATABASE_URL to run")

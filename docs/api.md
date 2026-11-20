@@ -134,7 +134,10 @@ behind them.
 | `GET /v1/evidence/{chunk_id}?paragraph_id=&entity=` | one citation |
 | `POST /v1/evidence/resolve` | up to 1,000 citations, order preserved; a bad one is flagged, not raised |
 | `GET /v1/company/{ticker}/documents?form_type=&limit=` | a company's filings, newest first |
-| `GET /v1/document/{id}/page/{page}` | one page: paragraphs, anchors, boxes, prev/next page with text |
+| `GET /v1/document/{id}` | a filing and every page: size, image and thumbnail URLs, PDF URL |
+| `GET /v1/document/{id}/page/{page}` | one page: paragraphs, anchors, boxes, image, prev/next page with text |
+| `GET /v1/document/{id}/page/{page}/image?size=full\|thumb` | the page as rendered (WebP), cached immutably |
+| `GET /v1/document/{id}/pdf` | the filing as a PDF whose page N is page N |
 | `GET /v1/documents/{id}/pages` | the whole filing as a paged reading view |
 
 ```json
@@ -147,8 +150,11 @@ behind them.
 ```
 
 A **bounding box** is `{page, x0, y0, x1, y1, page_width, page_height}` in
-points from the page's top-left, y down. PDF filings have them; HTML filings
-have `null`, and the anchor is the exact target. A page inside the filing with
+points from the page's top-left, y down. PDF filings get them at parse time;
+HTML filings get them from the render worker, measured on the same rendering
+the page images show — `null` until a filing has been rendered, when the
+anchor is the target. Each highlight also carries `highlight_color`, the cited
+entity's colour. A page inside the filing with
 no stored text is an empty `200`; a page outside it is a `404` naming the range.
 
 ### `GET /health`

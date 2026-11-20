@@ -9,11 +9,9 @@ import type { CardDetail } from "@/lib/types";
  */
 export function RevisionDrawer({
   card,
-  ticker,
   onClose,
 }: {
   card: CardDetail | null;
-  ticker: string;
   onClose: () => void;
 }) {
   if (!card) return null;
@@ -69,7 +67,7 @@ export function RevisionDrawer({
                     <p className="rev-ev" key={i}>
                       {e.entity_slug && e.chunk_id != null ? (
                         <a
-                          href={evidenceHref(ticker.toLowerCase(), e.entity_slug, e)}
+                          href={evidenceHref(e.entity_slug, e)}
                           title={e.quote}
                         >
                           {where}

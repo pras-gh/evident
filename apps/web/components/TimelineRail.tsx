@@ -17,7 +17,7 @@ export function TimelineRail({ ticker, events }: { ticker: string; events: Timel
           {events.map((e) => {
             const ev = e.evidence;
             const href =
-              ev && e.topic && ev.chunk_id != null ? evidenceHref(t, e.topic.slug, ev) : null;
+              ev && e.topic && ev.chunk_id != null ? evidenceHref(e.topic.slug, ev) : null;
             return (
               <li className="tl-item tone-emerald" key={e.id}>
                 <span className="tl-dot" aria-hidden />

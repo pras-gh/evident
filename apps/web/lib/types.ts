@@ -120,13 +120,27 @@ export interface Highlight {
   paragraph_id: string | null;
   page: number | null;
   bounding_box: BoundingBox | null;
+  /** `#rrggbb` — the cited entity's colour */
+  highlight_color: string;
+}
+
+/** An entity extraction found in a cited paragraph. */
+export interface EvidenceEntity {
+  slug: string;
+  name: string;
+  entity_type: string;
+  confidence: number | null;
+  highlight_color: string;
 }
 
 export interface ResolvedEvidence {
   chunk_id: number;
   document_id: number;
+  ticker: string | null;
+  company: string | null;
   accession: string;
   form_type: string;
+  fiscal_period: string | null;
   filed_at: string;
   source_format: string;
   /** The page the cited paragraph is on, not the page its chunk starts on. */
@@ -142,6 +156,9 @@ export interface ResolvedEvidence {
   /** every anchor to highlight, each on its own page — a chunk-wide
    *  citation can cross a page break */
   highlights: Highlight[];
+  highlight_color: string;
+  /** entities extracted from the cited paragraph, most confident first */
+  entities: EvidenceEntity[];
   citation: string;
 }
 
@@ -184,6 +201,35 @@ export interface DocumentSummary {
   paragraph_count: number;
   has_bounding_boxes: boolean;
   url: string;
+}
+
+/** A page as rendered: images and size. Boxes on it are in the same points. */
+export interface PageSummary {
+  page: number;
+  width: number;
+  height: number;
+  /** API paths (`/v1/…`); pass through `asset()` for the browser */
+  image_url: string | null;
+  thumbnail_url: string | null;
+  paragraph_count: number;
+}
+
+/** GET /v1/document/{id} */
+export interface DocumentDetail {
+  document_id: number;
+  ticker: string | null;
+  company: string;
+  accession: string;
+  form_type: string;
+  fiscal_period: string | null;
+  filed_at: string;
+  source_format: string;
+  page_count: number | null;
+  /** null until rendered; the viewer then shows the filing as text */
+  rendered_at: string | null;
+  pdf_url: string | null;
+  url: string;
+  pages: PageSummary[];
 }
 
 /** GET /v1/document/{id}/page/{page} */

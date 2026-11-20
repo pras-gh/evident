@@ -16,7 +16,8 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 
-from evident_db import session_scope
+from evident_db import DocumentPage, session_scope
+from evident_db import store
 from evident_db.repositories import (replace_chunks, upsert_company,
                                      upsert_document)
 from evident_parser import edgar
@@ -100,10 +101,21 @@ def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
 
     out = FilingResult(accession=filing["accession"], form_type=filing["form_type"],
                        filed_at=filing["filed_date"])
+    # Keep the bytes, so the filing can be rendered to pages without fetching
+    # it again. Also on a skip: it backfills filings ingested before this.
+    rel = store.source_path(filing["accession"], filing["primary_document"])
+    if document.source_path != rel or not store.resolve(rel).exists():
+        document.source_path = store.write(rel, raw)
     if not is_new:
         out.skipped = True
         log.info("%s unchanged — skipped", filing["accession"])
         return out
+
+    # New bytes: pages and boxes rendered from the old ones no longer apply.
+    db.query(DocumentPage).filter(DocumentPage.document_id == document.id).delete(
+        synchronize_session=False)
+    document.rendered_at = None
+    document.pdf_path = None
 
     sections, blocks, tables, pages = _parse(raw, is_pdf, filing["accession"])
     section_by_ordinal = {s.ordinal: s for s in sections}

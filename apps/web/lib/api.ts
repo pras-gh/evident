@@ -3,6 +3,7 @@ import type {
   CitationRef,
   CompanyListItem,
   CompanyTimeline,
+  DocumentDetail,
   DocumentSummary,
   DocumentView,
   EntityDetail,
@@ -10,6 +11,7 @@ import type {
   MemorySummary,
   PageView,
   ResolvedCitation,
+  ResolvedEvidence,
 } from "./types";
 
 const BASE = process.env.API_URL ?? "http://localhost:8000/v1";
@@ -43,6 +45,24 @@ export const getEntity = (t: string, slug: string) =>
 
 export const getDocumentPages = (documentId: number) =>
   get<DocumentView>(`/documents/${documentId}/pages`, 300);
+
+/** One citation: `entity` scopes its confidence and sets its colour. */
+export const getEvidence = (chunkId: number, paragraphId?: string | null, entity?: string | null) => {
+  const q = new URLSearchParams();
+  if (paragraphId) q.set("paragraph_id", paragraphId);
+  if (entity) q.set("entity", entity);
+  return get<ResolvedEvidence>(`/evidence/${chunkId}${q.size ? `?${q}` : ""}`, 0);
+};
+
+/** A filing and every page, with image URLs, for the viewer. */
+export const getDocument = (documentId: number) =>
+  get<DocumentDetail>(`/document/${documentId}`, 60);
+
+/** An API path (`/v1/…`) as the browser should fetch it: through the web
+ *  app's own origin, which proxies `/api/*` to the API (next.config.mjs). */
+export function asset(apiPath: string): string {
+  return apiPath.replace(/^\/v1\//, "/api/");
+}
 
 /** A company's filings, newest first, with what each supports. */
 export const getCompanyDocuments = (t: string) =>
@@ -82,8 +102,9 @@ export async function resolveCitations(
 
 /** What changed between a company's filings. Filtering by category happens in
  *  the API so the facet counts stay honest. */
-export const getCompanyTimeline = (t: string, category?: string) => {
+export const getCompanyTimeline = (t: string, category?: string, entity?: string) => {
   const q = new URLSearchParams({ limit: "500" });
   if (category) q.set("category", category);
+  if (entity) q.set("entity", entity);
   return get<CompanyTimeline>(`/company/${encodeURIComponent(t)}/timeline?${q}`);
 };
