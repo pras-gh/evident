@@ -64,7 +64,7 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
                        client: Any | None = None,
                        stats: BuildStats | None = None,
                        limit: int | None = None,
-                       on_result=None) -> BuildStats:
+                       on_result=None, ai_context: Any | None = None) -> BuildStats:
     """Extract one document into memory.
 
     `limit` caps how many chunks are sent, for a cheap first run against the
@@ -130,8 +130,10 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     #
     # This is the synchronous path. `submit_batch` is half the price for
     # backfills and nothing about a 2019 filing is latency-sensitive.
+    # Through the AI gateway unless a client is injected; attributed to
+    # `ai_context`, or the internal organization for background work.
     per_chunk, report, usage = extract_document(groups, client=client,
-                                               on_result=on_result)
+                                               on_result=on_result, context=ai_context)
 
     stats.responses_rejected += report.rejected
     stats.requests += usage.requests

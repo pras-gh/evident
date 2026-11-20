@@ -43,24 +43,32 @@ sys.path.insert(0, str(ROOT))
 FIXTURE = ROOT / "tests" / "fixtures" / "edgar-bench"
 REPORTS = ROOT / "docs" / "benchmarks"
 
-PROVIDER = "anthropic"
-
-#: Claude Opus 5, $ per million tokens. Cache reads are ~10% of input; cache
-#: writes ~125%. Approximate by design — it exists to answer "what would a full
-#: filing cost", not to reconcile an invoice.
-PRICE_IN, PRICE_OUT = Decimal("5.00"), Decimal("25.00")
-CACHE_READ_MULT, CACHE_WRITE_MULT = Decimal("0.1"), Decimal("1.25")
-
-
 def compute_cost(input_tokens: int, output_tokens: int,
                  cache_read: int, cache_created: int) -> Decimal:
-    """Decimal throughout: this lands in a NUMERIC column and must add up."""
-    billed_in = (Decimal(input_tokens)
-                 + Decimal(cache_read) * CACHE_READ_MULT
-                 + Decimal(cache_created) * CACHE_WRITE_MULT)
-    return ((billed_in / Decimal(1_000_000) * PRICE_IN
-             + Decimal(output_tokens) / Decimal(1_000_000) * PRICE_OUT)
-            .quantize(Decimal("0.000001")))
+    """Cost at the extraction route's primary model's price, from
+    config/ai.toml. Used only where the gateway reported no cost (an old run);
+    a run through the gateway sums the cost each call actually incurred, at
+    whichever model answered it."""
+    from evident_ai.gateway import TaskType, Usage, load
+    config = load()
+    price = config.price(config.route(TaskType.FINANCIAL_EXTRACTION)[0])
+    return price.cost(Usage(input_tokens=input_tokens + cache_read + cache_created,
+                            output_tokens=output_tokens, cached_tokens=cache_read,
+                            cache_write_tokens=cache_created))
+
+
+def require_route_keys(die) -> tuple[str, str]:
+    """(provider, model) of the extraction route's primary, after checking
+    some provider on the route has a key — otherwise every call would fail."""
+    from evident_ai.gateway import TaskType, load
+    route = load().route(TaskType.FINANCIAL_EXTRACTION)
+    configured = [t for t in route if os.environ.get(f"{t.provider.upper()}_API_KEY")]
+    if not configured:
+        die("no key for any provider on the financial_extraction route "
+            f"({', '.join(t.key for t in route)}). Set "
+            f"{' or '.join(sorted({t.provider.upper() + '_API_KEY' for t in route}))}, "
+            "or change the route in config/ai.toml.")
+    return route[0].provider, route[0].model
 
 
 def _die(msg: str) -> None:
@@ -113,7 +121,7 @@ def main() -> int:
     from sqlalchemy import desc, func, select
 
     from evident_ai.extract import Extraction, ExtractionRejected
-    from evident_ai.prompts import EXTRACT_ENTITIES, MODEL
+    from evident_ai.prompts import EXTRACT_ENTITIES
     from evident_db import (Chunk, Company, Document, Entity, EntityMention,
                             ExtractionCall, ExtractionRun, Relationship,
                             session_scope)
@@ -135,10 +143,7 @@ def main() -> int:
 
     # --------------------------------------------------------------- run
     if not args.report_only:
-        if not (os.environ.get("ANTHROPIC_API_KEY")
-                or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-            _die("no Anthropic credentials. Run `ant auth login`, or export "
-                 "ANTHROPIC_API_KEY. (--report-only needs neither.)")
+        provider, model = require_route_keys(_die)   # --report-only needs no key
 
         from workers.memory_builder import build_for_document
 
@@ -166,7 +171,7 @@ def main() -> int:
         # finished_at is the marker for the former.
         with session_scope(dsn) as db:
             db.add(ExtractionRun(
-                id=run_id, provider=PROVIDER, model=MODEL,
+                id=run_id, provider=provider, model=model,
                 prompt_id=EXTRACT_ENTITIES.id, document_id=document_id,
                 started_at=datetime.now(timezone.utc)))
 
@@ -179,16 +184,20 @@ def main() -> int:
                                 Chunk.document_id == document_id)).scalars()}
 
             rows: list[ExtractionCall] = []
+            call_costs: list[Decimal | None] = []
 
             def record(key: str, result) -> None:
                 """Every call, accepted or not — a failed response is evidence."""
                 chunk = by_key.get(key)  # requests are keyed by chunk id
                 rejected = isinstance(result, ExtractionRejected)
                 u = result.usage
+                call_costs.append(result.cost_usd)
                 rows.append(ExtractionCall(
                     run_id=run_id, company_id=company.id, document_id=document.id,
                     chunk_id=chunk.id if chunk else None,
-                    prompt_id=EXTRACT_ENTITIES.id, model=MODEL,
+                    prompt_id=EXTRACT_ENTITIES.id,
+                    # what actually answered: a fallback is not the primary
+                    model=result.model or f"{provider}:{model}",
                     status="rejected" if rejected else "accepted",
                     rejection_reason=result.reason if rejected else None,
                     stop_reason=(result.stop_reason if not rejected
@@ -208,7 +217,7 @@ def main() -> int:
 
             print(f"  run {run_id}: extracting "
                   f"{args.limit or len(by_key)} chunk(s) with "
-                  f"{EXTRACT_ENTITIES.id} on {MODEL}")
+                  f"{EXTRACT_ENTITIES.id} on {provider}:{model} (and its fallbacks)")
             build_for_document(db, company_id=company.id, document=document,
                                limit=args.limit, on_result=record)
             db.add_all(rows)
@@ -219,9 +228,11 @@ def main() -> int:
             run.input_tokens = sum(r.input_tokens for r in rows)
             run.output_tokens = sum(r.output_tokens for r in rows)
             run.cached_input_tokens = sum(r.cache_read_tokens for r in rows)
-            run.cost_usd = compute_cost(
-                run.input_tokens, run.output_tokens, run.cached_input_tokens,
-                sum(r.cache_created_tokens for r in rows))
+            costs = [c for c in call_costs if c is not None]
+            run.cost_usd = (sum(costs, Decimal(0)) if len(costs) == len(rows)
+                            else compute_cost(run.input_tokens, run.output_tokens,
+                                              run.cached_input_tokens,
+                                              sum(r.cache_created_tokens for r in rows)))
             run.finished_at = datetime.now(timezone.utc)
 
     # ------------------------------------------------------------ report
