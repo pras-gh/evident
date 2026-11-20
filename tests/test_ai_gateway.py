@@ -523,6 +523,18 @@ class Security(unittest.TestCase):
         finally:
             del os.environ["GEMINI_API_KEY"]
 
+    def test_any_secret_in_the_environment_is_redacted_whatever_its_format(self):
+        """A key in a format no pattern knows — a new provider, a rotated
+        format — is still masked, because its value is in the environment."""
+        import os
+        from evident_ai.gateway.redact import redact
+        os.environ["NEWPROVIDER_API_KEY"] = "plain-looking-secret-value-42"
+        try:
+            self.assertEqual(redact("auth failed for plain-looking-secret-value-42"),
+                             "auth failed for [REDACTED]")
+        finally:
+            del os.environ["NEWPROVIDER_API_KEY"]
+
     def test_redaction_covers_every_key_format(self):
         from evident_ai.gateway.redact import redact
         for secret in ("sk-ant-api03-abcdefghijkl", "gsk_abcdefghijklmnop",
