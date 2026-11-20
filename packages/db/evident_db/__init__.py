@@ -6,11 +6,15 @@ from .models import (ALL_TABLES, EMBEDDING_DIM, ENTITY_KINDS,
                      MetricObservation, Relationship,
                      TimelineEvent)
 from .page_bbox import BBoxJSON, DocumentPage
+from .ai import (INTERNAL_ORG_SLUG, ROLES, USAGE_STATUSES, AIResponseCache,
+                 AIUsageLog, ApiKey, Organization, User)
 from .session import (async_session_factory, database_url, make_async_engine,
                       make_engine, session_scope)
 
 __version__ = "0.2.0"
-__all__ = ["Base", "ALL_TABLES", "BBoxJSON", "DocumentPage", "EMBEDDING_DIM", "ENTITY_KINDS",
+__all__ = ["Base", "ALL_TABLES", "BBoxJSON", "DocumentPage",
+           "INTERNAL_ORG_SLUG", "ROLES", "USAGE_STATUSES", "AIResponseCache",
+           "AIUsageLog", "ApiKey", "Organization", "User", "EMBEDDING_DIM", "ENTITY_KINDS",
            "RELATIONSHIP_KINDS", "Chunk", "Company", "Document", "Entity",
            "ExtractionCall", "ExtractionRun",
            "EntityMention", "MetricObservation", "Relationship",
