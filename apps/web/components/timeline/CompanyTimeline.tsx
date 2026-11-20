@@ -4,6 +4,7 @@ import type {
   TimelineFiling,
   TimelineKind,
 } from "@/lib/types";
+import { evidenceUrl } from "@/lib/cite";
 
 /**
  * What changed between a company's filings, newest first: a date column, a
@@ -93,7 +94,7 @@ function EventCard({
 }) {
   const ev = e.evidence;
   const href =
-    ev && e.topic && ev.chunk_id != null ? evidenceHref(ticker, e.topic.slug, ev) : null;
+    ev && e.topic && ev.chunk_id != null ? evidenceHref(e.topic.slug, ev) : null;
   return (
     <li className={`tl2-event ${tone(e.category)}`} data-kind={e.kind}>
       <span className="tl2-dot" aria-hidden />
@@ -175,15 +176,13 @@ export const KIND_LABEL: Record<TimelineKind, string> = {
   filed: "Filed",
 };
 
-/** `/evidence/nvda/export_controls?cite=12:26_1`. Paragraph ids can carry
- *  `#` (`25_1#2`), which would otherwise start a URL fragment. */
+/** The evidence viewer at this citation, for this entity:
+ *  `/evidence/12?cite=12%3A26_1&entity=export_controls`. */
 export function evidenceHref(
-  ticker: string,
   slug: string,
   ev: { chunk_id: number | null; paragraph_id: string | null },
 ): string {
-  const cite = `${ev.chunk_id}${ev.paragraph_id ? `:${ev.paragraph_id}` : ""}`;
-  return `/evidence/${encodeURIComponent(ticker)}/${encodeURIComponent(slug)}?cite=${encodeURIComponent(cite)}`;
+  return evidenceUrl(ev.chunk_id as number, ev.paragraph_id, slug);
 }
 
 function groupByFiling(events: TimelineEvent[]) {

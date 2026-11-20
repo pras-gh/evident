@@ -1,194 +1,173 @@
 # Evidence Viewer
 
-Every claim links to the paragraph that supports it. Click a citation and the
-document scrolls to the page and holds that paragraph highlighted.
+The claim on the left; on the right, the filing opens at the page, scrolls to
+the paragraph and highlights it. Click another citation and the viewer follows.
 
 ```
-┌───────────────────────────┬──────────────────────────────────────┐
-│ answer                    │ 10-K · 0001045810-25-000023   p.27/87 │
-│                           │ ┌──────────────────────────────────┐ │
-│ Export controls restrict  │ │ page 27                          │ │
-│ Blackwell shipments to    │ │  …                               │ │
-│ China.                    │ │ ▌In October 2023, the USG        │ │
-│                           │ │ ▌announced new licensing …       │ │
-│ [1 10-K p.27] [2 10-K p.28]│ │  …                               │ │
-└───────────────────────────┴──────────────────────────────────────┘
+┌───────────────────────────────┬─┬──────────────────────────────────────────────┐
+│ ● NVDA · RISK · EVIDENCE      │ │ FY2026 10-K [FY2025 10-K] FY2024 10-K        │
+│ Export Controls               │ │     p. 27 / 87   ‹ 35 / 61 ›   − 100% +  PDF │
+│ Export Controls Expanded.     │ │ ┌────┐ ┌──────────────────────────────────┐  │
+│ Cited in 20 paragraphs, up    │ │ │ 26 │ │                                  │  │
+│ from 13 in the FY2024 10-K.   │⇔│ │    │ │ 35 ┃▓Over the past three years, we ▓│  │
+│ ┃ Over the past three years…  │ │ ├────┤ │    ┃▓have been subject to a series…▓│  │
+│ Confidence ███████ 100%       │ │ │▣27 │ │ 36 ▏During the third quarter of …  │  │
+│ Source FY2025 10-K • Item 1A  │ │ │ ●● │ │ 37 ▏In October 2023, the USG …     │  │
+│        • Page 27              │ │ ├────┤ │                                  │  │
+│ [Jump to Evidence →]          │ │ │ 28 │ └──────────────────────────────────┘  │
+│ 61 CITATIONS  [1 FY2026 p.16] │ │ └────┘                                        │
+└───────────────────────────────┴─┴──────────────────────────────────────────────┘
 ```
 
-## Three places the spec and the data disagree
+`/evidence/{chunkId}?cite={chunk}:{paragraph}&entity={slug}` — a deep link to
+one citation. Selecting another updates the URL, so what is on screen can be
+linked to and reloaded.
 
-**The filings are HTML, not PDF.** A 10-K's primary document is
-`nvda-20250126.htm`. There is no PDF to hand a PDF viewer, and the raw filing is
-not stored at all — only its URL and hash. So the document pane renders the
-filing as a paged reading view built from what *is* stored: chunks, split back
-into their paragraphs, grouped by page. Pages look and behave like pages, and
-every paragraph is an addressable element.
+## The filing, as pages
 
-This is also the more precise option. A PDF highlight is a rectangle drawn over
-glyphs at coordinates; an HTML highlight is the paragraph element itself, which
-reflows correctly at any width and cannot drift off its text.
+Real 10-Ks are HTML. HTML has no pages and no geometry until a browser lays it
+out, and the raw filing used to be thrown away after parsing. So:
 
-**Bounding boxes exist only where a page has geometry.** A PDF filing's
-paragraphs are measured at parse time — each line from its first glyph's origin
-to its last glyph's advance, using the font's own widths, and from the font's
-ascent to its descent — and every paragraph's box is stored with its chunk
-(migration 0010). An HTML filing has no geometry until a browser lays it out,
-so its boxes are `null`, and the paragraph anchor is the exact target. A box
-invented server-side for HTML would look precise and be wrong.
+1. **Ingest keeps the bytes** (`documents.source_path`, in the filing store,
+   `FILING_STORE`, default `data/filings/`).
+2. **The render worker lays each filing out in headless Chrome** at US Letter
+   width, splits it into pages at the filing's own page breaks — by *the
+   parser's own rule*, so page 27 here is page 27 in every citation — and
+   photographs each page (`document_pages.image_path`, plus a thumbnail).
+3. **It finds every stored paragraph in that layout** and measures it with a
+   DOM Range: `chunks.paragraph_boxes`, in points from the page's top-left.
+   Text is compared with whitespace removed, so inline markup cannot break the
+   match; hidden copies (inline XBRL) are skipped.
+4. **It prints a PDF whose page N is page N** (`documents.pdf_path`). Chrome's
+   own print pagination is not the filing's — it came out at 80 pages for an
+   85-page 10-K — so the print breaks only where the filing's pages begin.
 
-Boxes are in points from the page's top-left, y down, with the page's size —
-the convention pdf.js draws in — so a client scales by `rendered_width /
-page_width` and draws. They are checked against PDFs written with known
-geometry (`tests/pdfgen.py`) to a hundredth of a point, including irregular
-font widths read from the file, sizes set through either matrix, shifted page
-origins and non-ASCII characters. Rotated pages get `null`.
+The box is measured on the pixels it is drawn over. That is the guarantee, and
+it is tested against the pixels: every citation's box, fetched through the API,
+covers ink in the page image the API serves, with paper just outside it.
 
-Building this found that **the PDF parser returned one paragraph per page.**
-It split `extract_text()` on blank lines, and pypdf's plain text has none
-between paragraphs. It now segments paragraphs from the same geometry — gaps,
-indents, bullets, font-size changes — and gives them positional ids
-(`{page}_{index}`) like the HTML parser, so a PDF paragraph's page is read from
-its id as well.
+A paragraph that cannot be found, or that lands on a different page from the
+one its id names, gets no box and is reported: a missing highlight is
+recoverable; a highlight on the wrong words is the failure this product exists
+to prevent. On the three NVIDIA 10-Ks, 172 of 172 paragraphs are boxed.
 
-What is still missing for drawing boxes over a rendered PDF: the raw PDF. Only
-its URL and hash are stored, and sec.gov does not allow cross-origin fetches.
+**What the images are.** A rendering of the filing's HTML by Chrome, not a scan
+of what the SEC received. For the demo corpus the HTML is itself a filtered
+subset of the real Risk Factors (see `tests/fixtures/edgar-timeline`), set in a
+plain filing style because it carries none of its own; a full EDGAR filing
+renders with its own styles. The toolbar links the original on EDGAR.
 
-**There are no AI answers yet.** Nothing in the API generates an answer; `/v1/search`
-returns chunks. The viewer renders an `Answer` — text plus citations — and does
-not care where it came from. Today the one source of claims-with-evidence is the
-entity graph, so the viewer page shows an entity as the claim and its mentions
-as the citations. When an answer endpoint exists it feeds the same component.
+**PDF filings** get their boxes at parse time from the PDF's text geometry
+(`evident_parser.pdf`), and their own bytes as the PDF. Page images for them
+need a rasteriser, which is not wired up: the viewer shows those filings as
+text, highlighted by paragraph anchor.
 
-## Anchors
+## The claim
 
-Every citable unit has an anchor:
+The card's claim is **not generated by a model**. It is the timeline event for
+the entity in the filing being shown — "Export Controls Expanded. Cited in 20
+paragraphs, up from 13 in the FY2024 10-K" — computed from paragraph counts
+(docs/timeline-engine.md). With no event for that filing it says how often the
+entity is cited. The confidence is the extractor's self-reported score, and
+the demo's extractor is a keyword matcher (`tools/seed_demo.py`), so it reads
+100%. When an answer endpoint exists, its text and citations feed the same
+component.
 
-| unit | anchor | highlight |
-|---|---|---|
-| prose paragraph | `p-{paragraph_id}` | the paragraph |
-| table chunk (no paragraph ids) | `c-{chunk_id}` | the table |
+## Highlights
 
-A citation that names a paragraph highlights that paragraph. A citation that
-names only a chunk highlights every paragraph in it.
+- The **active citation** is filled and outlined in its entity's colour
+  (`entities.highlight_color`, else the type's: Risk red, Product indigo, …),
+  with a margin bar and its number.
+- **Other citations on the page** are margin marks only. On page 27 of FY2025
+  nearly every paragraph cites export controls; filled boxes would make the
+  page one tinted slab.
+- The highlight is state, not an animation. It stays while the reader scrolls
+  away and back; only its arrival animates. Arriving by link lands on the
+  paragraph; clicking animates there.
+- Boxes are positioned as percentages of their page, and each page keeps its
+  aspect ratio before its image loads, so the scroll target is right on the
+  first frame and the overlay scales at any width or zoom.
 
-## Pages come from the paragraph, not the chunk
+## Frontend
 
-A chunk can span pages — in the benchmark corpus every chunk does — but the
-database stores one `page_number` per chunk, its first. Resolving a citation to
-the chunk's page would scroll to the wrong page for any paragraph after the
-first break. The paragraph id carries its own page (`27_3` is page 27,
-paragraph 3), so that is what resolution uses.
+```
+app/evidence/[chunkId]/page.tsx       resolves the citation, the entity's citations,
+                                      its timeline, and each cited filing's pages
+components/evidence/
+  evidence-viewer.tsx                 the shell: card, sticky chips, resizable split,
+                                      ?cite= in the URL
+  pdf-pane.tsx                        page images with overlays; text fallback
+  highlight-overlay.tsx               one citation drawn over its paragraph
+  page-thumbnail.tsx                  the rail, with a dot per citation
+  citation-chip.tsx                   one citation, kept in place if unresolvable
+  evidence-toolbar.tsx                filings, page, citation arrows, zoom, PDF, EDGAR
+lib/cite.ts                           ?cite= parsing and viewer URLs (server and client)
+```
 
-## Found while building this: mentions cited the wrong paragraph
-
-Extraction showed Claude each chunk as one block, labelled with the chunk's
-*first* paragraph id. Claude could only ever cite that id, so every entity
-mention recorded the chunk's first paragraph and first page — even when the
-entity was in paragraph four, two pages later. A viewer built on that would
-highlight the wrong paragraph for most citations.
-
-Extraction now shows each chunk as its individual numbered paragraphs, still in
-one request per chunk. Claude cites the paragraph that actually supports the
-entity, and the mention records that paragraph and its page.
+Page images and the PDF load through the web app's own origin (`/api/*`,
+proxied to the API by `next.config.mjs`), so there is no CORS to configure.
 
 ## API
 
 | | |
 |---|---|
-| `GET /v1/evidence/{chunk_id}` | one citation: page, paragraph, document, confidence, bounding box, and `highlights` — every anchor to light up, each with its own page and box |
-| `POST /v1/evidence/resolve` | up to 1,000 citations in one call, order preserved, repeats resolved once, unresolvable ones flagged rather than failing the answer |
-| `GET /v1/company/{ticker}/documents` | a company's filings, newest first: pages with text, paragraph count, whether paragraphs have boxes, EDGAR link |
-| `GET /v1/document/{id}/page/{page}` | one page: its paragraphs with anchors and boxes, the page size, and the nearest pages with text either side |
-| `GET /v1/documents/{id}/pages` | the whole filing as the paged reading view the viewer renders |
+| `GET /v1/evidence/{chunk_id}` | one citation: page, paragraph, filing, confidence, box, `highlights` (each anchor with its own page, box and colour), `highlight_color`, the entities in the paragraph |
+| `POST /v1/evidence/resolve` | up to 1,000 citations; order kept, repeats resolved once, a bad one reported in place |
+| `GET /v1/company/{ticker}/documents` | a company's filings, newest first |
+| `GET /v1/document/{id}` | a filing and every page: size, image and thumbnail URLs, PDF URL |
+| `GET /v1/document/{id}/page/{page}` | one page: paragraphs with anchors and boxes, image, neighbours with text |
+| `GET /v1/document/{id}/page/{page}/image?size=full\|thumb` | a page image (WebP), cached immutably — the URL carries the render time |
+| `GET /v1/document/{id}/pdf` | the filing as a PDF, page N = page N |
+| `GET /v1/documents/{id}/pages` | the filing as text, for filings not rendered |
 
-Every one of them builds paragraphs through the same function, so an anchor a
+Every paragraph anywhere is built by `documents.blocks_for`, so an anchor a
 citation resolves to is always a block on the page it names.
-`tests/test_evidence_backend_e2e.py` resolves every stored mention and checks
-exactly that, and that each page from the page API equals that page of the
-full reading view.
 
-## Running it locally
+## Rules carried over
+
+**Anchors.** A prose paragraph is `p-{paragraph_id}`; a table chunk, with no
+paragraph ids, is `c-{chunk_id}`. Naming only a chunk highlights all of it.
+
+**Pages come from the paragraph, not the chunk.** A chunk can span pages but
+stores the page it starts on; the paragraph id carries its own (`27_3` is page
+27), and that is what resolution uses.
+
+**Mentions cite the paragraph that supports them**, one per entity per
+paragraph (`0009`), not the chunk's first paragraph — see git history for how
+that was found.
+
+## Running it
 
 ```bash
-echo 'DATABASE_URL=postgresql+psycopg://localhost/evident' > .env   # git-ignored
-(cd db && alembic upgrade head)
-DATABASE_URL=... python tools/seed_demo.py     # real filing text, keyword-matched entities
-tools/dev.sh api                               # :8000
-tools/dev.sh web                               # :3000
-open http://localhost:3000/evidence/nvda/export_controls
+tools/setup.sh        # includes rendering; needs Chrome (or `playwright install chromium`)
+tools/dev.sh api
+tools/dev.sh web
+open 'http://localhost:3000/evidence/54?cite=54:27_1&entity=export_controls'
 ```
 
-`seed_demo.py` is **not Claude** — it finds a fixed vocabulary of names by
-keyword, so the viewer can be run without an API key. Every citation it writes
-still points at a paragraph that really contains the name, through the real
-extraction path, Pydantic gate and citation guard.
-
-`.env` is read as `KEY=value` data rather than sourced as shell, because
-connection strings carry `&`, and sourcing reads `...host=/tmp&port=5433` as a
-background job and leaves `DATABASE_URL` unset.
+`tools/db.sh seed` ingests, extracts and renders; `python -m workers.render_worker NVDA`
+renders again after re-ingesting.
 
 ## Verified
 
-**Automated** — 237 Python tests and 19 frontend tests pass, and `next build`
-succeeds. The evidence suite runs against the synthetic 10-K because it has
-both hard cases: 53 chunks that span a page break and 56 tables. Its central
-test resolves every one of the 474 chunks and finds every resulting anchor in
-the reading view, on the page the citation names.
-
-**In a browser**, against the seeded Risk Factors corpus:
-
-- all seven Export Controls citations land on their own page, the paragraph
-  96px below the top of the pane, fully visible, exactly one paragraph lit
-- the highlight survives real mouse-wheel scrolling eight pages away and back;
-  the page indicator follows the scroll and the highlight does not move
-- one highlight at a time, the pressed chip follows the click
-- stacked layout at 375px, no horizontal scroll
-
-The frontend tests run in jsdom, which has no layout, so they prove what the
-viewer *does* — which element it scrolls to, what it highlights, that a scroll
-never clears the highlight. Only the browser proves it *works*, and it caught
-the one failure the tests could not.
-
-## Found while building this
-
-**Mentions cited the wrong paragraph.** Described above: extraction labelled
-each chunk with its first paragraph id. On the seeded corpus, 25 of 26 mentions
-now cite a later paragraph than the chunk's first, and 19 of 26 sit on a
-different page from the chunk's stored one — every one of those would have
-highlighted the wrong text, and 19 would have scrolled to the wrong page.
-
-**Mentions were unique per chunk.** `entity_mentions` was unique on
-`(entity_id, chunk_id)`, which was harmless while every citation in a chunk
-named the same first paragraph. Once citations were precise, the first
-paragraph cited in a chunk won and the rest were silently dropped: export
-controls is named in ten paragraphs of the corpus and four were stored, a
-subsection heading among them, while the paragraphs describing the USG
-licensing rules were discarded. Revision `0009` keys mentions on
-`(entity_id, chunk_id, paragraph_id)` with `NULLS NOT DISTINCT`, so a rerun
-still cannot inflate a count. Seven citations now, all substantive.
-
-**The document pane could not scroll.** The grid row sized to its content, so
-the pane grew to the full height of the filing — 11,742px — instead of
-scrolling, and the shell clipped the overflow. A reader could not scroll the
-document at all, and `scrollTo` had nothing to move. All 19 jsdom tests passed
-through this. Fixed by pinning the row with `minmax(0,1fr)` and giving every
-pane `min-height:0`.
-
-**The page indicator depended on callback timing.** Its scroll throttle
-assumed `requestAnimationFrame` always calls back after returning. Real
-browsers do, so production was unaffected, but code that silently depends on
-that is fragile; it now uses a flag instead.
+- **Pixels**: every citation's box covers ink in its served page image; paper
+  just outside (`tests/test_render_worker.py`, `tests/test_evidence_backend_e2e.py`).
+- **Page parity** with the parser, including breaks in class text and hidden
+  breaks; the PDF's page count and page contents match.
+- **Every rule has a test that fails without it** (checked by mutation).
+- **In a browser**, on the three NVIDIA 10-Ks:
+  - deep link opens FY2025 p. 27 with paragraph 35 highlighted 91px below the
+    toolbar
+  - a chip in another filing switches filing, page, claim and URL
+  - the highlight survives scrolling 4,000px away and back
+  - Jump to Evidence returns to it; thumbnails navigate; arrows step
+  - the divider resizes by keyboard and remembers
+  - no failed requests; phone width stacks with no horizontal scroll
 
 ## Not done
 
-- **No PDF rendering.** Boxes are there for PDF filings; the raw PDF to draw
-  them over is not stored — see the top of this document.
-- **No AI answers.** The viewer is ready for them; nothing produces them.
-- **Existing `mention_count` values** were counting chunks, not paragraphs.
-  `0009` does not recompute them; re-extracting a document corrects its counts.
-
-## Already broken, not touched here
-
-- `npm audit` reports advisories in `next`, `postcss` and `sharp`, all
-  pre-existing dependencies. Fixing them means a Next.js upgrade, which belongs
-  in its own change.
+- **Page images for PDF filings** — needs a rasteriser; they show as text.
+- **AI answers** — nothing produces them; the card shows timeline claims.
+- **Charts and images inside a filing** are not fetched, so they render as
+  blank space rather than broken-image icons.
+- `npm audit` advisories in `next`, `postcss` and `sharp` pre-date this work.

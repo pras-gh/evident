@@ -298,93 +298,181 @@ body:has(input[name="open"]:checked:not(#open-none)) .scrim{opacity:1;pointer-ev
 }
 
 /* ============================================================ evidence viewer */
-/* Split screen: the claim on the left, the filing on the right. Each side
-   scrolls on its own so reading the document never scrolls the citations away. */
-/* The row is pinned to the viewport and every pane gets min-height:0. Without
-   both, the grid row sizes to its content, the document pane grows to the full
-   height of the filing instead of scrolling, and scrollTo has nothing to move —
-   which a DOM test cannot see, because jsdom has no layout. */
-.ev-shell{display:grid;grid-template-columns:minmax(320px,38%) 1fr;
-  grid-template-rows:minmax(0,1fr);height:100vh;overflow:hidden}
-.ev-answer,.ev-doc,.ev-pages{min-height:0}
-
-.ev-answer{overflow:auto;padding:28px clamp(18px,2.4vw,34px) 40px;
-  border-right:1px solid var(--line);background:var(--surface)}
+/* The claim on the left, the filing on the right, a draggable divider between.
+   Every pane is pinned to the viewport with min-height:0 — without it a grid
+   row sizes to its content, the filing pane grows to the height of the whole
+   filing instead of scrolling, and scrollTo has nothing to move. */
 .ev-kicker{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   color:var(--muted);margin-bottom:8px}
 .ev-title{font-size:26px;font-weight:600;letter-spacing:-.025em;line-height:1.15;margin-bottom:14px}
-.ev-text{color:var(--ink-2);font-size:15px;line-height:1.65;margin-bottom:22px}
-.ev-marker{font:inherit;font-size:.78em;font-weight:600;vertical-align:.35em;padding:0 2px;
-  color:var(--emerald);background:none;border:0;cursor:pointer}
-.ev-marker:disabled{color:var(--faint);cursor:not-allowed}
 
-.ev-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:22px}
-.ev-chip{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px 0 5px;
-  border-radius:999px;border:1px solid var(--line-2);background:var(--surface-2);
-  color:var(--ink-2);font:500 12.5px/1 var(--sans);cursor:pointer;
+.evv{display:grid;grid-template-rows:minmax(0,1fr);height:100vh;overflow:hidden;background:var(--bg)}
+.evv-left{min-height:0;overflow:auto;padding:22px 22px 48px;background:var(--surface)}
+.evv-right{display:flex;flex-direction:column;min-width:0;min-height:0}
+.evv-body{flex:1;min-height:0;display:flex}
+
+.evv-resizer{position:relative;cursor:col-resize;background:var(--surface);touch-action:none;
+  border-right:1px solid var(--line)}
+.evv-resizer::after{content:"";position:absolute;top:50%;left:3px;width:3px;height:36px;
+  margin-top:-18px;border-radius:2px;background:var(--line-2);transition:background .15s var(--ease)}
+.evv-resizer:hover::after,.evv-resizer:focus-visible::after{background:var(--emerald)}
+.evv-resizer:focus-visible{outline:none}
+
+/* the evidence card */
+.evv-card{padding:18px 18px 16px;border:1px solid var(--line-2);border-radius:var(--r-lg);
+  background:linear-gradient(180deg,var(--surface-2),var(--surface));box-shadow:var(--shadow)}
+.evv-kicker{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.evv-dot{width:8px;height:8px;border-radius:50%;background:var(--hl);
+  box-shadow:0 0 10px color-mix(in srgb,var(--hl) 60%,transparent)}
+.evv-title{margin-top:8px;font-size:24px;font-weight:600;letter-spacing:-.025em;line-height:1.15}
+.evv-claim{margin-top:10px;color:var(--ink-2);font-size:14px;line-height:1.6}
+.evv-claim b{color:var(--ink);font-weight:600}
+.evv-quote{margin:14px 0 0;padding:10px 12px;border-left:3px solid var(--hl);border-radius:0 8px 8px 0;
+  background:color-mix(in srgb,var(--hl) 7%,var(--surface-2));color:var(--ink-2);
+  font:13px/1.6 "Times New Roman",Times,serif;max-height:10.5em;overflow:auto}
+.evv-meta{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:14px 0 0;font-size:12.5px}
+.evv-meta div{display:contents}
+.evv-meta dt{color:var(--muted)}
+.evv-meta dd{margin:0;display:flex;align-items:center;gap:8px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.evv-meter{display:inline-block;width:72px;height:6px;border-radius:3px;background:var(--raise);overflow:hidden}
+.evv-meter i{display:block;height:100%;background:var(--hl)}
+.evv-jump{display:inline-flex;align-items:center;gap:8px;margin-top:16px;height:34px;padding:0 14px;
+  border-radius:999px;border:1px solid color-mix(in srgb,var(--hl) 55%,transparent);
+  background:color-mix(in srgb,var(--hl) 14%,transparent);color:var(--ink);
+  font:600 13px/1 var(--sans);cursor:pointer;transition:background .15s var(--ease),transform .15s var(--ease)}
+.evv-jump:hover{background:color-mix(in srgb,var(--hl) 24%,transparent)}
+.evv-jump:hover span{transform:translateX(2px)}
+.evv-jump span{transition:transform .15s var(--ease)}
+
+/* citation chips, pinned while the card scrolls away */
+.evv-chips{position:sticky;top:-22px;z-index:2;margin:18px -22px 0;padding:12px 22px 14px;
+  background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line)}
+.evv-chips-head{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--muted);margin-bottom:9px}
+.evv-chips ul{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px 0 4px;border-radius:999px;
+  border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink-2);
+  font:500 12px/1 var(--sans);cursor:pointer;
   transition:border-color .15s var(--ease),background .15s var(--ease),color .15s var(--ease)}
-.ev-chip:hover{border-color:rgba(52,211,153,.45);color:var(--ink)}
-.ev-chip:focus-visible,.ev-marker:focus-visible,.ev-tab:focus-visible{
-  outline:2px solid var(--emerald);outline-offset:2px}
-.ev-chip-n{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;
-  background:var(--raise);color:var(--ink);font-size:11px;font-weight:600}
-.ev-chip.is-active{border-color:var(--emerald);background:rgba(52,211,153,.10);color:var(--ink)}
-.ev-chip.is-active .ev-chip-n{background:var(--emerald);color:#04130d}
-.ev-chip.is-unresolved{opacity:.55;cursor:not-allowed;text-decoration:line-through}
+.chip:hover{border-color:color-mix(in srgb,var(--hl) 60%,transparent);color:var(--ink)}
+.chip:focus-visible{outline:2px solid var(--hl);outline-offset:2px}
+.chip-n{display:grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:999px;
+  background:var(--raise);color:var(--ink);font-size:10.5px;font-weight:700}
+.chip-filing{color:var(--muted)}
+.chip.is-active{border-color:var(--hl);background:color-mix(in srgb,var(--hl) 14%,transparent);color:var(--ink)}
+.chip.is-active .chip-n{background:var(--hl);color:#0a0a0b}
+.chip.is-unresolved{opacity:.55;cursor:not-allowed;text-decoration:line-through}
+.evv-also{margin-top:16px;font-size:12.5px;color:var(--muted)}
+.evv-also a{color:var(--hl);text-decoration:underline;text-underline-offset:2px}
 
-.ev-quote{margin:0;padding:14px 16px;border-radius:var(--r);border:1px solid var(--line-2);
-  background:var(--surface-2)}
-.ev-quote blockquote{margin:0 0 10px;color:var(--ink);font-size:13.5px;line-height:1.6;
-  max-height:12.8em;overflow:auto}
-.ev-quote figcaption{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;
-  color:var(--muted);font-size:12px}
-.ev-conf{color:var(--ink-2)}
-
-.ev-doc{display:flex;flex-direction:column;min-width:0;background:var(--bg)}
-.ev-doc-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex:none;
-  height:52px;padding:0 20px;border-bottom:1px solid var(--line);background:var(--surface)}
-.ev-doc-name{font-weight:600;font-size:13px}
-.ev-tabs{display:flex;gap:4px;min-width:0;overflow-x:auto}
-.ev-tab{height:30px;padding:0 11px;border-radius:8px;border:1px solid transparent;background:none;
+/* toolbar */
+.tb{display:flex;align-items:center;gap:14px;flex:none;height:52px;padding:0 14px;overflow-x:auto;
+  border-bottom:1px solid var(--line);background:var(--surface);scrollbar-width:none}
+.tb::-webkit-scrollbar{display:none}
+.tb-docs{display:flex;gap:4px}
+.tb-doc{height:30px;padding:0 11px;border-radius:8px;border:1px solid transparent;background:none;
   color:var(--muted);font:500 12.5px/1 var(--sans);white-space:nowrap;cursor:pointer}
-.ev-tab[aria-selected="true"]{border-color:var(--line-2);background:var(--surface-2);color:var(--ink)}
-.ev-pageind{flex:none;font-variant-numeric:tabular-nums;color:var(--ink-2);font-size:12.5px}
+.tb-doc[aria-selected="true"]{border-color:var(--line-2);background:var(--surface-2);color:var(--ink)}
+.tb-page{margin-left:auto;color:var(--ink-2);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.tb-group{display:flex;align-items:center;gap:2px;padding:2px;border:1px solid var(--line);border-radius:9px}
+.tb-btn{width:26px;height:26px;border:0;border-radius:7px;background:none;color:var(--ink-2);
+  font:500 15px/1 var(--sans);cursor:pointer}
+.tb-btn:hover:not(:disabled){background:var(--surface-2);color:var(--ink)}
+.tb-btn:disabled{opacity:.35;cursor:default}
+.tb-count{min-width:52px;text-align:center;color:var(--ink-2);font-size:12px;font-variant-numeric:tabular-nums}
+.tb-links{display:flex;gap:6px}
+.tb-link{height:28px;padding:0 10px;display:inline-flex;align-items:center;border-radius:8px;
+  border:1px solid var(--line-2);color:var(--ink-2);font-size:12px;white-space:nowrap}
+.tb-link:hover{color:var(--ink);border-color:rgba(255,255,255,.22)}
+.tb-doc:focus-visible,.tb-btn:focus-visible,.tb-link:focus-visible,.thumb:focus-visible{
+  outline:2px solid var(--emerald);outline-offset:2px}
 
-.ev-pages{flex:1;overflow:auto;padding:24px clamp(14px,3vw,48px) 60vh;scroll-padding-top:24px}
-.ev-page{max-width:760px;margin:0 auto 22px;padding:22px 28px 26px;border-radius:var(--r);
+/* page thumbnail rail */
+.thumbs{flex:none;width:108px;min-height:0;overflow:auto;padding:12px 10px 40px;
+  border-right:1px solid var(--line);background:var(--surface);scrollbar-width:thin}
+.thumbs ol{display:grid;gap:10px}
+.thumb{display:grid;gap:5px;width:100%;padding:4px;border-radius:9px;border:1px solid transparent;
+  background:none;cursor:pointer;transition:border-color .15s var(--ease),background .15s var(--ease)}
+.thumb:hover{background:var(--surface-2)}
+.thumb.is-current{border-color:var(--emerald);background:rgba(52,211,153,.07)}
+.thumb-img{display:block;width:100%;border-radius:3px;overflow:hidden;background:#fff;
+  box-shadow:0 1px 0 rgba(0,0,0,.4)}
+.thumb-img img{display:block;width:100%;height:100%;object-fit:cover;object-position:top}
+.thumb-foot{display:flex;align-items:center;gap:4px;min-height:12px;font-size:11px;
+  font-variant-numeric:tabular-nums;color:var(--muted)}
+.thumb.is-current .thumb-no{color:var(--ink)}
+.thumb-dot{width:6px;height:6px;border-radius:50%}
+
+/* the filing */
+.pp{flex:1;min-width:0;min-height:0;overflow:auto;padding:24px clamp(12px,3vw,40px) 60vh;
+  background:#0d0d10;scroll-behavior:auto}
+.pp-pages{display:grid;gap:18px;width:calc(100% * var(--zoom,1));max-width:calc(860px * var(--zoom,1));
+  margin:0 auto}
+.pp-page{position:relative;background:#fff;border-radius:3px;overflow:visible;
+  box-shadow:0 1px 0 rgba(255,255,255,.04),0 22px 44px -26px #000}
+.pp-page img{display:block;width:100%;height:100%;border-radius:3px;user-select:none}
+.pp-page-no{position:absolute;right:12px;bottom:9px;font:600 10.5px/1 var(--sans);color:#9a9aa3;
+  font-variant-numeric:tabular-nums}
+.pp-empty{margin:auto;padding:40px;color:var(--muted)}
+
+/* highlights, drawn over the page image. multiply keeps the text black and
+   tints only the paper. The steady state is the highlight; only its arrival
+   animates, so it is still there after scrolling away and back. */
+/* Other citations on the page are margin marks only — a page where every
+   paragraph is cited would otherwise be one tinted slab, and the active
+   citation would not stand out. */
+.hl{position:absolute;border-radius:4px;pointer-events:none;mix-blend-mode:multiply}
+.hl::before{content:"";position:absolute;left:-9px;top:2px;bottom:2px;width:3px;border-radius:2px;
+  background:var(--hl);opacity:.35}
+.hl.is-active{background:color-mix(in srgb,var(--hl) 24%,transparent);
+  box-shadow:inset 0 0 0 2px var(--hl)}
+.hl.is-active::before{top:0;bottom:0;width:4px;opacity:1}
+.hl-arrive{position:absolute;inset:-8px;border-radius:9px;box-shadow:0 0 0 3px var(--hl);
+  animation:hl-arrive 1.4s var(--ease) both}
+@keyframes hl-arrive{0%{opacity:0;transform:scale(1.04)}18%{opacity:1;transform:scale(1)}
+  100%{opacity:0;transform:scale(1)}}
+.hl-n{position:absolute;left:-34px;top:-1px;min-width:19px;height:19px;padding:0 5px;border-radius:10px;
+  background:var(--hl);color:#0a0a0b;font:700 10.5px/19px var(--sans);text-align:center;
+  mix-blend-mode:normal;opacity:.55}
+.hl.is-active .hl-n{opacity:1}
+
+/* text fallback, for filings not rendered yet */
+.pp-text{max-width:760px;margin:0 auto}
+.ev-page{margin:0 0 22px;padding:22px 28px 26px;border-radius:var(--r);
   background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow)}
 .ev-page-no{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
   color:var(--faint);margin-bottom:14px}
-
 .ev-block{position:relative;margin:0 -12px;padding:6px 12px;border-radius:10px;
   transition:background .2s var(--ease),box-shadow .2s var(--ease)}
 .ev-block + .ev-block{margin-top:4px}
 .ev-block p{color:var(--ink-2);font-size:14px;line-height:1.7}
-.ev-block.is-referenced{box-shadow:inset 2px 0 0 rgba(52,211,153,.35)}
-/* The highlight is a steady state, not an animation, so it is still there
-   after scrolling away and back. Only the flash on arrival animates. */
-.ev-block.is-cited{background:rgba(52,211,153,.12);box-shadow:inset 3px 0 0 var(--emerald)}
+.ev-block.is-referenced{box-shadow:inset 2px 0 0 color-mix(in srgb,var(--hl,var(--emerald)) 40%,transparent)}
+.ev-block.is-cited{background:color-mix(in srgb,var(--hl,var(--emerald)) 13%,transparent);
+  box-shadow:inset 3px 0 0 var(--hl,var(--emerald))}
 .ev-block.is-cited p{color:var(--ink)}
-.ev-gutter{position:absolute;left:-30px;top:8px;font-size:10.5px;font-weight:600;
-  color:var(--emerald);font-variant-numeric:tabular-nums}
 .ev-flash{position:absolute;inset:0;border-radius:inherit;pointer-events:none;
   animation:ev-flash 1.1s var(--ease) both}
-@keyframes ev-flash{0%{background:rgba(52,211,153,.34)}100%{background:rgba(52,211,153,0)}}
-
+@keyframes ev-flash{0%{background:color-mix(in srgb,var(--hl,var(--emerald)) 34%,transparent)}
+  100%{background:transparent}}
 .ev-table{margin:0;padding:10px 12px;border-radius:8px;background:var(--surface-2);
   color:var(--ink-2);font:12px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;
   white-space:pre-wrap;overflow-x:auto}
-.ev-empty{margin:auto;color:var(--muted)}
 
 @media (prefers-reduced-motion:reduce){
-  .ev-flash{animation:none}
-  .ev-chip,.ev-block{transition:none}
+  .hl-arrive,.ev-flash{animation:none}
+  .chip,.ev-block,.thumb,.evv-jump,.evv-jump span{transition:none}
 }
 @media (max-width:900px){
-  .ev-shell{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);height:100dvh}
-  .ev-answer{max-height:42dvh;border-right:0;border-bottom:1px solid var(--line)}
-  .ev-page{padding:18px 18px 20px}
-  .ev-gutter{position:static;display:inline-block;margin-right:6px}
+  .evv{grid-template-columns:1fr !important;grid-template-rows:auto minmax(0,1fr);height:100dvh}
+  .evv-left{max-height:44dvh;border-bottom:1px solid var(--line)}
+  .evv-resizer,.thumbs{display:none}
+  .pp{padding:14px 10px 50vh}
+  /* the page's own left margin holds the numbers; the text stays clear */
+  .hl-n{left:-25px;min-width:16px;height:16px;padding:0 3px;font-size:9px;line-height:16px}
+  .hl::before{left:-6px;width:2px}
 }
 
 /* ============================================================ timeline

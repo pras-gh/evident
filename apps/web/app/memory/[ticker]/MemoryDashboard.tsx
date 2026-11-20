@@ -87,11 +87,7 @@ export function MemoryDashboard({
         </div>
       </main>
 
-      <RevisionDrawer
-        card={open}
-        ticker={company.ticker ?? ""}
-        onClose={() => setOpen(null)}
-      />
+      <RevisionDrawer card={open} onClose={() => setOpen(null)} />
     </div>
   );
 }

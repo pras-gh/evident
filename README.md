@@ -34,10 +34,11 @@ docs/
 
 Needs Python 3.11+, Node 18.18+, and **PostgreSQL 15+ with pgvector** — migration
 0009 uses `NULLS NOT DISTINCT`, so 14 will not do. On macOS:
-`brew install postgresql@17 pgvector`.
+`brew install postgresql@17 pgvector`. Rendering filings to page images needs
+Chrome, or `.venv/bin/playwright install chromium`.
 
 ```bash
-tools/setup.sh      # .venv, web packages, a local database in .pgdata/, demo data
+tools/setup.sh      # .venv, web packages, a local database in .pgdata/, demo data, page images
 tools/dev.sh api    # http://localhost:8000/docs  (one terminal)
 tools/dev.sh web    # http://localhost:3000       (another)
 ```
@@ -76,7 +77,7 @@ cd apps/web && npm test
 | `/` | companies with memory | `GET /v1/companies` |
 | `/memory/{ticker}` | memory cards and recent changes | `GET /v1/companies/{t}`, `/cards`, `/cards/{kind}`, `/v1/company/{t}/timeline` |
 | `/timeline/{ticker}` | what changed between filings | `GET /v1/company/{t}/timeline` |
-| `/evidence/{ticker}/{entity}` | the filing, at the cited paragraph | `GET /v1/companies/{t}/entities/{slug}`, `POST /v1/evidence/resolve`, `GET /v1/documents/{id}/pages` |
+| `/evidence/{chunkId}` | the filing's pages, at the cited paragraph | `GET /v1/evidence/{id}`, `POST /v1/evidence/resolve`, `GET /v1/document/{id}` + page images |
 
 ## Layers
 
@@ -91,10 +92,11 @@ asserts it.**
 
 ## Evidence viewer
 
-`/evidence/{ticker}/{entity}` — a claim on the left, the filing on the right;
-clicking a citation scrolls to its page and holds the paragraph highlighted.
-To run it without an API key, see `docs/evidence-viewer.md` → *Running it
-locally*.
+`/evidence/{chunkId}?cite={chunk}:{paragraph}&entity={slug}` — the claim on the
+left; on the right the filing opens at the page, scrolls to the paragraph and
+highlights it, drawn over an image of the page. Filings are rendered to pages
+by `workers/render_worker.py` (headless Chrome), which measures every
+paragraph's box on the same pixels it photographs. See `docs/evidence-viewer.md`.
 
 ## Timeline
 

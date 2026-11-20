@@ -121,13 +121,13 @@ describe("evidence links", () => {
   it("open the cited paragraph in the evidence viewer", () => {
     render(<CompanyTimelineView timeline={timeline} />);
     const link = within(card("Export Controls Expanded")).getByRole("link", { name: /p\. 26/ });
-    expect(link.getAttribute("href")).toBe("/evidence/nvda/export_controls?cite=12%3A26_1");
+    expect(link.getAttribute("href")).toBe("/evidence/12?cite=12%3A26_1&entity=export_controls");
   });
 
   it("encode a split paragraph's # so it is not read as a fragment", () => {
-    expect(evidenceHref("nvda", "china", { chunk_id: 77, paragraph_id: "25_1#2" }))
-      .toBe("/evidence/nvda/china?cite=77%3A25_1%232");
-    expect(new URL(evidenceHref("nvda", "china", { chunk_id: 77, paragraph_id: "25_1#2" }),
+    expect(evidenceHref("china", { chunk_id: 77, paragraph_id: "25_1#2" }))
+      .toBe("/evidence/77?cite=77%3A25_1%232&entity=china");
+    expect(new URL(evidenceHref("china", { chunk_id: 77, paragraph_id: "25_1#2" }),
                    "http://x").searchParams.get("cite")).toBe("77:25_1#2");
   });
 
