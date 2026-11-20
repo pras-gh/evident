@@ -6,13 +6,18 @@ returns the citation behind it.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from .routers import (cards, documents, evidence, graph, ingest, memory, search,
-                      timeline)
+from evident_ai.gateway import AllProvidersFailed, UnknownOrganization, UsageLimitExceeded
+from evident_ai.gateway.logs import configure_logging
+
+from .routers import (ai_usage, analysis, cards, documents, evidence, graph, ingest,
+                      memory, search, timeline)
 
 API_VERSION = "1.0.0"
 
@@ -33,6 +38,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(ai_usage.router, prefix="/v1")
+app.include_router(analysis.router, prefix="/v1")
 app.include_router(cards.router, prefix="/v1")
 app.include_router(documents.router, prefix="/v1")
 app.include_router(evidence.router, prefix="/v1")
@@ -56,3 +63,31 @@ async def health() -> dict:
         db_ok = False
     return {"status": "ok" if db_ok else "degraded",
             "version": API_VERSION, "database": db_ok}
+
+
+# ------------------------------------------------------------------ AI errors
+# One response shape for every endpoint that calls the gateway.
+
+configure_logging()
+
+
+@app.exception_handler(UsageLimitExceeded)
+async def _usage_limit(request: Request, exc: UsageLimitExceeded) -> JSONResponse:
+    headers = {}
+    if exc.resets_at:
+        wait = (datetime.fromisoformat(exc.resets_at) - datetime.now(timezone.utc)).total_seconds()
+        headers["Retry-After"] = str(max(1, int(wait)))
+    return JSONResponse(status_code=429, content=exc.to_json(), headers=headers)
+
+
+@app.exception_handler(AllProvidersFailed)
+async def _ai_unavailable(request: Request, exc: AllProvidersFailed) -> JSONResponse:
+    # Provider detail stays in the logs; the caller gets the request id to quote.
+    return JSONResponse(status_code=503, content={
+        "error": "ai_unavailable", "request_id": str(exc.request_id),
+        "message": "No AI provider could answer right now. Try again shortly."})
+
+
+@app.exception_handler(UnknownOrganization)
+async def _unknown_org(request: Request, exc: UnknownOrganization) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"error": "unknown_organization"})

@@ -38,3 +38,9 @@ async def get_company(ticker: str, db: AsyncSession = Depends(get_db)) -> Compan
     if company is None:
         raise HTTPException(404, f"No memory built for {ticker.upper()}")
     return company
+
+
+def get_gateway():
+    """The AI gateway. A dependency, so tests can substitute their own."""
+    from evident_ai.gateway import gateway
+    return gateway()
