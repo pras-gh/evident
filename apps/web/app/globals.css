@@ -541,3 +541,111 @@ a.tl2-evidence:hover{color:var(--ink);border-color:rgba(52,211,153,.45)}
   .tl2-card{grid-template-columns:auto minmax(0,1fr);padding:12px}
   .tl2-delta{grid-column:2;justify-self:start}
 }
+
+/* ============================================================ admin: AI usage
+   One accent for data marks — #14a374, the app's emerald stepped down until it
+   passes the chart checks (lightness band, chroma, 3:1 contrast) on this dark
+   surface. Text keeps the text tokens; state is a word and a glyph, not colour. */
+.adm,.adm-login{--mark:#14a374;--mark-hover:#1fb985}
+.adm{max-width:1240px;margin:0 auto;padding:32px 24px 80px}
+.adm-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:20px}
+.adm-sub{font-size:13px;color:var(--ink-2)}
+
+.adm-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;margin-bottom:22px;
+  padding:12px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface)}
+.adm-presets{display:flex;gap:6px;margin-right:6px}
+.adm-chip{height:32px;display:inline-flex;align-items:center;padding:0 11px;border-radius:999px;
+  border:1px solid var(--line-2);font-size:12.5px;color:var(--ink-2);white-space:nowrap}
+.adm-chip:hover{color:var(--ink)}
+.adm-chip[aria-current="true"]{color:var(--ink);border-color:var(--emerald);background:rgba(52,211,153,.10)}
+.adm-field{display:grid;gap:4px;font-size:11px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.adm-field{flex:1 1 120px;min-width:0}
+.adm-field input,.adm-field select{width:100%;height:32px;padding:0 9px;border-radius:8px;
+  border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);
+  font:400 13px var(--sans);letter-spacing:0;text-transform:none;color-scheme:dark}
+.adm-btn{height:32px;padding:0 14px;border-radius:8px;border:0;background:var(--emerald);
+  color:#04130d;font:600 13px var(--sans);cursor:pointer}
+.adm-btn.is-ghost{background:none;border:1px solid var(--line-2);color:var(--ink-2)}
+.adm-reset{align-self:center;font-size:12.5px;color:var(--muted)}
+.adm-reset:hover{color:var(--ink)}
+.adm-filters :focus-visible,.adm a:focus-visible,.adm-btn:focus-visible{outline:2px solid var(--emerald);outline-offset:2px}
+
+.adm-kpis{display:grid;grid-template-columns:minmax(220px,1.4fr) repeat(4,minmax(0,1fr));
+  gap:10px;margin-bottom:22px}
+.adm-hero,.adm-kpi{display:grid;align-content:start;gap:4px;padding:14px 16px;border-radius:var(--r);
+  border:1px solid var(--line);background:var(--surface)}
+.adm-hero{grid-row:span 2;align-content:center}
+.adm-kpi-label{font-size:12px;color:var(--ink-2)}
+.adm-hero-value{font:600 52px/1.05 var(--sans);letter-spacing:-.03em;color:var(--ink)}
+.adm-kpi-value{font:600 24px/1.15 var(--sans);letter-spacing:-.02em;color:var(--ink)}
+.adm-kpi-note{font-size:11.5px;color:var(--muted)}
+.adm-kpi.is-flagged{border-color:rgba(251,191,36,.35)}
+.adm-kpi.is-flagged .adm-kpi-label::before{content:"▲ ";color:var(--amber)}
+
+.adm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.adm-card{min-width:0;padding:16px 18px 18px;border-radius:var(--r);border:1px solid var(--line);
+  background:var(--surface)}
+.adm-card.is-wide{grid-column:1 / -1}
+.adm-card-title{font-size:13.5px;font-weight:600;margin-bottom:14px}
+.adm-empty{color:var(--muted);font-size:13px;padding:8px 0}
+
+/* columns: hairline axis, bars <= 24px with a 4px rounded top, the whole
+   band height as the hit target */
+.cols{display:grid;grid-template-columns:56px 1fr;grid-template-rows:180px auto;column-gap:8px}
+.cols-axis{position:relative}
+.cols-tick{position:absolute;left:0;right:-8px;height:0;border-top:1px solid var(--line)}
+.cols-tick-label{position:absolute;right:16px;top:-8px;font-size:10.5px;color:var(--muted);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.cols-plot{position:relative;display:flex;align-items:stretch;gap:2px;border-bottom:1px solid var(--line-2)}
+.col{flex:1 1 0;min-width:0;display:flex;align-items:flex-end;justify-content:center;padding:0;border:0;
+  background:none;cursor:default}
+.col:focus-visible{outline:2px solid var(--emerald);outline-offset:-2px;border-radius:4px}
+.col-bar{display:block;width:100%;max-width:24px;min-height:0;border-radius:4px 4px 0 0;background:var(--mark)}
+.col.is-active .col-bar{background:var(--mark-hover)}
+.cols-tip{position:absolute;top:6px;transform:translateX(-50%);display:grid;gap:1px;padding:7px 10px;
+  border-radius:8px;border:1px solid var(--line-2);background:var(--raise);pointer-events:none;
+  white-space:nowrap;font-size:11.5px;color:var(--ink-2);box-shadow:var(--shadow);z-index:2}
+.cols-tip strong{font-size:14px;color:var(--ink)}
+.cols-x{grid-column:2;display:flex;justify-content:space-between;padding-top:6px;font-size:10.5px;color:var(--muted)}
+
+/* ranked bars, one hue, value at the tip */
+.bars{display:grid;gap:4px}
+.bars-row{display:grid;grid-template-columns:minmax(90px,30%) 1fr auto;grid-template-rows:auto auto;
+  column-gap:10px;align-items:center;padding:6px 8px;margin:0 -8px;border-radius:8px}
+a.bars-row:hover{background:var(--surface-2)}
+.bars-label{grid-row:1 / span 2;font-size:12.5px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bars-track{display:block;height:12px}
+.bars-bar{display:block;height:100%;min-width:2px;border-radius:0 4px 4px 0;background:var(--mark)}
+.bars-value{font-size:12.5px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;text-align:right}
+.bars-meta{grid-column:2 / span 2;font-size:11px;color:var(--muted)}
+
+.adm-table-wrap{overflow-x:auto}
+.adm-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.adm-table th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--muted);padding:6px 8px;border-bottom:1px solid var(--line-2)}
+.adm-table td{padding:7px 8px;border-bottom:1px solid var(--line);color:var(--ink-2);vertical-align:top}
+.adm-table td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.adm-detail{max-width:420px;overflow-wrap:anywhere}
+.adm-outcome{white-space:nowrap;color:var(--ink)}
+.adm-tableview{margin-top:12px}
+.adm-tableview summary{cursor:pointer;font-size:12px;color:var(--muted)}
+.adm-tableview .adm-table{margin-top:8px}
+
+.adm-login{min-height:100vh;display:grid;place-items:center;padding:24px}
+.adm-login-card{display:grid;gap:10px;width:min(420px,100%);padding:26px;border-radius:var(--r-lg);
+  border:1px solid var(--line-2);background:var(--surface)}
+.adm-label{font-size:12.5px;color:var(--ink-2)}
+.adm-input{height:38px;padding:0 11px;border-radius:9px;border:1px solid var(--line-2);
+  background:var(--surface-2);color:var(--ink);font:400 14px var(--sans)}
+.adm-input:focus-visible{outline:2px solid var(--emerald);outline-offset:1px}
+.adm-error{font-size:12.5px;color:var(--red)}
+.adm-hint{font-size:12px;color:var(--muted);line-height:1.6}
+
+@media (max-width:860px){
+  .adm-grid{grid-template-columns:1fr}
+  .adm-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .adm-hero{grid-column:1 / -1;grid-row:auto}
+  .adm-hero-value{font-size:44px}
+  .adm-presets{flex-wrap:wrap}
+}

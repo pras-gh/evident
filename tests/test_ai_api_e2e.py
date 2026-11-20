@@ -301,6 +301,8 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
                          {"gemini": Decimal("0.001"), "groq": Decimal("0.002")})
         self.assertEqual(sum(p["requests"] for p in r["daily"]), 5)
         self.assertEqual({x["status"] for x in r["recent_failures"]}, {"failed", "fallback", "blocked"})
+        # UTC on the wire, not the database session's zone
+        self.assertTrue(all(x["created_at"].endswith(("Z", "+00:00")) for x in r["recent_failures"]))
         # filters narrow every number
         groq = (await self._usage("acme_admin", provider="groq",
                                   date_from=str((today - timedelta(days=60)).date()))).json()["totals"]

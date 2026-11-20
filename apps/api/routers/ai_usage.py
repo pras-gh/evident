@@ -184,7 +184,10 @@ async def summary(
         by_task=_breakdown(by_task, lambda r: r.key.replace("_", " ")),
         daily=await points("day", "%Y-%m-%d"),
         monthly=await points("month", "%Y-%m"),
-        recent_failures=[UsageEventOut(created_at=r.created_at, request_id=r.request_id,
+        # UTC, like every window here: the database session's own zone would
+        # leak through otherwise (+05:30 on a developer machine in India)
+        recent_failures=[UsageEventOut(created_at=r.created_at.astimezone(timezone.utc),
+                                       request_id=r.request_id,
                                        organization=name, provider=r.provider, model=r.model,
                                        task_type=r.task_type, status=r.status,
                                        error_message=r.error_message) for r, name in recent],
