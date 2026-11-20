@@ -1,0 +1,147 @@
+# AI gateway configuration — routes, prices, limits, reliability.
+#
+# Changing a route here (or with an AI_ROUTE_<TASK> environment variable)
+# moves that task to another provider or model; no code changes. Every model a
+# route names must have a price below, or the gateway refuses to start: spend
+# that cannot be priced cannot be capped.
+#
+# Model IDs and prices were read from each provider's documentation on
+# 2026-11-21 (see docs/ai-gateway.md for the sources). Prices change; dated
+# entries let a known change take effect on its day.
+
+[gateway]
+# per attempt, seconds
+timeout_s = 90
+# attempts per provider before falling back (1 = no retries)
+max_attempts = 3
+backoff_base_s = 0.5
+backoff_max_s = 8.0
+# a rate limit asking us to wait longer than this falls back instead of waiting
+max_retry_wait_s = 20.0
+# consecutive failures that open a provider/model's circuit, and for how long
+breaker_failures = 5
+breaker_cooldown_s = 60.0
+# finished filing analyses are reused for this long
+cache_ttl_days = 90
+# never log prompt or filing text unless this is turned on for debugging
+log_prompts = false
+
+# primary first, then fallbacks, as "provider:model"
+[routes]
+filing_summarization        = ["gemini:gemini-3.5-flash-lite", "groq:openai/gpt-oss-120b"]
+financial_extraction        = ["gemini:gemini-3.5-flash-lite", "groq:openai/gpt-oss-120b"]
+classification              = ["groq:openai/gpt-oss-20b", "gemini:gemini-3.5-flash-lite"]
+complex_financial_reasoning = ["anthropic:claude-sonnet-5-5", "gemini:gemini-3.6-flash"]
+research_synthesis          = ["gemini:gemini-3.6-flash", "anthropic:claude-sonnet-5-5"]
+
+# Defaults; an organization row can override any of them.
+[limits]
+daily_requests_per_user = 300
+monthly_tokens          = 30_000_000
+monthly_spend_usd       = 50.00
+max_input_tokens        = 200_000
+max_output_tokens       = 16_000
+
+[providers.gemini]
+api_key_env = "GEMINI_API_KEY"
+base_url = "https://generativelanguage.googleapis.com"
+# generateContent's JSON Schema field. Not confirmable without a live key on
+# 2026-11-21; override here if the API rejects it.
+structured_output_field = "responseJsonSchema"
+
+[providers.groq]
+api_key_env = "GROQ_API_KEY"
+base_url = "https://api.groq.com/openai/v1"
+
+[providers.anthropic]
+api_key_env = "ANTHROPIC_API_KEY"
+
+# Optional per-model request parameters, merged into the provider's request
+# body — e.g. lower thinking effort to cut output (thinking is billed as output):
+# [models."gemini:gemini-3.6-flash"]
+# params = { generationConfig = { thinkingConfig = { thinkingLevel = "LOW" } } }
+
+# ------------------------------------------------------------------ prices
+# USD per 1M tokens. cached_input: prompt-cache reads. cache_write: Anthropic's
+# 5-minute cache writes. `from` / `until` bound an entry (inclusive dates).
+# `above_input_tokens` with the `long_*` prices: a request whose prompt exceeds
+# the threshold pays the long-context rates.
+
+[[prices]]
+model = "gemini:gemini-3.5-flash-lite"
+input = 0.30
+output = 2.50
+cached_input = 0.03
+
+[[prices]]
+model = "gemini:gemini-3.6-flash"
+until = "2026-12-31"
+input = 0.75
+output = 3.75
+cached_input = 0.075
+
+[[prices]]
+model = "gemini:gemini-3.6-flash"
+from = "2027-01-01"
+input = 1.50
+output = 7.50
+cached_input = 0.15
+
+[[prices]]
+model = "gemini:gemini-3.8-flash"
+until = "2026-12-31"
+input = 0.75
+output = 3.75
+cached_input = 0.075
+
+[[prices]]
+model = "gemini:gemini-3.8-flash"
+from = "2027-01-01"
+input = 1.50
+output = 7.50
+cached_input = 0.15
+
+[[prices]]
+model = "gemini:gemini-4-hydrogen"
+input = 1.50
+output = 7.50
+cached_input = 0.075
+
+[[prices]]
+model = "groq:openai/gpt-oss-20b"
+input = 0.075
+output = 0.30
+# Groq: 50% off cached input
+cached_input = 0.0375
+
+[[prices]]
+model = "groq:openai/gpt-oss-120b"
+input = 0.15
+output = 0.60
+cached_input = 0.075
+
+[[prices]]
+model = "anthropic:claude-sonnet-5-5"
+input = 2.00
+output = 10.00
+cached_input = 0.10
+cache_write = 2.50
+
+[[prices]]
+model = "anthropic:claude-opus-5-5"
+input = 4.00
+output = 20.00
+cached_input = 0.20
+cache_write = 5.00
+
+[[prices]]
+model = "anthropic:claude-haiku-5-5"
+input = 0.10
+output = 0.50
+cached_input = 0.01
+cache_write = 0.125
+above_input_tokens = 100_000
+long_input = 0.50
+long_output = 2.50
+long_cached_input = 0.05
+long_cache_write = 0.625
