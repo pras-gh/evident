@@ -10,14 +10,17 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import unittest
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from unittest import mock
 
 from evident_ai.gateway import (AIContext, AllProvidersFailed, CacheSpec, ConfigError,
                                 Gateway, LLMRequest, MemoryStore, TaskType,
-                                UnknownOrganization, Usage, UsageLimitExceeded, load)
+                                UnknownOrganization, Usage, UsageLimitExceeded, load,
+                                missing_keys)
 from evident_ai.gateway import logs as gw_logs
 from evident_ai.gateway.config import Target, from_dict
 from evident_ai.gateway.providers.base import ErrorKind, ProviderError
@@ -161,6 +164,30 @@ class Config(unittest.TestCase):
         self.assertEqual(c.limits.monthly_spend_usd, Decimal("25"))
         self.assertEqual(c.limits.override(daily_requests_per_user=50, monthly_tokens=None),
                          c.limits.__class__(50, 1_000_000, Decimal("25"), 50_000, 4_000))
+
+
+class MissingKeys(unittest.TestCase):
+    """Checked before paid work starts, so a run that would fail every call
+    stops instead of logging a failure per chunk."""
+
+    def test_no_key_on_the_route_names_the_variables_to_set(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            why = missing_keys(TaskType.FINANCIAL_EXTRACTION, config())
+        self.assertIn("financial_extraction", why)
+        self.assertIn("GEMINI_API_KEY or GROQ_API_KEY", why)
+
+    def test_a_key_for_any_provider_on_the_route_is_enough(self):
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "gsk_test"}, clear=True):
+            self.assertIsNone(missing_keys(TaskType.FINANCIAL_EXTRACTION, config()))
+            self.assertIsNotNone(missing_keys(TaskType.COMPLEX_FINANCIAL_REASONING, config()),
+                                 "groq is not on that route")
+
+    def test_a_renamed_key_variable_is_the_one_checked(self):
+        renamed = config(providers={"gemini": {"api_key_env": "VAULT_GEMINI"}})
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "x"}, clear=True):
+            self.assertIn("VAULT_GEMINI", missing_keys(TaskType.FINANCIAL_EXTRACTION, renamed))
+        with mock.patch.dict(os.environ, {"VAULT_GEMINI": "x"}, clear=True):
+            self.assertIsNone(missing_keys(TaskType.FINANCIAL_EXTRACTION, renamed))
 
 
 class Cost(unittest.TestCase):

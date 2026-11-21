@@ -52,15 +52,12 @@ OK, BAD, MEH = "PASS", "FAIL", "  ? "
 def require_route_keys(die) -> tuple[str, str]:
     """(provider, model) of the extraction route's primary, after checking
     some provider on the route has a key — otherwise every call would fail."""
-    from evident_ai.gateway import TaskType, load
-    route = load().route(TaskType.FINANCIAL_EXTRACTION)
-    configured = [t for t in route if os.environ.get(f"{t.provider.upper()}_API_KEY")]
-    if not configured:
-        die("no key for any provider on the financial_extraction route "
-            f"({', '.join(t.key for t in route)}). Set "
-            f"{' or '.join(sorted({t.provider.upper() + '_API_KEY' for t in route}))}, "
-            "or change the route in config/ai.toml.")
-    return route[0].provider, route[0].model
+    from evident_ai.gateway import TaskType, load, missing_keys
+    config = load()
+    if why := missing_keys(TaskType.FINANCIAL_EXTRACTION, config):
+        die(why)
+    first = config.route(TaskType.FINANCIAL_EXTRACTION)[0]
+    return first.provider, first.model
 
 
 def _die(msg: str) -> None:
