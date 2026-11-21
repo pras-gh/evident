@@ -114,6 +114,7 @@ def req(task=TaskType.FILING_SUMMARIZATION, user="Summarise this filing.", max_o
 
 
 CTX = AIContext(organization_id=ORG, user_id=USER, source="test")
+BG = AIContext(organization_id=ORG, source="worker:test", background=True)
 
 
 # ====================================================================== config
@@ -124,6 +125,9 @@ class Config(unittest.TestCase):
         for task in TaskType:
             for t in c.route(task):
                 self.assertGreater(c.price(t, date(2026, 11, 21)).output, 0, t.key)
+        # Gemini's free tier asks for up to a minute; background work must outwait it
+        self.assertGreaterEqual(c.reliability.background_max_wait_s, 60)
+        self.assertLess(c.reliability.max_retry_wait_s, 60)
 
     def test_one_environment_variable_moves_a_task_from_gemini_to_claude(self):
         """The success criterion: a configuration change, no code change."""
@@ -261,6 +265,37 @@ class Routing(unittest.TestCase):
         self.assertEqual((r.provider, r.fallback), ("groq", True))
         self.assertEqual([row.status for row in store.rows], ["failed", "fallback"])
 
+    def test_background_work_waits_out_a_rate_limit_instead_of_falling_back(self):
+        """A per-minute limit says when it lifts. Measured: Gemini's free tier
+        answers its 16th request in a minute with RESOURCE_EXHAUSTED,
+        quotaId GenerateRequestsPerMinutePerProjectPerModel-FreeTier and
+        retryDelay "54s"."""
+        g, store, p, clock = gw(gemini=Script("gemini", fail(ErrorKind.RATE_LIMITED, retry_after=54),
+                                              ok()),
+                                groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((clock.slept, r.provider, r.fallback, p["groq"].calls),
+                         ([54], "gemini", False, []))
+        self.assertEqual([row.status for row in store.rows], ["failed", "success"])
+
+        # someone waiting on an answer is not made to wait a minute for it
+        g, _, _, clock = gw(gemini=Script("gemini", fail(ErrorKind.RATE_LIMITED, retry_after=54)),
+                            groq=Script("groq", ok()))
+        r = g.complete(req(), CTX)
+        self.assertEqual((clock.slept, r.provider), ([], "groq"))
+
+    def test_background_work_still_falls_back_past_its_own_cap(self):
+        g, _, _, clock = gw(gemini=Script("gemini", fail(ErrorKind.RATE_LIMITED, retry_after=3600)),
+                            groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((clock.slept, r.provider), ([], "groq"))
+
+    def test_system_work_is_background(self):
+        import evident_ai.gateway as gateway_module
+        with mock.patch.object(gateway_module, "_internal_org", ORG):
+            ctx = gateway_module.system_context("extraction")
+        self.assertEqual((ctx.background, ctx.user_id, ctx.organization_id), (True, None, ORG))
+
     def test_errors_that_waiting_cannot_fix_are_not_retried(self):
         for kind in (ErrorKind.BAD_REQUEST, ErrorKind.AUTH, ErrorKind.NOT_FOUND,
                      ErrorKind.TOO_LARGE, ErrorKind.QUOTA_EXHAUSTED):
@@ -323,6 +358,21 @@ class Breaker(unittest.TestCase):
         clock.t += 120                                   # past the 60s cooldown, inside 600s
         g.complete(req(), CTX)
         self.assertEqual(len(p["gemini"].calls), 1)
+
+    def test_a_request_refused_because_every_circuit_is_open_is_still_logged(self):
+        """No provider is called, so no attempt logs it — but the request was
+        made and failed, and it has to be findable."""
+        g, store, _, _ = gw(gemini=Script("gemini", fail(ErrorKind.AUTH)),
+                            groq=Script("groq", fail(ErrorKind.AUTH)))
+        with self.assertRaises(AllProvidersFailed):
+            g.complete(req(), CTX)
+        with self.assertRaises(AllProvidersFailed) as cm:
+            g.complete(req(), CTX)
+        self.assertEqual(len(store.rows), 3, "two attempts, then the refused request")
+        last = store.rows[-1]
+        self.assertEqual((last.status, last.provider, last.request_id, last.user_id),
+                         ("failed", "gemini", cm.exception.request_id, USER))
+        self.assertIn("open circuit", last.error_message)
 
     def test_bad_requests_do_not_count_against_the_provider(self):
         g, _, _, _ = gw(cfg=config(gateway={"max_attempts": 1}),

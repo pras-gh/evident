@@ -84,8 +84,10 @@ def missing_keys(task: TaskType, config: GatewayConfig | None = None) -> str | N
 
 
 def system_context(source: str) -> AIContext:
-    """For work no person asked for: ingest, extraction, backfills."""
-    return AIContext(organization_id=internal_organization_id(), user_id=None, source=source)
+    """For work no person asked for: ingest, extraction, backfills. Background,
+    so it waits out a provider's rate limit rather than failing."""
+    return AIContext(organization_id=internal_organization_id(), user_id=None, source=source,
+                     background=True)
 
 
 __all__ = ["AIContext", "AllProvidersFailed", "CacheSpec", "ConfigError", "Gateway",

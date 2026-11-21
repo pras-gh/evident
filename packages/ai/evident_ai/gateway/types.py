@@ -29,10 +29,17 @@ Stop = Literal["complete", "max_tokens", "refusal", "other"]
 @dataclass(frozen=True, slots=True)
 class AIContext:
     """Who a request is for. Every request has an organization; a request a
-    person made also has their user id. `source` names the code path, for logs."""
+    person made also has their user id. `source` names the code path, for logs.
+
+    `background` marks work no one is waiting on: ingest, extraction,
+    backfills. It waits out a provider's rate limit, up to
+    `background_max_wait_s`, where a request someone is waiting on falls back
+    after `max_retry_wait_s`.
+    """
     organization_id: uuid.UUID
     user_id: uuid.UUID | None = None
     source: str = "unknown"
+    background: bool = False
 
 
 @dataclass(frozen=True, slots=True)

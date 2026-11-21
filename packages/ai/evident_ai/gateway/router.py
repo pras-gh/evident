@@ -186,6 +186,11 @@ class Gateway:
         message = ("every provider on the route failed or was unavailable: "
                    + "; ".join(f"{a.provider}:{a.model} {a.error}" for a in attempts if a.error)
                    if attempts else "every provider on the route has an open circuit")
+        if not attempts:
+            # No provider was called, so no attempt logged it; the request
+            # still happened and still failed, and someone will look for it.
+            self._log(ctx, request, primary, request_id, "failed", self._ms(started),
+                      error=message)
         logs.event("ai.failed", level=40, request_id=str(request_id), task=request.task.value,
                    error=message)
         raise AllProvidersFailed(request_id, attempts, message)
@@ -212,7 +217,7 @@ class Gateway:
                            provider=target.provider, model=target.model, attempt=n,
                            kind=exc.kind.value, status_code=exc.status, error=exc.message,
                            circuit_opened=opened)
-                wait = self._wait(exc, n)
+                wait = self._wait(exc, n, ctx)
                 if wait is None or n == rel.max_attempts or opened:
                     return None
                 logs.event("ai.retry", request_id=str(request_id), provider=target.provider,
@@ -232,16 +237,21 @@ class Gateway:
             return completion, latency
         return None
 
-    def _wait(self, exc: ProviderError, attempt: int) -> float | None:
+    def _wait(self, exc: ProviderError, attempt: int, ctx: AIContext) -> float | None:
         """Seconds to wait before retrying the same provider, or None to fall
-        back now. Never waits on an error that waiting cannot fix, and never
-        longer than `max_retry_wait_s` — a longer `retry-after` is a quota in
-        all but name, and the next provider is the better bet."""
+        back now. Never waits on an error that waiting cannot fix.
+
+        With someone waiting, never longer than `max_retry_wait_s`: past that
+        the next provider is the better bet. Background work waits up to
+        `background_max_wait_s`, because a per-minute limit says exactly when
+        it lifts (Gemini's free tier asks for up to a minute), and a backfill
+        that falls back instead fails every chunk until it does."""
         rel = self.config.reliability
         if not exc.retryable:
             return None
+        cap = rel.background_max_wait_s if ctx.background else rel.max_retry_wait_s
         if exc.retry_after is not None:
-            return exc.retry_after if exc.retry_after <= rel.max_retry_wait_s else None
+            return exc.retry_after if exc.retry_after <= cap else None
         backoff = min(rel.backoff_max_s, rel.backoff_base_s * 2 ** (attempt - 1))
         return backoff * (0.5 + self._rng() / 2)       # jittered: 50–100% of the step
 
