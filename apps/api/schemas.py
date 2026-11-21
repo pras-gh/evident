@@ -6,7 +6,9 @@ omit it, and an uncited claim is the one failure this product cannot afford.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -556,3 +558,126 @@ class DocumentDetailOut(BaseModel):
     url: str
     #: every page, rendered or not, in order
     pages: list[PageSummaryOut]
+
+
+# --------------------------------------------------------------------------
+# Identity and AI usage
+
+
+class OrganizationOut(BaseModel):
+    id: uuid.UUID
+    slug: str
+    name: str
+    is_internal: bool
+
+
+class MeOut(BaseModel):
+    user_id: uuid.UUID
+    email: str
+    role: str
+    organization: OrganizationOut
+
+
+class UsageTotals(BaseModel):
+    cost_usd: Decimal
+    #: distinct requests, whatever happened to them
+    requests: int
+    #: provider calls, retries and fallbacks included
+    attempts: int
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    #: total cost over requests that were answered (by a provider or the cache)
+    avg_cost_per_request: Decimal
+    #: requests no provider answered
+    failed_requests: int
+    failed_attempts: int
+    #: requests answered by a fallback provider
+    fallback_requests: int
+    #: fallback requests / requests a provider answered
+    fallback_rate: float
+    cache_hits: int
+    blocked_requests: int
+
+
+class UsageBreakdownRow(BaseModel):
+    key: str
+    label: str
+    cost_usd: Decimal
+    requests: int
+    input_tokens: int
+    output_tokens: int
+    failed_attempts: int
+
+
+class UsagePoint(BaseModel):
+    period: str
+    cost_usd: Decimal
+    requests: int
+
+
+class UsageEventOut(BaseModel):
+    created_at: datetime
+    request_id: uuid.UUID
+    organization: str
+    provider: str
+    model: str
+    task_type: str
+    status: str
+    error_message: str | None = None
+
+
+class UsageFacets(BaseModel):
+    providers: list[str]
+    models: list[str]
+    #: only for platform admins
+    organizations: list[OrganizationOut]
+
+
+class UsageSummaryOut(BaseModel):
+    #: what the caller is allowed to see, after applying their role
+    organization_id: uuid.UUID | None
+    user_id: uuid.UUID | None
+    date_from: date
+    date_to: date
+    totals: UsageTotals
+    by_provider: list[UsageBreakdownRow]
+    by_model: list[UsageBreakdownRow]
+    by_organization: list[UsageBreakdownRow]
+    by_task: list[UsageBreakdownRow]
+    daily: list[UsagePoint]
+    monthly: list[UsagePoint]
+    recent_failures: list[UsageEventOut]
+    facets: UsageFacets
+
+
+class LimitStatus(BaseModel):
+    limit: str
+    allowed: Decimal
+    used: Decimal
+    #: when the window resets; null for per-request limits
+    resets_at: datetime | None = None
+
+
+class UsageLimitsOut(BaseModel):
+    organization_id: uuid.UUID
+    limits: list[LimitStatus]
+
+
+class SummaryPointOut(BaseModel):
+    point: str
+    #: each cited paragraph, with what the evidence viewer needs to open it
+    citations: list[dict]
+
+
+class FilingSummaryOut(BaseModel):
+    document_id: int
+    accession: str
+    summary: str
+    key_points: list[SummaryPointOut]
+    request_id: uuid.UUID
+    provider: str
+    model: str
+    cached: bool
+    fallback: bool
+    cost_usd: Decimal

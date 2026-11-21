@@ -134,7 +134,13 @@ def _strip_nullable(node: Any) -> Any:
     return node
 
 
+def schema_for(model: type[BaseModel]) -> dict[str, Any]:
+    """A self-contained JSON Schema for any response model: refs inlined,
+    nullable optionals simplified. What every structured request sends."""
+    raw = model.model_json_schema()
+    return _strip_nullable(_inline(raw, raw.get("$defs", {})))
+
+
 def wire_schema() -> dict[str, Any]:
     """The JSON Schema sent with the request, generated from the models."""
-    raw = EntityExtractionResponse.model_json_schema()
-    return _strip_nullable(_inline(raw, raw.get("$defs", {})))
+    return schema_for(EntityExtractionResponse)

@@ -705,4 +705,109 @@ CREATE INDEX ix_document_pages_document_id ON document_pages (document_id);
 
 UPDATE alembic_version SET version_num='0011' WHERE alembic_version.version_num = '0010';
 
+
+CREATE TABLE organizations (
+    id UUID NOT NULL, 
+    slug VARCHAR(64) NOT NULL, 
+    name VARCHAR(255) NOT NULL, 
+    is_internal BOOLEAN DEFAULT 'false' NOT NULL, 
+    daily_requests_per_user INTEGER, 
+    monthly_tokens BIGINT, 
+    monthly_spend_usd NUMERIC(12, 2), 
+    max_input_tokens INTEGER, 
+    max_output_tokens INTEGER, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_organizations PRIMARY KEY (id), 
+    CONSTRAINT uq_organizations_slug UNIQUE (slug)
+);
+
+CREATE TABLE users (
+    id UUID NOT NULL, 
+    organization_id UUID NOT NULL, 
+    email VARCHAR(255) NOT NULL, 
+    name VARCHAR(255), 
+    role VARCHAR(16) DEFAULT 'member' NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_users PRIMARY KEY (id), 
+    CONSTRAINT ck_users_role CHECK (role in ('member','org_admin','platform_admin')), 
+    CONSTRAINT fk_users_organization_id_organizations FOREIGN KEY(organization_id) REFERENCES organizations (id) ON DELETE CASCADE, 
+    CONSTRAINT uq_users_email UNIQUE (email)
+);
+
+CREATE INDEX ix_users_organization_id ON users (organization_id);
+
+CREATE TABLE api_keys (
+    id UUID NOT NULL, 
+    user_id UUID NOT NULL, 
+    key_hash VARCHAR(64) NOT NULL, 
+    prefix VARCHAR(16) NOT NULL, 
+    name VARCHAR(255), 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    last_used_at TIMESTAMP WITH TIME ZONE, 
+    revoked_at TIMESTAMP WITH TIME ZONE, 
+    CONSTRAINT pk_api_keys PRIMARY KEY (id), 
+    CONSTRAINT fk_api_keys_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
+    CONSTRAINT uq_api_keys_key_hash UNIQUE (key_hash)
+);
+
+CREATE INDEX ix_api_keys_user_id ON api_keys (user_id);
+
+CREATE TABLE ai_usage_logs (
+    id UUID NOT NULL, 
+    user_id UUID, 
+    organization_id UUID NOT NULL, 
+    provider VARCHAR(32) NOT NULL, 
+    model VARCHAR(128) NOT NULL, 
+    task_type VARCHAR(64) NOT NULL, 
+    request_id UUID NOT NULL, 
+    input_tokens INTEGER DEFAULT '0' NOT NULL, 
+    output_tokens INTEGER DEFAULT '0' NOT NULL, 
+    cached_tokens INTEGER DEFAULT '0' NOT NULL, 
+    estimated_cost_usd NUMERIC(12, 6) DEFAULT '0' NOT NULL, 
+    latency_ms INTEGER DEFAULT '0' NOT NULL, 
+    status VARCHAR(16) NOT NULL, 
+    error_message TEXT, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_ai_usage_logs PRIMARY KEY (id), 
+    CONSTRAINT ck_ai_usage_logs_status CHECK (status in ('success','failed','fallback','cached','blocked')), 
+    CONSTRAINT fk_ai_usage_logs_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE SET NULL, 
+    CONSTRAINT fk_ai_usage_logs_organization_id_organizations FOREIGN KEY(organization_id) REFERENCES organizations (id) ON DELETE RESTRICT
+);
+
+CREATE INDEX ix_ai_usage_logs_organization_id_created_at ON ai_usage_logs (organization_id, created_at);
+
+CREATE INDEX ix_ai_usage_logs_user_id_created_at ON ai_usage_logs (user_id, created_at);
+
+CREATE INDEX ix_ai_usage_logs_created_at ON ai_usage_logs (created_at);
+
+CREATE INDEX ix_ai_usage_logs_request_id ON ai_usage_logs (request_id);
+
+CREATE TABLE ai_response_cache (
+    id BIGSERIAL NOT NULL, 
+    cache_key VARCHAR(64) NOT NULL, 
+    accession VARCHAR(32) NOT NULL, 
+    task_type VARCHAR(64) NOT NULL, 
+    provider VARCHAR(32) NOT NULL, 
+    model VARCHAR(128) NOT NULL, 
+    prompt_version VARCHAR(64) NOT NULL, 
+    input_hash VARCHAR(64) NOT NULL, 
+    scope VARCHAR(64) NOT NULL, 
+    response_text TEXT NOT NULL, 
+    stop_reason VARCHAR(16) NOT NULL, 
+    usage JSONB DEFAULT '{}' NOT NULL, 
+    estimated_cost_usd NUMERIC(12, 6) DEFAULT '0' NOT NULL, 
+    hit_count INTEGER DEFAULT '0' NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    expires_at TIMESTAMP WITH TIME ZONE, 
+    last_hit_at TIMESTAMP WITH TIME ZONE, 
+    CONSTRAINT pk_ai_response_cache PRIMARY KEY (id), 
+    CONSTRAINT uq_ai_response_cache_cache_key UNIQUE (cache_key)
+);
+
+CREATE INDEX ix_ai_response_cache_accession ON ai_response_cache (accession);
+
+INSERT INTO organizations (id, slug, name, is_internal) VALUES (gen_random_uuid(), 'evident-internal', 'Evident (internal)', true);
+
+UPDATE alembic_version SET version_num='0012' WHERE alembic_version.version_num = '0011';
+
 COMMIT;

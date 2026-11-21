@@ -11,7 +11,10 @@ from dataclasses import dataclass
 
 from evident_graph.taxonomy import ENTITY_TYPES, RELATIONSHIP_TYPES
 
-MODEL = "claude-opus-5"
+#: Only what a request names when sent to an injected Anthropic client or the
+#: Batch API. Requests through the gateway are routed by config/ai.toml, which
+#: ignores this.
+MODEL = "claude-sonnet-5-5"
 
 
 @dataclass(frozen=True, slots=True)

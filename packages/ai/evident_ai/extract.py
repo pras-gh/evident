@@ -1,6 +1,10 @@
-"""Entity extraction from parsed filings — the whole path against Claude.
+"""Entity extraction from parsed filings.
 
-    chunk -> Claude API -> JSON Schema -> Pydantic -> entities + relationships
+    chunk -> AI gateway -> JSON Schema -> Pydantic -> entities + relationships
+
+Requests go through the AI gateway (task `financial_extraction`), which picks
+the provider and model from `config/ai.toml`, and limits, logs and costs every
+call. Tests and the demo inject their own Messages-API-shaped client instead.
 
 This is the one place in the pipeline where a language model belongs. Turning
 "During fiscal 2025 the Company increased payments for acquisition of property,
@@ -25,9 +29,9 @@ signal that a prompt or model change has started inventing things.
 """
 from __future__ import annotations
 
-import os
 import time
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import Any, Callable, Iterable, Sequence
 
 from evident_graph.taxonomy import slug as slugify
@@ -57,6 +61,9 @@ class ExtractionRejected(RuntimeError):
         super().__init__(reason)
         self.reason = reason
         self.stop_reason = stop_reason
+        #: which model answered and what it cost, when the gateway answered
+        self.model: str | None = None
+        self.cost_usd: Decimal | None = None
         # kept for diagnosis, never parsed further
         self.raw = raw
         # A rejected response was still generated and still billed. Dropping
@@ -129,6 +136,9 @@ class Extraction:
     #: returned vs kept is the acceptance rate for this chunk
     entities_returned: int = 0
     relationships_returned: int = 0
+    #: "provider:model" that answered, and its cost, when the gateway answered
+    model: str | None = None
+    cost_usd: Decimal | None = None
 
 
 def drop_uncited(items: Sequence[Any], valid_ids: set[str],
@@ -236,23 +246,15 @@ def request_params(blocks: Sequence[Block], *, max_tokens: int = MAX_TOKENS,
     }
 
 
-def _client(client: Any | None) -> Any:
+def _client(client: Any | None, context: Any | None = None) -> Any:
+    """The injected client, or the gateway behind a Messages-shaped facade.
+    Extraction never builds a provider client of its own."""
     if client is not None:
         return client
-    try:
-        import anthropic
-    except ImportError as exc:  # pragma: no cover - env dependent
-        raise RuntimeError(
-            "Entity extraction needs the anthropic SDK — "
-            "`pip install -r requirements.txt`"
-        ) from exc
-    if not (os.environ.get("ANTHROPIC_API_KEY")
-            or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-        raise RuntimeError(
-            "No Anthropic credentials found. Run `ant auth login`, or set "
-            "ANTHROPIC_API_KEY."
-        )
-    return anthropic.Anthropic()
+    from .gateway import TaskType, system_context
+    from .gateway.compat import GatewayMessages
+    return GatewayMessages(TaskType.FINANCIAL_EXTRACTION,
+                           context or system_context("extraction"))
 
 
 # -------------------------------------------------------------------- parsing
@@ -298,6 +300,7 @@ def extract_from_blocks(
     client: Any | None = None,
     max_tokens: int = MAX_TOKENS,
     effort: str | None = None,
+    context: Any | None = None,
 ) -> Extraction:
     """Extract entities and relationships from one group of paragraphs.
 
@@ -312,10 +315,20 @@ def extract_from_blocks(
     if not blocks:
         return Extraction()
 
+    from .gateway import AllProvidersFailed
+
     started = time.perf_counter()
-    response = _client(client).messages.create(
-        **request_params(blocks, max_tokens=max_tokens, effort=effort))
+    try:
+        response = _client(client, context).messages.create(
+            **request_params(blocks, max_tokens=max_tokens, effort=effort))
+    except AllProvidersFailed as exc:
+        # This chunk got no answer; the next may. A usage limit is not caught
+        # here — it stops the document, because it stops all paid inference.
+        raise ExtractionRejected(f"no provider answered: {exc}") from exc
     latency_ms = int((time.perf_counter() - started) * 1000)
+    model = (f"{response.provider}:{response.model}"
+             if getattr(response, "provider", None) else None)
+    cost = getattr(response, "cost_usd", None)
 
     # Counted before parsing, so a rejected response still reports what it cost.
     usage = Usage()
@@ -330,6 +343,7 @@ def extract_from_blocks(
     except ExtractionRejected as exc:
         exc.usage = usage
         exc.latency_ms = latency_ms
+        exc.model, exc.cost_usd = model, cost
         if exc.raw is None:
             exc.raw = raw
         raise
@@ -342,7 +356,8 @@ def extract_from_blocks(
     return Extraction(entities, relationships, report, usage, raw=raw,
                       stop_reason=stop, latency_ms=latency_ms,
                       entities_returned=len(parsed.entities),
-                      relationships_returned=len(parsed.relationships))
+                      relationships_returned=len(parsed.relationships),
+                      model=model, cost_usd=cost)
 
 
 def extract_document(
@@ -352,6 +367,7 @@ def extract_document(
     max_tokens: int = MAX_TOKENS,
     effort: str | None = None,
     on_result: "Callable[[str, Extraction | ExtractionRejected], None] | None" = None,
+    context: Any | None = None,
 ) -> tuple[dict[str, Extraction], DropReport, Usage]:
     """Every chunk of a document, one call each, rejections survived.
 
@@ -369,7 +385,8 @@ def extract_document(
     for key, blocks in groups.items():
         try:
             result = extract_from_blocks(blocks, client=client,
-                                         max_tokens=max_tokens, effort=effort)
+                                         max_tokens=max_tokens, effort=effort,
+                                         context=context)
         except ExtractionRejected as exc:
             if on_result is not None:
                 on_result(key, exc)
@@ -400,7 +417,15 @@ def extract_document(
 def submit_batch(groups: dict[str, Sequence[Block]], *,
                  client: Any | None = None, max_tokens: int = MAX_TOKENS,
                  effort: str | None = None) -> Any:
-    """Submit every chunk as one Batch API job, at half price."""
+    """Submit every chunk as one Anthropic Batch API job, at half price.
+
+    Needs an explicit Anthropic client. Batch jobs do not go through the
+    gateway, so they are neither routed nor logged in `ai_usage_logs`; record
+    their cost when collecting results. (Unused by the pipeline today.)
+    """
+    if client is None:
+        raise RuntimeError("submit_batch needs an explicit Anthropic client; batch "
+                           "jobs are not routed or logged by the AI gateway")
     from anthropic.types.message_create_params import \
         MessageCreateParamsNonStreaming
     from anthropic.types.messages.batch_create_params import Request
@@ -413,7 +438,7 @@ def submit_batch(groups: dict[str, Sequence[Block]], *,
         )
         for key, blocks in groups.items() if blocks
     ]
-    return _client(client).messages.batches.create(requests=requests)
+    return client.messages.batches.create(requests=requests)
 
 
 def collect_batch(results: Iterable[Any], groups: dict[str, Sequence[Block]],

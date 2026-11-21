@@ -48,6 +48,20 @@ REAL_FIXTURE = ROOT / "tests" / "fixtures" / "edgar-real"
 OK, BAD, MEH = "PASS", "FAIL", "  ? "
 
 
+def require_route_keys(die) -> tuple[str, str]:
+    """(provider, model) of the extraction route's primary, after checking
+    some provider on the route has a key — otherwise every call would fail."""
+    from evident_ai.gateway import TaskType, load
+    route = load().route(TaskType.FINANCIAL_EXTRACTION)
+    configured = [t for t in route if os.environ.get(f"{t.provider.upper()}_API_KEY")]
+    if not configured:
+        die("no key for any provider on the financial_extraction route "
+            f"({', '.join(t.key for t in route)}). Set "
+            f"{' or '.join(sorted({t.provider.upper() + '_API_KEY' for t in route}))}, "
+            "or change the route in config/ai.toml.")
+    return route[0].provider, route[0].model
+
+
 def _die(msg: str) -> None:
     print(f"error: {msg}", file=sys.stderr)
     raise SystemExit(2)
@@ -158,7 +172,9 @@ def main() -> int:
                           ordinal=c.ordinal, text=c.text, page_number=c.page_number)
             params = request_params([block])
             schema = json.dumps(params["output_config"]["format"]["schema"])
-            print(f"\n  model:      {params['model']}")
+            from evident_ai.gateway import TaskType, load
+            route = load().route(TaskType.FINANCIAL_EXTRACTION)
+            print(f"\n  route:      {' → '.join(t.key for t in route)}  (config/ai.toml)")
             print(f"  max_tokens: {params['max_tokens']}")
             print(f"  system:     {len(params['system'][0]['text'])} chars, "
                   f"cache_control={params['system'][0]['cache_control']}")
@@ -167,10 +183,7 @@ def main() -> int:
             print(f"\n  user message:\n{params['messages'][0]['content'][:700]}")
             return 0
 
-        if not (os.environ.get("ANTHROPIC_API_KEY")
-                or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
-            _die("no Anthropic credentials. Run `ant auth login`, or export "
-                 "ANTHROPIC_API_KEY. (`--dry-run` needs neither.)")
+        require_route_keys(_die)   # `--dry-run` needs no key
 
         before = {
             "entities": db.execute(select(func.count(Entity.id))).scalar_one(),
