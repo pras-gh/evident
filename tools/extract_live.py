@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-"""Run the real extraction pipeline against Claude and check it end to end.
+"""Run the real extraction pipeline through the AI gateway and check it end to end.
 
-    chunk -> Claude API -> JSON Schema -> Pydantic -> entities + relationships -> Postgres
+    chunk -> gateway (route: config/ai.toml) -> JSON Schema -> Pydantic
+          -> entities + relationships -> Postgres, with every call in ai_usage_logs
 
 The command that turns the pipeline from "built" into "proven". It drives the
 same `build_for_document` the worker does — no parallel code path, so a green
@@ -10,7 +11,7 @@ run here means the worker works, not that a demo script does.
     # three real chunks, with every success criterion checked
     python tools/extract_live.py --ticker NVDA --limit 3 --seed --verify
 
-    # run it a second time to prove the prompt cache is being hit
+    # run it a second time to prove the response cache answers it, for $0
     python tools/extract_live.py --ticker NVDA --limit 3 --verify
 
     # see exactly what would be sent, without sending it or needing a key
@@ -117,9 +118,8 @@ def main() -> int:
     from sqlalchemy import func, select
 
     from evident_ai.extract import request_params
-    from evident_ai.prompts import EXTRACT_ENTITIES
-    from evident_db import (Chunk, Company, Document, Entity, EntityMention,
-                            Relationship, session_scope)
+    from evident_db import (AIResponseCache, AIUsageLog, Chunk, Company, Document,
+                            Entity, EntityMention, Relationship, session_scope)
     from evident_parser.models import Block
 
     dsn = os.environ.get("DATABASE_URL")
@@ -155,6 +155,10 @@ def main() -> int:
             stmt.order_by(Document.filed_at.desc())).scalars().first()
         if document is None:
             _die(f"no documents on file for {ticker}")
+        accession = document.accession
+        # the gateway logs in its own transactions; this run's rows are the
+        # ones written after this instant
+        run_started = db.execute(select(func.clock_timestamp())).scalar_one()
 
         chunks = list(db.execute(
             select(Chunk).where(Chunk.document_id == document.id)
@@ -212,6 +216,16 @@ def main() -> int:
                   by_id[e.target_entity_id].name, e.strength,
                   e.evidence_chunk_id) for e in edge_rows
                  if e.source_entity_id in by_id and e.target_entity_id in by_id]
+        calls = db.execute(
+            select(AIUsageLog.provider, AIUsageLog.model, AIUsageLog.status,
+                   func.count(), func.coalesce(func.sum(AIUsageLog.estimated_cost_usd), 0))
+            .where(AIUsageLog.task_type == "financial_extraction",
+                   AIUsageLog.created_at >= run_started)
+            .group_by(AIUsageLog.provider, AIUsageLog.model, AIUsageLog.status)
+            .order_by(AIUsageLog.status)).all()
+        stored = db.execute(select(func.count(AIResponseCache.id)).where(
+            AIResponseCache.accession == accession,
+            AIResponseCache.task_type == "financial_extraction")).scalar_one()
 
     # ------------------------------------------------------------- report
     print("\n  --- extracted ---")
@@ -228,8 +242,19 @@ def main() -> int:
     print(f"    requests        {d['requests']}")
     print(f"    input           {d['input_tokens']}")
     print(f"    output          {d['output_tokens']}")
-    print(f"    cache created   {d['cache_created']}")
-    print(f"    cache read      {d['cache_read']}")
+    print(f"    prompt cache    {d['cache_created']} written, {d['cache_read']} read"
+          "  (provider-side; Anthropic's cache_control, Gemini's implicit cache)")
+
+    print("\n  --- gateway (ai_usage_logs) ---")
+    by_status: dict[str, int] = {}
+    total_cost = 0
+    for provider, model, status, n, cost in calls:
+        by_status[status] = by_status.get(status, 0) + n
+        total_cost += cost
+        print(f"    {status:8} {provider}:{model:28} x{n}  ${cost:.6f}")
+    print(f"    total cost      ${total_cost:.6f}")
+    print(f"    response cache  {stored} answer(s) stored for {accession}")
+    models = sorted({f"{p}:{m}" for p, m, st, _, _ in calls if st in ("success", "cached")})
 
     if not args.verify:
         return 0
@@ -240,9 +265,10 @@ def main() -> int:
 
     sent = d["requests"]
     checks.append((
-        "Claude returns valid JSON",
+        "Model returns valid JSON",
         d["responses_rejected"] == 0 and sent > 0,
-        f"{sent} request(s), {d['responses_rejected']} rejected"))
+        f"{sent} request(s) via {', '.join(models) or 'nothing'}, "
+        f"{d['responses_rejected']} rejected"))
 
     # Every object that reached the database went through EntityExtractionResponse;
     # a Pydantic failure is counted as a rejected response, never a partial write.
@@ -267,22 +293,24 @@ def main() -> int:
         "none — the model asserted no relationship it could attach to two "
         "extracted entities"))
 
-    created, read = d["cache_created"], d["cache_read"]
+    answered = by_status.get("success", 0) + by_status.get("cached", 0)
     checks.append((
-        "Cache stores response",
-        (created + read) > 0,
-        f"{created} tokens written to cache"
-        if created else
-        (f"{read} read (already warm from an earlier run)" if read else
-         f"nothing cached — the system prompt is "
-         f"{len(EXTRACT_ENTITIES.system)} chars and the minimum cacheable "
-         f"prefix is ~1024 tokens")))
+        "Every call logged and costed",
+        answered == sent and sent > 0,
+        f"{answered} of {sent} answer(s) in ai_usage_logs, ${total_cost:.6f}"))
 
     checks.append((
+        "Cache stores response",
+        stored > 0,
+        f"{stored} chunk answer(s) stored for {accession}" if stored else
+        "nothing stored — only complete answers are cached"))
+
+    hits = by_status.get("cached", 0)
+    checks.append((
         "Second run hits cache",
-        True if read > 0 else None,
-        f"{read} tokens read from cache" if read else
-        "first run writes the cache; run again to see the read"))
+        True if hits else None,
+        f"{hits} of {sent} answered from the cache, no provider called" if hits else
+        "the first run fills the cache; run again — it should cost $0"))
 
     failed = 0
     for name, state, detail in checks:

@@ -1,11 +1,13 @@
 #!/usr/bin/env python
 """Measure extraction quality against real filing text.
 
-Runs Claude over one real 10-K section, stores every raw response, stores the
-validated entities, and writes a report. This is the number the next prompt
-change gets compared against.
+Runs the financial_extraction route (config/ai.toml) over one real 10-K
+section, stores every raw response, stores the validated entities, and writes
+a report. This is the number the next prompt change gets compared against.
+Every chunk goes to the provider: the gateway's response cache is bypassed,
+because a replayed answer measures nothing.
 
-    export ANTHROPIC_API_KEY=...
+    export GEMINI_API_KEY=...        # or whichever key the route needs
     export DATABASE_URL=postgresql+psycopg://localhost/evident
     python tools/benchmark.py --seed                    # ~14 chunks of Item 1A
     python tools/benchmark.py --report-only             # re-read the last run
@@ -219,7 +221,7 @@ def main() -> int:
                   f"{args.limit or len(by_key)} chunk(s) with "
                   f"{EXTRACT_ENTITIES.id} on {provider}:{model} (and its fallbacks)")
             build_for_document(db, company_id=company.id, document=document,
-                               limit=args.limit, on_result=record)
+                               limit=args.limit, on_result=record, use_cache=False)
             db.add_all(rows)
 
             run.chunks_processed = len(rows)

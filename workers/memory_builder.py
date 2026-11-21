@@ -19,6 +19,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from evident_ai.extract import extract_document
+from evident_ai.gateway import CacheSpec
+from evident_ai.prompts import EXTRACT_ENTITIES
 from evident_db import Chunk, Document, Entity, session_scope
 from evident_db.repositories import (add_entity_mention, add_metric_observation,
                                      add_timeline_event, mark_dropped_entities,
@@ -64,7 +66,8 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
                        client: Any | None = None,
                        stats: BuildStats | None = None,
                        limit: int | None = None,
-                       on_result=None, ai_context: Any | None = None) -> BuildStats:
+                       on_result=None, ai_context: Any | None = None,
+                       use_cache: bool = True) -> BuildStats:
     """Extract one document into memory.
 
     `limit` caps how many chunks are sent, for a cheap first run against the
@@ -75,6 +78,10 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     `on_result(chunk_id_str, Extraction | ExtractionRejected)` fires per chunk,
     so a benchmark can record what came back without a second copy of this
     function drifting away from the one production runs.
+
+    `use_cache=False` sends every chunk to the provider even when the gateway
+    has its answer stored — for a benchmark, which measures the model, not
+    the cache.
     """
     stats = stats or BuildStats()
     stmt = (select(Chunk).where(Chunk.document_id == document.id)
@@ -131,9 +138,14 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     # This is the synchronous path. `submit_batch` is half the price for
     # backfills and nothing about a 2019 filing is latency-sensitive.
     # Through the AI gateway unless a client is injected; attributed to
-    # `ai_context`, or the internal organization for background work.
+    # `ai_context`, or the internal organization for background work. Cached
+    # per filing and shared across organizations: the input is public filing
+    # text and our own prompt, so a rebuild answers from the cache for free.
+    cache = (CacheSpec(document.accession, EXTRACT_ENTITIES.id, shared=True)
+             if use_cache else None)
     per_chunk, report, usage = extract_document(groups, client=client,
-                                               on_result=on_result, context=ai_context)
+                                               on_result=on_result, context=ai_context,
+                                               cache=cache)
 
     stats.responses_rejected += report.rejected
     stats.requests += usage.requests
