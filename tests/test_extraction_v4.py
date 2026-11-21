@@ -197,12 +197,13 @@ class KnownTopics(unittest.TestCase):
 
 class Prompt(unittest.TestCase):
     def test_v4_asks_for_short_reused_names(self):
-        self.assertEqual(EXTRACT_ENTITIES.version, "4.1.0")
+        self.assertEqual(EXTRACT_ENTITIES.version, "4.2.0")
         system = EXTRACT_ENTITIES.system
         self.assertIn("one to five words", system)
         self.assertIn("use that topic's name exactly as listed", system)
         self.assertIn("Quotes are checked against the paragraph", system)
         self.assertIn("separate entities", system)
+        self.assertIn("not the broader topic it falls under", system)
 
     def test_examples_are_not_taken_from_the_filings_it_is_measured_on(self):
         """v4.0 used "H20 Inventory Charge" as its example, and the model

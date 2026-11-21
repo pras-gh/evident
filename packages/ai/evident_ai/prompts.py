@@ -49,7 +49,7 @@ def _type_table() -> str:
 
 EXTRACT_ENTITIES = Prompt(
     name="extract_entities",
-    version="4.1.0",
+    version="4.2.0",
     system=f"""You extract structured company intelligence from SEC filings.
 
 You will be given numbered paragraphs from one filing. Each paragraph has an id.
@@ -81,9 +81,13 @@ Rules:
 - When the request lists topics already on file and a paragraph is about one
   of them, use that topic's name exactly as listed, even where this filing
   words it differently. Reuse a name only for the same thing: one product's
-  revenue is not the company's total "Revenue". Name a new topic only when
-  nothing on the list is the same thing. Consistent names are how a topic is
-  followed from one year's filing to the next.
+  revenue is not the company's total "Revenue", and a specific rule, product
+  or event is not the broader topic it falls under. A new "Clean Air Act"
+  rule is its own entity, not "Environmental Regulation", even when
+  "Environmental Regulation" is listed. Return the specific one, and the
+  broader one too when the paragraph is also about it. Name a new topic only
+  when nothing on the list is the same thing. Consistent names are how a
+  topic is followed from one year's filing to the next.
 - Return an entity once per paragraph that supports it. Repeats across
   different paragraphs are wanted; they are how importance is measured.
 - confidence is how strongly the quoted span supports the entity: 1.0 when the
