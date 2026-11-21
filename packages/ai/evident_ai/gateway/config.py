@@ -66,6 +66,10 @@ class Price:
     long_output: Decimal | None = None
     long_cached_input: Decimal | None = None
     long_cache_write: Decimal | None = None
+    #: USD per web search a grounded answer runs (Gemini: $14 per 1,000 after
+    #: 5,000 free a month on a paid key; the free allowance is not modelled, so
+    #: spend is over- rather than under-counted)
+    per_search: Decimal = Decimal(0)
 
     def applies(self, day: date) -> bool:
         return (self.start is None or day >= self.start) and (self.end is None or day <= self.end)
@@ -86,12 +90,16 @@ class Price:
         total = (Decimal(plain) * r_in + Decimal(usage.cached_tokens) * r_cached
                  + Decimal(usage.cache_write_tokens) * r_write
                  + Decimal(usage.output_tokens) * r_out) / MILLION
+        total += Decimal(usage.search_queries) * self.per_search
         return total.quantize(Decimal("0.000001"))
 
-    def worst_case(self, input_tokens: int, max_output_tokens: int) -> Decimal:
+    def worst_case(self, input_tokens: int, max_output_tokens: int,
+                   searches: int = 0) -> Decimal:
         """The most a request can cost: every input token uncached, every
-        output token used. What spending limits are checked against."""
-        return self.cost(Usage(input_tokens=input_tokens, output_tokens=max_output_tokens))
+        output token used, and `searches` web searches. What spending limits
+        are checked against."""
+        return self.cost(Usage(input_tokens=input_tokens, output_tokens=max_output_tokens,
+                               search_queries=searches))
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,7 +221,8 @@ def from_dict(raw: Mapping[str, Any], *, env: Mapping[str, str] | None = None,
               above_input_tokens=p.get("above_input_tokens"),
               long_input=_dec(p.get("long_input")), long_output=_dec(p.get("long_output")),
               long_cached_input=_dec(p.get("long_cached_input")),
-              long_cache_write=_dec(p.get("long_cache_write")))
+              long_cache_write=_dec(p.get("long_cache_write")),
+              per_search=_dec(p.get("per_search", 0)))
         for p in raw.get("prices", []))
 
     lim = dict(raw.get("limits", {}))

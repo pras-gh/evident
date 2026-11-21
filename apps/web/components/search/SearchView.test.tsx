@@ -167,6 +167,29 @@ describe("companies with no filings here", () => {
   });
 });
 
+describe("passages under an answer", () => {
+  it("are folded away for a market question", () => {
+    const { container } = render(<SearchView query="why is nvda down" outcome={answered([hit()], {
+      kind: "market", scope: { tickers: ["NVDA"], reason: "named" } })} />);
+    const fold = container.querySelector("details.srch-more")!;
+    expect(fold.querySelector("summary")!.textContent).toBe("SEC filing passages (1)");
+    expect(fold.hasAttribute("open")).toBe(false);
+  });
+
+  it("are shown when the query asks for filings", () => {
+    const { container } = render(<SearchView query="show me nvidia's 10-K" outcome={answered([hit()], {
+      kind: "market", wants_filings: true })} />);
+    expect(container.querySelector("details.srch-more")).toBeNull();
+    expect(screen.getByRole("list", { name: /Results for/ })).toBeTruthy();
+  });
+
+  it("put the answer between the company and the passages", () => {
+    render(<SearchView query="q" outcome={answered([hit()])}
+                       answer={<section aria-label="the answer" />} />);
+    expect(screen.getByRole("region", { name: "the answer" })).toBeTruthy();
+  });
+});
+
 describe("company card", () => {
   const timeline = {
     ticker: "NVDA", company: "NVIDIA CORP",

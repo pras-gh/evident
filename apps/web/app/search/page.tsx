@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { AnswerCard, AnswerPending } from "@/components/search/Answer";
 import { SearchView } from "@/components/search/SearchView";
 import { getCompanyTimeline, searchFilings } from "@/lib/api";
 
@@ -28,5 +30,17 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   const one = scope?.reason === "named" && scope.tickers?.length === 1 ? scope.tickers[0] : null;
   const company = one ? await getCompanyTimeline(one).catch(() => null) : null;
 
-  return <SearchView query={query} ticker={ticker} outcome={outcome} company={company} />;
+  // The answer streams in after the results: it can take ten seconds or so.
+  // It gets the passages search found, so nothing is searched twice.
+  const result = outcome?.ok ? outcome.result : null;
+  const answer = result && (result.hits.length > 0 || result.kind === "market"
+                            || result.kind === "general") ? (
+    <Suspense fallback={<AnswerPending />}>
+      <AnswerCard query={query} kind={result.kind}
+                  chunkIds={result.hits.slice(0, 12).map((h) => h.chunk_id)} />
+    </Suspense>
+  ) : null;
+
+  return <SearchView query={query} ticker={ticker} outcome={outcome} company={company}
+                     answer={answer} />;
 }

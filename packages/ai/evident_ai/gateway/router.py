@@ -44,6 +44,18 @@ from .types import (AIContext, AllProvidersFailed, Attempt, CacheSpec, LLMReques
                     LLMResponse, Usage, UsageLimitExceeded)
 
 
+#: Web searches one grounded answer is assumed to run, for its worst-case cost.
+#: A spending limit checked against fewer could be overrun by a chatty answer.
+MAX_SEARCHES = 5
+
+
+def _breaker_key(target: Target, request: LLMRequest) -> str:
+    """The circuit a request counts against. Web search is its own: a key that
+    may not search (Gemini's free tier) must not stop the same model
+    answering everything else."""
+    return f"{target.key}+web" if request.web_search else target.key
+
+
 def estimate_tokens(request: LLMRequest) -> int:
     """Input tokens, estimated before sending: ~4 characters a token for
     English prose. Used for limits and worst-case cost only — logs and costs
@@ -123,8 +135,9 @@ class Gateway:
                         f"the input is about {est_in} tokens; the limit is "
                         f"{limits.max_input_tokens}")
 
-        # 2. cache
-        if request.cache is not None:
+        # 2. cache — never for a web-search answer: Google's terms forbid
+        # caching grounded results, and yesterday's news is the wrong answer
+        if request.cache is not None and not request.web_search:
             hit = self._cache_lookup(request, route, ctx)
             if hit is not None:
                 return self._serve_cached(hit, request, ctx, request_id, started)
@@ -148,11 +161,18 @@ class Gateway:
         # 4. route
         attempts: list[Attempt] = []
         for index, target in enumerate(route):
-            if not self.breaker.allow(target.key):
+            if request.web_search and not getattr(self.providers[target.provider],
+                                                  "web_search", False):
+                logs.event("ai.skipped", request_id=str(request_id), provider=target.provider,
+                           model=target.model, reason="no_web_search")
+                continue
+            if not self.breaker.allow(_breaker_key(target, request)):
                 logs.event("ai.skipped", request_id=str(request_id), provider=target.provider,
                            model=target.model, reason="circuit_open")
                 continue
-            worst = self.config.price(target, now.date()).worst_case(est_in, request.max_output_tokens)
+            worst = self.config.price(target, now.date()).worst_case(
+                est_in, request.max_output_tokens,
+                MAX_SEARCHES if request.web_search else 0)
             if counts.org_spend_month + worst > limits.monthly_spend_usd:
                 self._block(ctx, request, target, request_id, "monthly_spend_usd",
                             float(limits.monthly_spend_usd), float(counts.org_spend_month),
@@ -167,18 +187,22 @@ class Gateway:
             if result is not None:
                 completion, latency = result
                 cost = self.config.price(target, now.date()).cost(completion.usage)
-                if request.cache is not None and completion.stop == "complete":
+                if (request.cache is not None and not request.web_search
+                        and completion.stop == "complete"):
                     self._cache_store(request, target, ctx, completion, cost)
                 response = LLMResponse(
                     request_id=request_id, text=completion.text, stop=completion.stop,
                     provider=target.provider, model=target.model, usage=completion.usage,
                     cost_usd=cost, latency_ms=self._ms(started),
-                    fallback=attempts[-1].status == "fallback", attempts=attempts)
+                    fallback=attempts[-1].status == "fallback", attempts=attempts,
+                    sources=completion.sources,
+                    search_suggestions=completion.search_suggestions)
                 logs.event("ai.complete", request_id=str(request_id), provider=target.provider,
                            model=target.model, status=attempts[-1].status,
                            input_tokens=completion.usage.input_tokens,
                            output_tokens=completion.usage.output_tokens,
                            cached_tokens=completion.usage.cached_tokens,
+                           search_queries=completion.usage.search_queries,
                            cost_usd=str(cost), latency_ms=response.latency_ms,
                            stop=completion.stop)
                 return response
@@ -215,7 +239,8 @@ class Gateway:
                 latency = self._ms(t0)
                 attempts.append(Attempt(target.provider, target.model, "failed", latency, exc.message))
                 self._log(ctx, request, target, request_id, "failed", latency, error=exc.message)
-                opened = self.breaker.failure(target.key, exc.kind, exc.retry_after)
+                opened = self.breaker.failure(_breaker_key(target, request), exc.kind,
+                                              exc.retry_after)
                 logs.event("ai.attempt_failed", level=30, request_id=str(request_id),
                            provider=target.provider, model=target.model, attempt=n,
                            kind=exc.kind.value, status_code=exc.status, error=exc.message,
@@ -232,7 +257,7 @@ class Gateway:
                 waited += wait
                 continue
             latency = self._ms(t0)
-            self.breaker.success(target.key)
+            self.breaker.success(_breaker_key(target, request))
             status = "fallback" if fallback else "success"
             cost = self.config.price(target, self._now().date()).cost(completion.usage)
             attempts.append(Attempt(target.provider, target.model, status, latency))

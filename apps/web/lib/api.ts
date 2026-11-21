@@ -12,6 +12,7 @@ import type {
   PageView,
   ResolvedCitation,
   ResolvedEvidence,
+  AskResponse,
   SearchOutcome,
   SearchResponse,
 } from "./types";
@@ -135,4 +136,23 @@ export async function searchFilings(query: string, ticker?: string,
   if (res.status === 422)
     return { ok: false, error: "too_short", message: "Type at least two characters." };
   return { ok: false, error: "failed", message: `Search failed: HTTP ${res.status}.` };
+}
+
+/** An answer to the query, given what search worked out about it. Null when
+ *  the API cannot be asked; an answer it could not write comes back as mode
+ *  "none" with a notice saying why. Never cached: live answers go stale, and
+ *  Google's terms forbid caching grounded results. */
+export async function askQuestion(query: string, kind: string | null | undefined,
+                                  chunkIds: number[]): Promise<AskResponse | null> {
+  try {
+    const res = await fetch(`${BASE}/ask`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, kind: kind ?? null, chunk_ids: chunkIds }),
+      cache: "no-store",
+    });
+    return res.ok ? ((await res.json()) as AskResponse) : null;
+  } catch {
+    return null;
+  }
 }

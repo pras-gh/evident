@@ -133,6 +133,43 @@ saying what to do:
 | `search_not_indexed` | no chunk is embedded with the configured provider and model; run `workers/embedding_worker.py` |
 | `search_unavailable` | the provider failed to embed the query, e.g. a rate limit; retried once, quickly |
 
+Search is scoped to the companies the query names: by rule for companies on
+record, and by a model (task `classification`) for any company, including
+ones with no filings here. A named company with no filings is never
+substituted. If EDGAR has it, its latest annual report is fetched; see
+`/v1/fetches`. The response says what was searched and why (`companies`,
+`scope`, `topic`), and what kind of question it is (`kind`: `market`,
+`filings` or `general`; `wants_filings`).
+
+### `POST /v1/ask`
+
+```json
+{ "query": "why is nvidia down", "kind": "market", "chunk_ids": [30, 21, 18] }
+```
+
+An answer, from the live web or from the filings, never both in one answer.
+The search page passes what search returned (`kind`, and the passages' chunk
+ids), so the question is neither read nor searched twice.
+
+- **`market` and `general` questions** are answered by Gemini with Google
+  Search grounding (`mode: "web"`), with `sources` and Google's
+  `search_suggestions` HTML. Google's terms require showing the suggestions
+  with the answer, and forbid caching it or mixing other content into it. Paid
+  Gemini keys only: a free key is refused, and the response says so.
+- **`filings` questions** are answered from the given passages (at most 12),
+  each claim citing them as `[n]` (`mode: "filings"`). `citations` maps each
+  `n` to its chunk and paragraph; a marker for a passage not given is removed.
+- **When the web is unavailable** and there are passages, the answer comes
+  from those, and `notice` says so.
+
+An answer that stopped early is never returned: `mode: "none"` with a `notice`.
+
+### `GET /v1/fetches/{id}`
+
+An on-demand fetch of a company's latest annual report from EDGAR, started by
+a search that named it: `queued`, `running`, `done` or `failed` (with
+`error`). The search page polls this, not the search, while it waits.
+
 ### Evidence
 
 The evidence viewer's endpoints — see `docs/evidence-viewer.md` for the rules

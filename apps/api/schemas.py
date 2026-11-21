@@ -112,6 +112,51 @@ class SearchCompanyOut(BaseModel):
     fetch_error: str | None = None
 
 
+class AskRequest(BaseModel):
+    """A question, with what search already worked out about it — so the
+    question is not read twice, nor the passages searched for again."""
+    query: str = Field(min_length=2, max_length=1000)
+    #: from the search response: "market" and "general" are answered from the
+    #: web, "filings" from the passages
+    kind: Literal["market", "filings", "general"] | None = None
+    #: the passages search found, best first; the filings answer may cite them
+    chunk_ids: list[int] = Field(default_factory=list, max_length=20)
+
+
+class AskSourceOut(BaseModel):
+    title: str
+    uri: str
+
+
+class AskCitationOut(BaseModel):
+    #: the number the answer cites it by, as in "[2]"
+    n: int
+    chunk_id: int
+    paragraph_id: str | None
+    company: str
+    form_type: str
+    filed_at: date
+    citation: str
+
+
+class AskResponse(BaseModel):
+    #: where the answer came from; "none" when there is no answer, and
+    #: `notice` says why
+    mode: Literal["web", "filings", "none"]
+    answer: str | None = None
+    #: web answers: the pages it drew on
+    sources: list[AskSourceOut] = Field(default_factory=list)
+    #: web answers: Google's Search Suggestions as HTML, which its terms
+    #: require shown with the answer
+    search_suggestions: str | None = None
+    #: filings answers: the passages it cites
+    citations: list[AskCitationOut] = Field(default_factory=list)
+    #: what the reader should know: live answers not enabled, a fallback taken
+    notice: str | None = None
+    model: str | None = None
+    cost_usd: Decimal | None = None
+
+
 class FetchOut(BaseModel):
     id: int
     cik: str
@@ -150,6 +195,11 @@ class SearchResponse(BaseModel):
     on_record: list[SearchCompanyOut] = Field(default_factory=list)
     #: "rules", or "rules+provider:model" when a model also read the query
     understood_by: str = "rules"
+    #: what answering the query needs — "market" (live information), "filings"
+    #: or "general"; None when no model read the query
+    kind: Literal["market", "filings", "general"] | None = None
+    #: the query asked to see filings or documents
+    wants_filings: bool = False
 
 
 # ---------------------------------------------------------------- graph
