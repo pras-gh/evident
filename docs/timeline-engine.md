@@ -158,7 +158,12 @@ Measured on the demo 10-Ks:
 | extraction | change events | withheld | the 10 keyword events |
 |---|---|---|---|
 | keyword matcher | 10 | 0 | all kept |
-| Gemini 3.5 Flash-Lite | 128 → 61 | 67 (32 drops, 31 new, 4 returning) | — |
+| Gemini 3.5 Flash-Lite, prompt v3.1 | 128 → 61 | 67 (32 drops, 31 new, 4 returning) | — |
+| Gemini 3.5 Flash-Lite, prompt v4 | 42 → 38 | 4 | — |
+
+Prompt v4 reuses known topic names (`docs/real-entity-extraction.md`), so
+drift mostly doesn't happen in the first place, and the text check has little
+left to withhold.
 
 A sample of the withheld Gemini events was all extraction drift: "ransomware
 attacks", "State of Israel" and "IT infrastructure", each quoted verbatim from
