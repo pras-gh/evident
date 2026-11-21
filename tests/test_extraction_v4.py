@@ -197,11 +197,21 @@ class KnownTopics(unittest.TestCase):
 
 class Prompt(unittest.TestCase):
     def test_v4_asks_for_short_reused_names(self):
-        self.assertEqual(EXTRACT_ENTITIES.version, "4.0.0")
+        self.assertEqual(EXTRACT_ENTITIES.version, "4.1.0")
         system = EXTRACT_ENTITIES.system
         self.assertIn("one to five words", system)
         self.assertIn("use that topic's name exactly as listed", system)
         self.assertIn("Quotes are checked against the paragraph", system)
+        self.assertIn("separate entities", system)
+
+    def test_examples_are_not_taken_from_the_filings_it_is_measured_on(self):
+        """v4.0 used "H20 Inventory Charge" as its example, and the model
+        returned exactly that for the paragraph it came from — and not H20.
+        Examples drawn from the evaluation corpus shape the output being
+        measured."""
+        rules = EXTRACT_ENTITIES.system.split("Worked example.")[0]
+        for phrase in ("H20", "AI Diffusion", "Product, system security", "GB200"):
+            self.assertNotIn(phrase, rules)
 
 
 class EndToEnd(unittest.TestCase):

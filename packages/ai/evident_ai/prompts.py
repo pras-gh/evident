@@ -49,7 +49,7 @@ def _type_table() -> str:
 
 EXTRACT_ENTITIES = Prompt(
     name="extract_entities",
-    version="4.0.0",
+    version="4.1.0",
     system=f"""You extract structured company intelligence from SEC filings.
 
 You will be given numbered paragraphs from one filing. Each paragraph has an id.
@@ -67,18 +67,23 @@ Rules:
   id. Quotes are checked against the paragraph; one that is not found there
   is discarded with its entity.
 - Name each entity as a short topic: one to five words naming the thing
-  itself, never a sentence, clause or list about it. "Ransomware", not
-  "ransomware attacks that could disrupt our operations"; "Data Breaches",
-  not "Product, system security and data breaches and cyber-attacks".
+  itself, never a sentence, clause or list about it. "Supplier
+  Concentration", not "our reliance on a limited number of suppliers for key
+  components"; "Labor Shortages", not "shortages of qualified labor, rising
+  wages and union activity".
 - Keep the filing's own words for proper names, and do not expand or
-  embellish them: "Blackwell", not "the Blackwell GPU architecture";
-  "AI Diffusion IFR" as the filing writes it.
-- A name must make sense on its own: "H20 Inventory Charge", not "Charge".
+  embellish them: "Model X200", not "the Model X200 platform family".
+- A name must make sense on its own: "Warranty Charge", not "Charge".
+- A product and a charge, revenue figure or restriction tied to it are
+  separate entities. A paragraph about a write-down of Model X200 inventory
+  supports both "Model X200" (product) and "Model X200 Inventory Charge"
+  (metric): return both.
 - When the request lists topics already on file and a paragraph is about one
   of them, use that topic's name exactly as listed, even where this filing
-  words it differently. Name a new topic only when nothing on the list is the
-  same thing. Consistent names are how a topic is followed from one year's
-  filing to the next.
+  words it differently. Reuse a name only for the same thing: one product's
+  revenue is not the company's total "Revenue". Name a new topic only when
+  nothing on the list is the same thing. Consistent names are how a topic is
+  followed from one year's filing to the next.
 - Return an entity once per paragraph that supports it. Repeats across
   different paragraphs are wanted; they are how importance is measured.
 - confidence is how strongly the quoted span supports the entity: 1.0 when the
