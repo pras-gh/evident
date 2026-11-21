@@ -16,10 +16,13 @@ generated from the Pydantic models; the response becomes objects only through
 `EntityExtractionResponse`; and a response that will not parse is rejected
 whole. There is no code path from raw model text to a database row.
 
-Two rules cannot be written into a schema, because they depend on the input we
+Some rules cannot be written into a schema, because they depend on the input we
 sent, so they are enforced after parsing:
 
 - an entity must cite a `paragraph_id` we actually supplied
+- its quote must be found in that paragraph — then it is widened to the whole
+  sentence, so the evidence reads as a statement rather than a bare name
+- its name must be a topic, not a phrase about one (`MAX_NAME_WORDS`)
 - a relationship's endpoints must both be entities in the same response
 
 Those are per item. A hallucinated citation costs that entity, not the other
@@ -29,12 +32,14 @@ signal that a prompt or model change has started inventing things.
 """
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Callable, Iterable, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from evident_graph.taxonomy import slug as slugify
+from evident_parser import sentences
 from evident_parser.models import Block
 from pydantic import ValidationError
 
@@ -45,6 +50,22 @@ from .schema import (EntityExtractionResponse, ExtractedEntity,
 #: Non-streaming default from the SDK guidance. A truncated response is an
 #: unparseable one, so there is no reason to shave this.
 MAX_TOKENS = 16000
+
+#: A name longer than this is a phrase about a topic, not its name: "loss of
+#: data or other information technology assets". The prompt asks for one to
+#: five words; this is the backstop.
+MAX_NAME_WORDS = 6
+
+#: A quote is widened to its sentence unless the sentence runs past this. A
+#: 300-word list with no full stop is not evidence anyone will read.
+MAX_QUOTE_CHARS = 600
+
+#: Known topics listed in one request, at most (see `relevant_known`).
+KNOWN_PER_REQUEST = 40
+
+_WORDS = re.compile(r"\w+")
+_FOLD = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
+                       "\u2013": "-", "\u2014": "-", "\u00a0": " "})
 
 
 class ExtractionRejected(RuntimeError):
@@ -156,18 +177,86 @@ def drop_uncited(items: Sequence[Any], valid_ids: set[str],
     return kept
 
 
+# ------------------------------------------------------------- quotes
+def _folded(text: str) -> tuple[str, list[int]]:
+    """`text` lower-cased, typographic quotes and dashes made plain, and
+    whitespace runs collapsed — with each character's index in `text`."""
+    out: list[str] = []
+    index: list[int] = []
+    space = False
+    for i, ch in enumerate(text.translate(_FOLD)):
+        if ch.isspace():
+            if space:
+                continue
+            ch, space = " ", True
+        else:
+            space = False
+        out.append(ch.lower())
+        index.append(i)
+    return "".join(out), index
+
+
+def locate(quote: str, paragraph: str) -> tuple[int, int] | None:
+    """Where `quote` is in `paragraph`, allowing for case, curly quotes,
+    dashes and whitespace — the differences a model introduces copying text
+    — or None if it is not there."""
+    quote = quote.strip()
+    if not quote:
+        return None
+    at = paragraph.find(quote)
+    if at >= 0:
+        return at, at + len(quote)
+    q, _ = _folded(quote)
+    t, index = _folded(paragraph)
+    at = t.find(q) if q else -1
+    if at < 0:
+        return None
+    return index[at], index[at + len(q) - 1] + 1
+
+
+def anchor(quote: str, paragraph: str) -> str | None:
+    """The sentence of `paragraph` that contains `quote`, as the paragraph
+    has it; the span itself if that sentence is over MAX_QUOTE_CHARS; None if
+    the quote is not in the paragraph at all."""
+    span = locate(quote, paragraph)
+    if span is None:
+        return None
+    start, end = sentences.around(paragraph, *span)
+    if end - start > MAX_QUOTE_CHARS:
+        start, end = span
+    return paragraph[start:end]
+
+
 # ------------------------------------------------------------- post-validation
+def _drop(report: DropReport, reason: str, bad_id: str | None = None) -> None:
+    report.dropped += 1
+    report.reasons.append(reason)
+    if bad_id is not None:
+        report.bad_ids.append(bad_id)
+
+
 def validate_entities(entities: Iterable[ExtractedEntity], valid_ids: set[str],
-                      report: DropReport) -> list[ExtractedEntity]:
+                      report: DropReport, *,
+                      texts: Mapping[str, str] | None = None) -> list[ExtractedEntity]:
+    """Entities that cite a paragraph we sent and have a topic's name — and,
+    given the paragraphs' `texts`, whose quote is in the paragraph cited, with
+    the quote widened to its sentence."""
     kept: list[ExtractedEntity] = []
     for e in entities:
         if e.paragraph_id not in valid_ids:
-            report.dropped += 1
-            report.bad_ids.append(e.paragraph_id)
-            report.reasons.append(
-                f"{e.name!r}: cites paragraph {e.paragraph_id!r}, "
-                "which was not supplied")
+            _drop(report, f"{e.name!r}: cites paragraph {e.paragraph_id!r}, "
+                          "which was not supplied", e.paragraph_id)
             continue
+        if len(_WORDS.findall(e.name)) > MAX_NAME_WORDS:
+            _drop(report, f"{e.name!r}: a phrase, not a topic's name "
+                          f"(over {MAX_NAME_WORDS} words)")
+            continue
+        if texts is not None:
+            quote = anchor(e.quote, texts.get(e.paragraph_id, ""))
+            if quote is None:
+                _drop(report, f"{e.name!r}: quote is not in paragraph {e.paragraph_id}")
+                continue
+            e = e.model_copy(update={"quote": quote})
         report.kept += 1
         kept.append(e)
     return kept
@@ -176,7 +265,9 @@ def validate_entities(entities: Iterable[ExtractedEntity], valid_ids: set[str],
 def validate_relationships(relationships: Iterable[ExtractedRelationship],
                            entities: Sequence[ExtractedEntity],
                            valid_ids: set[str],
-                           report: DropReport) -> list[ExtractedRelationship]:
+                           report: DropReport, *,
+                           texts: Mapping[str, str] | None = None,
+                           ) -> list[ExtractedRelationship]:
     """Keep only edges whose endpoints survived, matched on slug.
 
     Endpoints are matched by slug rather than by exact string because the model
@@ -208,14 +299,54 @@ def validate_relationships(relationships: Iterable[ExtractedRelationship],
                 f"{', '.join(repr(m) for m in missing)} are not entities in "
                 "this response")
             continue
+        if texts is not None:
+            quote = anchor(r.quote, texts.get(r.paragraph_id, ""))
+            if quote is None:
+                _drop(report, f"{r.source_name}->{r.target_name}: quote is not in "
+                              f"paragraph {r.paragraph_id}")
+                continue
+            r = r.model_copy(update={"quote": quote})
         report.kept += 1
         kept.append(r)
     return kept
 
 
 # ------------------------------------------------------------------- request
-def render(blocks: Sequence[Block]) -> str:
-    return "\n\n".join(f"[{b.paragraph_id}] {b.text}" for b in blocks)
+KNOWN_HEADER = ("Topics already on file for this company. When a paragraph is about "
+                "one of these, use its name exactly as written here, even where this "
+                "filing words it differently:")
+
+_COMMON = frozenset({"the", "and", "for", "our", "its", "with", "from", "other",
+                     "risk", "risks", "products", "product", "data"})
+
+
+def relevant_known(known: Sequence[tuple[str, str]],
+                   blocks: Sequence[Block]) -> list[tuple[str, str]]:
+    """The known topics worth listing for these paragraphs: those sharing a
+    word with them, in the order given (most-cited first), at most
+    KNOWN_PER_REQUEST. "Export Controls" is listed for a paragraph about
+    "export restrictions"; a topic with no word in common is unlikely to be
+    the same thing, and listing every topic on file would cost tokens on
+    every request."""
+    present = set(_WORDS.findall(" ".join(b.text for b in blocks).lower()))
+    out: list[tuple[str, str]] = []
+    for name, kind in known:
+        words = set(_WORDS.findall(name.lower())) - _COMMON
+        # short words match too much, unless a name has nothing else ("AI")
+        telling = {w for w in words if len(w) > 2} or words
+        if telling & present:
+            out.append((name, kind))
+            if len(out) == KNOWN_PER_REQUEST:
+                break
+    return out
+
+
+def render(blocks: Sequence[Block], known: Sequence[tuple[str, str]] = ()) -> str:
+    paragraphs = "\n\n".join(f"[{b.paragraph_id}] {b.text}" for b in blocks)
+    if not known:
+        return paragraphs
+    listing = "\n".join(f"- {name} ({kind})" for name, kind in known)
+    return f"{KNOWN_HEADER}\n{listing}\n\nParagraphs:\n\n{paragraphs}"
 
 
 def _system() -> list[dict[str, Any]]:
@@ -231,7 +362,11 @@ def _system() -> list[dict[str, Any]]:
 
 
 def request_params(blocks: Sequence[Block], *, max_tokens: int = MAX_TOKENS,
-                   effort: str | None = None) -> dict[str, Any]:
+                   effort: str | None = None,
+                   known: Sequence[tuple[str, str]] = ()) -> dict[str, Any]:
+    """The request for one group of paragraphs. `known` is every topic on file
+    for the company as (name, type), most-cited first; the ones relevant to
+    these paragraphs are listed in the request."""
     output_config: dict[str, Any] = {
         "format": {"type": "json_schema", "schema": wire_schema()}
     }
@@ -241,7 +376,8 @@ def request_params(blocks: Sequence[Block], *, max_tokens: int = MAX_TOKENS,
         "model": MODEL,
         "max_tokens": max_tokens,
         "system": _system(),
-        "messages": [{"role": "user", "content": render(blocks)}],
+        "messages": [{"role": "user",
+                      "content": render(blocks, relevant_known(known, blocks))}],
         "output_config": output_config,
     }
 
@@ -303,6 +439,7 @@ def extract_from_blocks(
     effort: str | None = None,
     context: Any | None = None,
     cache: Any | None = None,
+    known: Sequence[tuple[str, str]] = (),
 ) -> Extraction:
     """Extract entities and relationships from one group of paragraphs.
 
@@ -322,7 +459,7 @@ def extract_from_blocks(
     started = time.perf_counter()
     try:
         response = _client(client, context, cache).messages.create(
-            **request_params(blocks, max_tokens=max_tokens, effort=effort))
+            **request_params(blocks, max_tokens=max_tokens, effort=effort, known=known))
     except AllProvidersFailed as exc:
         # This chunk got no answer; the next may. A usage limit is not caught
         # here — it stops the document, because it stops all paid inference.
@@ -351,10 +488,11 @@ def extract_from_blocks(
         raise
 
     valid = {b.paragraph_id for b in blocks}
+    texts = {b.paragraph_id: b.text for b in blocks}
     report = DropReport()
-    entities = validate_entities(parsed.entities, valid, report)
+    entities = validate_entities(parsed.entities, valid, report, texts=texts)
     relationships = validate_relationships(parsed.relationships, entities,
-                                           valid, report)
+                                           valid, report, texts=texts)
     return Extraction(entities, relationships, report, usage, raw=raw,
                       stop_reason=stop, latency_ms=latency_ms,
                       entities_returned=len(parsed.entities),
@@ -371,6 +509,7 @@ def extract_document(
     on_result: "Callable[[str, Extraction | ExtractionRejected], None] | None" = None,
     context: Any | None = None,
     cache: Any | None = None,
+    known: Sequence[tuple[str, str]] = (),
 ) -> tuple[dict[str, Extraction], DropReport, Usage]:
     """Every chunk of a document, one call each, rejections survived.
 
@@ -394,7 +533,7 @@ def extract_document(
         try:
             result = extract_from_blocks(blocks, client=client,
                                          max_tokens=max_tokens, effort=effort,
-                                         context=context, cache=cache)
+                                         context=context, cache=cache, known=known)
         except ExtractionRejected as exc:
             if on_result is not None:
                 on_result(key, exc)
@@ -496,10 +635,11 @@ def collect_batch(results: Iterable[Any], groups: dict[str, Sequence[Block]],
             continue
 
         valid = {b.paragraph_id for b in blocks}
+        texts = {b.paragraph_id: b.text for b in blocks}
         report = DropReport()
-        entities = validate_entities(parsed.entities, valid, report)
+        entities = validate_entities(parsed.entities, valid, report, texts=texts)
         relationships = validate_relationships(parsed.relationships, entities,
-                                               valid, report)
+                                               valid, report, texts=texts)
         result = Extraction(entities, relationships, report)
         if on_result is not None:
             on_result(key, result)

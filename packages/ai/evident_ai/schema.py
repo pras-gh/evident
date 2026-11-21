@@ -35,7 +35,8 @@ class ExtractedEntity(BaseModel):
 
     name: str = Field(
         min_length=1, max_length=255,
-        description="as the filing names it, not expanded or normalised")
+        description="a short topic name, one to five words; a listed known "
+                    "topic's name exactly when it is the same thing")
     entity_type: EntityTypeName
     confidence: float = Field(
         ge=0.0, le=1.0,
@@ -46,7 +47,8 @@ class ExtractedEntity(BaseModel):
         description="an id from the input, never invented")
     quote: str = Field(
         min_length=1,
-        description="the verbatim span supporting this entity")
+        description="the span supporting this entity, copied verbatim from "
+                    "the cited paragraph")
     description: str | None = Field(
         default=None, description="one clause on what it is, if the text says")
 

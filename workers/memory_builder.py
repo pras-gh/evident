@@ -21,6 +21,9 @@ from sqlalchemy.orm import Session
 from evident_ai.extract import extract_document
 from evident_ai.gateway import CacheSpec
 from evident_ai.prompts import EXTRACT_ENTITIES
+
+#: Known topics considered per filing; each request lists the relevant ones.
+KNOWN_TOPICS = 500
 from evident_db import Chunk, Document, Entity, session_scope
 from evident_db.repositories import (add_entity_mention, add_metric_observation,
                                      add_timeline_event, mark_dropped_entities,
@@ -143,9 +146,18 @@ def build_for_document(db: Session, *, company_id: int, document: Document,
     # text and our own prompt, so a rebuild answers from the cache for free.
     cache = (CacheSpec(document.accession, EXTRACT_ENTITIES.id, shared=True)
              if use_cache else None)
+    # The company's topics on file before this filing, most-cited first: each
+    # request lists the ones relevant to its paragraphs, so the model reuses a
+    # name ("Export Controls") rather than coining a new one for this year's
+    # wording, and the timeline can follow the topic across filings.
+    known = [(name, kind) for name, kind in db.execute(
+        select(Entity.name, Entity.entity_type)
+        .where(Entity.company_id == company_id)
+        .order_by(Entity.mention_count.desc(), Entity.name)
+        .limit(KNOWN_TOPICS)).all()]
     per_chunk, report, usage = extract_document(groups, client=client,
                                                on_result=on_result, context=ai_context,
-                                               cache=cache)
+                                               cache=cache, known=known)
 
     stats.responses_rejected += report.rejected
     stats.requests += usage.requests

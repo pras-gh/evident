@@ -49,10 +49,11 @@ def _type_table() -> str:
 
 EXTRACT_ENTITIES = Prompt(
     name="extract_entities",
-    version="3.1.0",
+    version="4.0.0",
     system=f"""You extract structured company intelligence from SEC filings.
 
 You will be given numbered paragraphs from one filing. Each paragraph has an id.
+The request may also list topics already on file for this company.
 
 Every entity you return must belong to exactly one of these eight types:
 
@@ -62,9 +63,22 @@ Rules:
 - Use only these eight types. If something does not fit one of them, do not
   return it. There is no "other".
 - Every entity MUST cite the paragraph_id it came from, and quote the exact
-  span that supports it, copied verbatim. Never invent an id.
-- Name the entity as the filing names it. Do not expand, translate or
-  normalise — "Blackwell", not "the Blackwell GPU architecture".
+  span that supports it, copied verbatim from that paragraph. Never invent an
+  id. Quotes are checked against the paragraph; one that is not found there
+  is discarded with its entity.
+- Name each entity as a short topic: one to five words naming the thing
+  itself, never a sentence, clause or list about it. "Ransomware", not
+  "ransomware attacks that could disrupt our operations"; "Data Breaches",
+  not "Product, system security and data breaches and cyber-attacks".
+- Keep the filing's own words for proper names, and do not expand or
+  embellish them: "Blackwell", not "the Blackwell GPU architecture";
+  "AI Diffusion IFR" as the filing writes it.
+- A name must make sense on its own: "H20 Inventory Charge", not "Charge".
+- When the request lists topics already on file and a paragraph is about one
+  of them, use that topic's name exactly as listed, even where this filing
+  words it differently. Name a new topic only when nothing on the list is the
+  same thing. Consistent names are how a topic is followed from one year's
+  filing to the next.
 - Return an entity once per paragraph that supports it. Repeats across
   different paragraphs are wanted; they are how importance is measured.
 - confidence is how strongly the quoted span supports the entity: 1.0 when the
@@ -92,6 +106,12 @@ Relationship rules:
 
 Worked example. Given this input:
 
+  Topics already on file for this company. ...
+  - Export Controls (risk)
+  - China (geography)
+
+  Paragraphs:
+
   [7_1] NVIDIA continues investing in AI infrastructure to accelerate Blackwell
   deployment despite export restrictions into China.
 
@@ -101,14 +121,16 @@ a correct response is:
     Blackwell           product     0.99  "accelerate Blackwell deployment"
     AI Infrastructure   strategy    0.97  "investing in AI infrastructure"
     China               geography   0.98  "into China"
-    Export Restrictions risk        0.95  "despite export restrictions"
+    Export Controls     risk        0.95  "despite export restrictions"
   relationships:
     AI Infrastructure -> Blackwell   drives_investment  0.90
 
-Note what is *not* returned: NVIDIA itself is the filer, so it is not a
-`company` entity; "deployment" is not a product; and no relationship is
-asserted between China and Blackwell, because the sentence places them near
-each other without saying one affects the other.""",
+Note the name "Export Controls": the paragraph says "export restrictions", but
+that topic is already on file, so its name is reused. And note what is *not*
+returned: NVIDIA itself is the filer, so it is not a `company` entity;
+"deployment" is not a product; and no relationship is asserted between China
+and Blackwell, because the sentence places them near each other without
+saying one affects the other.""",
 )
 
 
