@@ -538,7 +538,8 @@ class Security(unittest.TestCase):
     def test_redaction_covers_every_key_format(self):
         from evident_ai.gateway.redact import redact
         for secret in ("sk-ant-api03-abcdefghijkl", "gsk_abcdefghijklmnop",
-                       "AIzaSyAbcdefghijklmnopqrstuv", "evk_abcdefghijklmnop",
+                       "AIzaSyAbcdefghijklmnopqrstuv", "AQ.Ab8RNabcdefghijklmnopqrstu",
+                       "evk_abcdefghijklmnop",
                        "Bearer abcdefghijklmnop"):
             with self.subTest(secret):
                 self.assertNotIn(secret.split()[-1], redact(f"failed with {secret} here"))

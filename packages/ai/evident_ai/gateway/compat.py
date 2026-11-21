@@ -7,14 +7,15 @@ response shape, but routed, limited, logged and costed like every other AI
 request — and to whichever provider the task's route names.
 
 Only what extraction uses is translated: a system prompt, one user message,
-`max_tokens`, and `output_config.format`'s JSON Schema.
+`max_tokens`, and `output_config.format`'s JSON Schema. A `CacheSpec` given at
+construction is attached to every request, so a filing's chunks are cached.
 """
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any
 
-from .types import AIContext, LLMRequest, TaskType
+from .types import AIContext, CacheSpec, LLMRequest, TaskType
 
 _STOP = {"complete": "end_turn", "max_tokens": "max_tokens", "refusal": "refusal",
          "other": "other"}
@@ -27,9 +28,11 @@ def _text(content: Any) -> str:
 
 
 class GatewayMessages:
-    def __init__(self, task: TaskType, ctx: AIContext, gateway: Any | None = None):
+    def __init__(self, task: TaskType, ctx: AIContext, gateway: Any | None = None,
+                 cache: CacheSpec | None = None):
         self.task = task
         self.ctx = ctx
+        self.cache = cache
         self._gateway = gateway
 
     @property
@@ -42,7 +45,8 @@ class GatewayMessages:
         request = LLMRequest(
             task=self.task, system=_text(params.get("system") or ""),
             user=_text(params["messages"][-1]["content"]),
-            max_output_tokens=params["max_tokens"], json_schema=schema, temperature=0.0)
+            max_output_tokens=params["max_tokens"], json_schema=schema, temperature=0.0,
+            cache=self.cache)
         r = (self._gateway or default_gateway()).complete(request, self.ctx)
         u = r.usage
         return SimpleNamespace(

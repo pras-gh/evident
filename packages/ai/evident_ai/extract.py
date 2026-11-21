@@ -246,15 +246,16 @@ def request_params(blocks: Sequence[Block], *, max_tokens: int = MAX_TOKENS,
     }
 
 
-def _client(client: Any | None, context: Any | None = None) -> Any:
+def _client(client: Any | None, context: Any | None = None, cache: Any | None = None) -> Any:
     """The injected client, or the gateway behind a Messages-shaped facade.
-    Extraction never builds a provider client of its own."""
+    Extraction never builds a provider client of its own. `cache` (a gateway
+    `CacheSpec`) applies only to the gateway; an injected client is used as is."""
     if client is not None:
         return client
     from .gateway import TaskType, system_context
     from .gateway.compat import GatewayMessages
     return GatewayMessages(TaskType.FINANCIAL_EXTRACTION,
-                           context or system_context("extraction"))
+                           context or system_context("extraction"), cache=cache)
 
 
 # -------------------------------------------------------------------- parsing
@@ -301,6 +302,7 @@ def extract_from_blocks(
     max_tokens: int = MAX_TOKENS,
     effort: str | None = None,
     context: Any | None = None,
+    cache: Any | None = None,
 ) -> Extraction:
     """Extract entities and relationships from one group of paragraphs.
 
@@ -319,7 +321,7 @@ def extract_from_blocks(
 
     started = time.perf_counter()
     try:
-        response = _client(client, context).messages.create(
+        response = _client(client, context, cache).messages.create(
             **request_params(blocks, max_tokens=max_tokens, effort=effort))
     except AllProvidersFailed as exc:
         # This chunk got no answer; the next may. A usage limit is not caught
@@ -368,6 +370,7 @@ def extract_document(
     effort: str | None = None,
     on_result: "Callable[[str, Extraction | ExtractionRejected], None] | None" = None,
     context: Any | None = None,
+    cache: Any | None = None,
 ) -> tuple[dict[str, Extraction], DropReport, Usage]:
     """Every chunk of a document, one call each, rejections survived.
 
@@ -375,6 +378,11 @@ def extract_document(
     `ExtractionRejected` — so a benchmark can record what came back, including
     the raw text of a response that failed, without reimplementing the loop or
     the persistence that follows it.
+
+    `cache` — `CacheSpec(accession, prompt id, shared=True)` — lets the gateway
+    answer a chunk it has extracted before for free: re-running a filing after
+    a change to resolution or storage does not pay for the extraction again.
+    A changed prompt, model or chunk is a miss.
 
     The synchronous path. For backfilling a whole filing, `submit_batch` is
     half the price and nothing about a 2019 10-K is latency-sensitive.
@@ -386,7 +394,7 @@ def extract_document(
         try:
             result = extract_from_blocks(blocks, client=client,
                                          max_tokens=max_tokens, effort=effort,
-                                         context=context)
+                                         context=context, cache=cache)
         except ExtractionRejected as exc:
             if on_result is not None:
                 on_result(key, exc)

@@ -389,6 +389,41 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
             self.assertIsNotNone(m.quote)
             self.assertIsNotNone(m.paragraph_id)
 
+    def test_extraction_is_cached_per_filing(self):
+        """A rebuild of a filing answers from the gateway's cache, not the
+        provider: the builder names the filing, the prompt version, and that
+        the input is public."""
+        from unittest import mock
+        from sqlalchemy import select
+        import workers.memory_builder as mb
+        from evident_ai.extract import DropReport, Usage
+        from evident_ai.prompts import EXTRACT_ENTITIES
+        from evident_db import Document, session_scope
+
+        seen = {}
+
+        def spy(groups, **kw):
+            seen.update(kw)
+            return {}, DropReport(), Usage()
+
+        with session_scope(DSN) as db, mock.patch.object(mb, "extract_document", spy):
+            document = db.execute(select(Document).where(
+                Document.id == self.document_id)).scalar_one()
+            accession = document.accession
+            mb.build_for_document(db, company_id=self.company_id, document=document, limit=1)
+
+        spec = seen["cache"]
+        self.assertEqual((spec.accession, spec.prompt_version, spec.shared),
+                         (accession, EXTRACT_ENTITIES.id, True))
+
+        # a benchmark measures the model, so it opts out
+        with session_scope(DSN) as db, mock.patch.object(mb, "extract_document", spy):
+            document = db.execute(select(Document).where(
+                Document.id == self.document_id)).scalar_one()
+            mb.build_for_document(db, company_id=self.company_id, document=document,
+                                  limit=1, use_cache=False)
+        self.assertIsNone(seen["cache"])
+
     def test_a_rejected_response_stores_nothing(self):
         """A truncated response must not leave half a document behind."""
         from sqlalchemy import func, select

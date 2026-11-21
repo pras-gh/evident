@@ -151,9 +151,16 @@ answer is reused rather than paid for again once the primary recovers.
 Only complete answers are cached; truncated or refused ones are not.
 
 `shared=True` serves every organization. Use it only for public filing text
-and our own prompt, as the summary endpoint does. Anything carrying a
+and our own prompt, as the summary endpoint and entity extraction do. Anything carrying a
 customer's own words must leave it off, which scopes the entry to their
 organization.
+
+Entity extraction is cached per chunk under the filing's accession and the
+extraction prompt's version (`workers/memory_builder.py`). Rebuilding a
+filing's memory after a change to resolution or storage answers every chunk
+from the cache for $0. A new prompt version or model pays again, as it should.
+`tools/benchmark.py` passes `use_cache=False`, because a replayed answer
+measures nothing.
 
 Entries expire after `cache_ttl_days` (90).
 
@@ -244,24 +251,40 @@ python tools/admin.py list
 
 ## Economics at 5–25 customers
 
-These are per-unit estimates, not measurements: no live call has been made.
+Measured on Gemini 3.5 Flash-Lite, 2026-11-21:
 
-- **A filing summary:** on the order of 20k tokens in and 300–1,500 out on
-  Flash-Lite, about $0.007–$0.01. It's paid once per filing and prompt version
+| Call | Tokens in / out | Cost | Latency |
+| --- | --- | --- | --- |
+| Summary of the demo NVIDIA 10-K excerpt (32 chunks), via `POST /v1/document/1/summary` | 9,636 / 803 | $0.0049 | 3.6 s |
+| The same summary again | — (cache) | $0 | 16 ms |
+| Extraction, 3 real chunks (`tools/extract_live.py --seed --limit 3`) | 3,454 / 1,818 | $0.0056 | 1.8–4.6 s each |
+| The same extraction again | — (cache) | $0 | — |
+
+Output dominates: it is priced at 8× input, and extraction returns as many
+tokens as it reads. From those, estimated:
+
+- **A filing summary:** a full 10-K section of about 20k tokens in and up to
+  1,500 out comes to about $0.01. It's paid once per filing and prompt version
   across all customers, because the cache is shared.
 - **Full extraction of a 10-K:** about 470 chunks of roughly 2k tokens in and
-  600 out, about $1 per filing on Flash-Lite. It runs once per filing, as
-  internal work.
+  600 out, about $1 per filing. It runs once per filing, as internal work, and
+  a rebuild is free from the cache.
 - **The default $50/month cap** buys roughly 5,000 summaries at those sizes. A
   customer's real ceiling is set per organization.
 
 ## Known limits
 
-- **Not run against a live provider.** No Gemini, Groq or Anthropic key was
-  available. Adapters are tested against each provider's documented wire
-  format over mocked HTTP. Not confirmed from the docs read:
-  - Gemini's structured-output field (`responseJsonSchema`; configurable in `[providers.gemini]`);
-  - the exact shape of Gemini's quota error details;
+- **Gemini is verified live; Groq and Anthropic are not.** Confirmed with a
+  Gemini key on 2026-11-21:
+  - both routed models are listed;
+  - `responseJsonSchema` structured output works;
+  - a cited summary works through the API;
+  - extraction works on real chunks;
+  - repeats are answered from the cache, all logged and costed.
+
+  Groq and Anthropic adapters are tested only against each provider's
+  documented wire format over mocked HTTP. Not yet seen live:
+  - a Gemini quota error (its detail shape);
   - Groq's `max_completion_tokens` field.
 
   The `anthropic-version` sent is the one the official SDK sends.

@@ -14,8 +14,8 @@ import uuid
 from datetime import date, datetime, timezone
 
 from evident_ai.extract import ExtractionRejected, extract_document, extract_from_blocks
-from evident_ai.gateway import (AIContext, Gateway, MemoryStore, UsageLimitExceeded,
-                                set_gateway)
+from evident_ai.gateway import (AIContext, CacheSpec, Gateway, MemoryStore,
+                                UsageLimitExceeded, set_gateway)
 from evident_ai.gateway.config import from_dict
 from evident_ai.gateway.providers.base import ErrorKind, ProviderError
 from evident_parser.models import Block
@@ -108,6 +108,35 @@ class ThroughTheGateway(unittest.TestCase):
             extract_from_blocks(BLOCKS, context=CTX)
         self.assertEqual(cm.exception.model, "gemini:flash")
         self.assertIsNotNone(cm.exception.cost_usd)
+
+    def test_a_filing_extracted_before_is_answered_from_the_cache(self):
+        store, p = install(gemini=Script("gemini", ok(text=ANSWER, inp=3000, out=400)))
+        spec = CacheSpec("0001045810-25-000023", "extract_entities@3.1.0", shared=True)
+        first, _, _ = extract_document({"a": BLOCKS}, context=CTX, cache=spec)
+        again, _, usage = extract_document({"a": BLOCKS}, context=CTX, cache=spec)
+        self.assertEqual(len(p["gemini"].calls), 1, "the rebuild paid for the chunk again")
+        self.assertEqual([e.name for e in again["a"].entities],
+                         [e.name for e in first["a"].entities])
+        self.assertEqual((again["a"].cost_usd, usage.input_tokens), (0, 0))
+        self.assertEqual([r.status for r in store.rows], ["success", "cached"])
+
+        # another organization asking for the same public filing: also free
+        other = AIContext(organization_id=uuid.uuid4(), source="worker:test")
+        store.orgs[other.organization_id] = {}
+        extract_document({"a": BLOCKS}, context=other, cache=spec)
+        self.assertEqual(len(p["gemini"].calls), 1)
+
+        # a new prompt version is a miss
+        p["gemini"].outcomes.append(ok(text=ANSWER))
+        extract_document({"a": BLOCKS}, context=CTX,
+                         cache=CacheSpec(spec.accession, "extract_entities@3.2.0", shared=True))
+        self.assertEqual(len(p["gemini"].calls), 2)
+
+    def test_without_a_cache_spec_every_call_is_paid(self):
+        _, p = install(gemini=Script("gemini", ok(text=ANSWER), ok(text=ANSWER)))
+        extract_document({"a": BLOCKS}, context=CTX)
+        extract_document({"a": BLOCKS}, context=CTX)
+        self.assertEqual(len(p["gemini"].calls), 2)
 
 
 def bad_request():

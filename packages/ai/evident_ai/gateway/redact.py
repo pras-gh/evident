@@ -17,6 +17,7 @@ _PATTERNS = [
     re.compile(r"sk-ant-[A-Za-z0-9_\-]{8,}"),          # Anthropic
     re.compile(r"gsk_[A-Za-z0-9]{8,}"),                # Groq
     re.compile(r"AIza[0-9A-Za-z_\-]{20,}"),            # Google
+    re.compile(r"\bAQ\.[0-9A-Za-z_\-]{20,}"),           # Google, newer key format
     re.compile(r"evk_[A-Za-z0-9_\-]{8,}"),             # Evident API keys
     re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._\-~+/]{8,}=*"),
     re.compile(r"(?i)([?&](?:key|api_key|token)=)[^&\s\"']+"),
