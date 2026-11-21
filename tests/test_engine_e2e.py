@@ -608,6 +608,27 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(any(e["kind"] == "filing" for e in r.json()))
 
+    async def test_search_says_when_no_provider_is_configured(self):
+        old = os.environ.pop("EMBEDDING_PROVIDER", None)
+        try:
+            async with await self._client() as c:
+                r = await c.post("/v1/search", json={"query": "export controls"})
+        finally:
+            if old is not None:
+                os.environ["EMBEDDING_PROVIDER"] = old
+        self.assertEqual(r.status_code, 503, "was a bare 500")
+        self.assertEqual(r.json()["error"], "search_not_configured")
+        self.assertIn("EMBEDDING_PROVIDER", r.json()["message"])
+
+    async def test_search_says_when_nothing_is_indexed_yet(self):
+        """No vectors for this provider: say what to run, rather than answer
+        no hits as if nothing matched."""
+        async with await self._client() as c:
+            r = await c.post("/v1/search", json={"query": "export controls"})
+        self.assertEqual(r.status_code, 503)
+        self.assertEqual(r.json()["error"], "search_not_indexed")
+        self.assertIn("embedding_worker", r.json()["message"])
+
     async def test_semantic_search_returns_cited_hits(self):
         from workers import embedding_worker
         embedding_worker.run(url=DSN)

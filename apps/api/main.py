@@ -18,6 +18,7 @@ from evident_ai.gateway.logs import configure_logging
 
 from .routers import (ai_usage, analysis, cards, documents, evidence, graph, ingest,
                       memory, search, timeline)
+from .routers.search import SearchUnavailable
 
 API_VERSION = "1.0.0"
 
@@ -86,6 +87,11 @@ async def _ai_unavailable(request: Request, exc: AllProvidersFailed) -> JSONResp
     return JSONResponse(status_code=503, content={
         "error": "ai_unavailable", "request_id": str(exc.request_id),
         "message": "No AI provider could answer right now. Try again shortly."})
+
+
+@app.exception_handler(SearchUnavailable)
+async def _search_unavailable(request: Request, exc: SearchUnavailable) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"error": exc.error, "message": exc.message})
 
 
 @app.exception_handler(UnknownOrganization)

@@ -2,10 +2,11 @@
 
     EmbeddingProvider.embed(texts: list[str]) -> list[list[float]]
 
-Three implementations. `VoyageEmbedder` is the default because Voyage publishes
-`voyage-finance-2` as tuned for finance retrieval, which is exactly this corpus.
-`OpenAIEmbedder` is the fallback. `HashingEmbedder` is for tests and is no
-longer reachable without asking for it by name.
+Four implementations. `VoyageEmbedder` is the first choice, because Voyage
+publishes `voyage-finance-2` as tuned for finance retrieval, which is exactly
+this corpus. `GeminiEmbedder` uses the Gemini key the AI gateway already has.
+`OpenAIEmbedder` is the other alternative. `HashingEmbedder` is for tests and
+is no longer reachable without asking for it by name.
 
 Two things this abstraction deliberately does not hide.
 
@@ -24,9 +25,14 @@ detected instead of silently answered.
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import os
-from typing import Sequence
+import re
+import time
+from typing import Any, Callable, Sequence
+
+log = logging.getLogger("evident.embed")
 
 #: The one width every supported provider can emit. `voyage-finance-2` is
 #: 1024-only, OpenAI can shorten to anything, Voyage's general models offer
@@ -229,8 +235,133 @@ class OpenAIEmbedder(EmbeddingProvider):
         return self._check(out, len(texts))
 
 
+class GeminiEmbedder(EmbeddingProvider):
+    """Google Gemini, on `gemini-embedding-2`, with the key the AI gateway
+    already uses (`GEMINI_API_KEY`), sent in a header and never in the URL.
+
+    `outputDimensionality` asks for the shared width. Gemini Embedding 2 accepts
+    128–3072 and normalises a shortened vector itself.
+
+    **The task goes in the text.** gemini-embedding-2 takes no `taskType`;
+    Google's docs say to write the task into the input instead:
+    `task: search result | query: …` for a query and `title: none | text: …`
+    for a document. gemini-embedding-001, chosen with EMBEDDING_MODEL, takes
+    `taskType` and returns unnormalised vectors below 3072, so both are handled
+    for it.
+
+    **One text per request.** Several parts in one request make a single
+    averaged vector, so each text is its own request inside
+    `batchEmbedContents`.
+
+    Not routed through the AI gateway, so not logged in `ai_usage_logs`; token
+    counts are logged here.
+    """
+
+    name = "gemini"
+    #: Texts per `batchEmbedContents` call. Google doesn't document a limit;
+    #: 100 is conservative.
+    MAX_BATCH = 100
+    BASE_URL = "https://generativelanguage.googleapis.com"
+    RETRYABLE = frozenset({429, 500, 502, 503, 504})
+
+    def __init__(self, model: str = "gemini-embedding-2",
+                 dim: int = EMBEDDING_DIM, *, api_key: str | None = None,
+                 http: Any | None = None,
+                 sleep: Callable[[float], None] = time.sleep) -> None:
+        self.model, self.dim = model, dim
+        self._api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        self._base = os.environ.get("AI_GEMINI_BASE_URL") or self.BASE_URL
+        self._http = http
+        self._sleep = sleep
+
+    @property
+    def _legacy(self) -> bool:
+        return self.model.startswith("gemini-embedding-001")
+
+    def _request(self, text: str, *, query: bool) -> dict[str, Any]:
+        body: dict[str, Any] = {"model": f"models/{self.model}",
+                                "outputDimensionality": self.dim}
+        if self._legacy:
+            body["taskType"] = "RETRIEVAL_QUERY" if query else "RETRIEVAL_DOCUMENT"
+        else:
+            text = (f"task: search result | query: {text}" if query
+                    else f"title: none | text: {text}")
+        body["content"] = {"parts": [{"text": text}]}
+        return body
+
+    def _post(self, body: dict[str, Any], *, attempts: int, max_wait: float) -> dict:
+        if not self._api_key:
+            raise EmbeddingError(
+                "GEMINI_API_KEY is not set. Set it, or choose another "
+                "provider with EMBEDDING_PROVIDER.")
+        import httpx
+        http = self._http or httpx.Client(timeout=60)
+        url = f"{self._base}/v1beta/models/{self.model}:batchEmbedContents"
+        for attempt in range(1, attempts + 1):
+            try:
+                r = http.post(url, json=body, headers={"x-goog-api-key": self._api_key})
+            except httpx.HTTPError as exc:
+                status, message, hint = None, type(exc).__name__, None
+            else:
+                if r.status_code == 200:
+                    return r.json()
+                status, message, hint = r.status_code, *self._error(r)
+            if (status is None or status in self.RETRYABLE) and attempt < attempts:
+                wait = max(hint or 0.0, 2.0 ** (attempt - 1))
+                if wait <= max_wait:
+                    self._sleep(wait)
+                    continue
+            raise EmbeddingError(f"{self.name}/{self.model}: "
+                                 f"{f'HTTP {status}' if status else 'request failed'}: "
+                                 f"{message}")
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    @staticmethod
+    def _error(r: Any) -> tuple[str, float | None]:
+        try:
+            err = r.json().get("error", {})
+        except ValueError:
+            return r.text[:300], None
+        hint = None
+        for detail in err.get("details") or []:
+            m = re.fullmatch(r"([\d.]+)s", str(detail.get("retryDelay", "")))
+            if m:
+                hint = float(m.group(1))
+        return str(err.get("message", ""))[:300], hint
+
+    def _embed(self, texts: Sequence[str], *, query: bool, attempts: int,
+               max_wait: float) -> list[list[float]]:
+        if not texts:
+            return []
+        out: list[list[float]] = []
+        for batch in self._batched(texts, self.MAX_BATCH):
+            data = self._post({"requests": [self._request(t, query=query) for t in batch]},
+                              attempts=attempts, max_wait=max_wait)
+            vectors = [e["values"] for e in data.get("embeddings", [])]
+            if self._legacy:
+                vectors = [_unit(v) for v in vectors]
+            out.extend(vectors)
+            log.info("gemini/%s embedded %d text(s), usage %s",
+                     self.model, len(batch), data.get("usageMetadata"))
+        return self._check(out, len(texts))
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        # a worker can wait out a rate limit or an overloaded model
+        return self._embed(texts, query=False, attempts=6, max_wait=60.0)
+
+    def embed_query(self, texts: Sequence[str]) -> list[list[float]]:
+        # someone is waiting for search results: one quick retry at most
+        return self._embed(texts, query=True, attempts=2, max_wait=2.0)
+
+
+def _unit(v: list[float]) -> list[float]:
+    norm = math.sqrt(sum(x * x for x in v))
+    return [x / norm for x in v] if norm else v
+
+
 PROVIDERS: dict[str, type[EmbeddingProvider]] = {
     "voyage": VoyageEmbedder,
+    "gemini": GeminiEmbedder,
     "openai": OpenAIEmbedder,
     "hashing": HashingEmbedder,
 }

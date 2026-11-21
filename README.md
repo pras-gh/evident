@@ -69,10 +69,12 @@ database before starting and says what is wrong if it cannot serve from it.
 
 Optional, per feature: `SEC_USER_AGENT` to ingest from EDGAR,
 `GEMINI_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` for AI features (routed by
-`config/ai.toml`; see `docs/ai-gateway.md`), and `EMBEDDING_PROVIDER` with a
-Voyage or OpenAI key for search. There is deliberately no default
-embedding provider: `hashing` is for tests only and has no semantics — it would
-make retrieval look like it works.
+`config/ai.toml`; see `docs/ai-gateway.md`), and `EMBEDDING_PROVIDER` for search:
+`gemini` uses the same `GEMINI_API_KEY`, or `voyage` / `openai` with their own
+keys. There is deliberately no default embedding provider: `hashing` is for
+tests only and has no semantics — it would make retrieval look like it works.
+Search needs the chunks indexed once, and again after each ingest:
+`python workers/embedding_worker.py` (the three demo 10-Ks are one request).
 
 ```bash
 # tests — the database suites run when TEST_DATABASE_URL points at an empty,

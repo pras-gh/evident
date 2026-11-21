@@ -311,8 +311,11 @@ tokens as it reads. From those, estimated:
 - **Groq's developer-plan rate limits** (8K tokens per minute on the GPT-OSS
   models, per its docs) are below one large summarization request. As a
   summarization fallback, Groq will need a paid tier.
-- **Embeddings** (Voyage, OpenAI) still go through `EmbeddingProvider`, outside
-  the gateway, and are not logged here. They have never been run either.
+- **Embeddings** go through `EmbeddingProvider` (`evident_retrieval.embed`),
+  outside the gateway, and are not logged in `ai_usage_logs`; the Gemini
+  provider logs token counts instead. Gemini (`gemini-embedding-2`, 1024
+  dimensions) has been run live: the demo corpus is 94 chunks, 28,364 tokens,
+  one request. Voyage and OpenAI never have.
 - **The Anthropic Batch API** (`extract.submit_batch`) needs an explicit client
   and is not routed or logged. Nothing calls it today.
 - **Circuit-breaker state and limit checks are per process.** A fleet would

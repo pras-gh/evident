@@ -124,6 +124,15 @@ Ranking is hybrid — cosine similarity finds the passage, recency breaks
 near-ties. A 10-K and a stale 10-Q often carry the same sentence, and the newer
 one is almost always what was wanted.
 
+When search cannot answer, it returns 503 with an `error` and a `message`
+saying what to do:
+
+| `error` | cause |
+|---|---|
+| `search_not_configured` | no `EMBEDDING_PROVIDER`, or an unknown one |
+| `search_not_indexed` | no chunk is embedded with the configured provider and model; run `workers/embedding_worker.py` |
+| `search_unavailable` | the provider failed to embed the query, e.g. a rate limit; retried once, quickly |
+
 ### Evidence
 
 The evidence viewer's endpoints — see `docs/evidence-viewer.md` for the rules
