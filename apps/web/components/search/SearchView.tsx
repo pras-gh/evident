@@ -1,5 +1,11 @@
 import { evidenceUrl } from "@/lib/cite";
-import type { SearchHit, SearchOutcome } from "@/lib/types";
+import type {
+  CompanyTimeline,
+  SearchCompany,
+  SearchHit,
+  SearchOutcome,
+  SearchResponse,
+} from "@/lib/types";
 
 /**
  * Search over the filings: a box, and the passages nearest the question, each
@@ -7,20 +13,30 @@ import type { SearchHit, SearchOutcome } from "@/lib/types";
  *
  * No client JavaScript. The form is a GET to /search, so a search has a URL
  * that can be shared, reloaded and linked to from the landing page.
+ *
+ * Search is scoped to the companies the query names, and the page says which
+ * it searched and why — so "Wesco International" says Evident has no Wesco
+ * filings rather than showing NVIDIA's. A query about one company we cover
+ * also gets a card: what its latest filing changed, and where to read more.
  */
 export function SearchView({
   query,
   ticker,
   outcome,
+  company,
 }: {
   query: string;
   ticker?: string | null;
   outcome: SearchOutcome | null;
+  /** the timeline of the one company the query names, for its card */
+  company?: CompanyTimeline | null;
 }) {
+  // the page's company filter, unless the query named companies of its own
+  const filtered = !!ticker && !(outcome?.ok && outcome.result.scope?.reason === "named");
   return (
     <main className="tl2-shell">
       <header className="tl2-head">
-        <p className="ev-kicker">{ticker ? `${ticker.toUpperCase()} · Search` : "Search"}</p>
+        <p className="ev-kicker">{filtered ? `${ticker!.toUpperCase()} · Search` : "Search"}</p>
         <h1 className="ev-title">Search the filings</h1>
         <form className="srch-form" action="/search" method="get" role="search">
           <label className="srch-label" htmlFor="q">Search the filings</label>
@@ -42,20 +58,114 @@ export function SearchView({
         <p className="srch-note" role="alert">
           <b>{HEADLINE[outcome.error]}</b> {outcome.message}
         </p>
-      ) : outcome.result.hits.length === 0 ? (
-        <p className="tl2-empty">No passages found for “{outcome.result.query}”.</p>
       ) : (
         <>
-          <p className="srch-count" aria-live="polite">
-            {outcome.result.hits.length} passage{outcome.result.hits.length === 1 ? "" : "s"}
-            {" "}· {Math.round(outcome.result.took_ms)} ms
-          </p>
-          <ol className="srch-hits" aria-label={`Results for ${outcome.result.query}`}>
-            {outcome.result.hits.map((h) => <Hit key={h.chunk_id} hit={h} />)}
-          </ol>
+          <Scope result={outcome.result} />
+          {company && <CompanyCard timeline={company} />}
+          <Results result={outcome.result} />
         </>
       )}
     </main>
+  );
+}
+
+function Results({ result }: { result: SearchResponse }) {
+  // nothing searched: the scope notice already says why
+  if (result.scope?.tickers?.length === 0) return null;
+  if (result.hits.length === 0)
+    return <p className="tl2-empty">No passages found for “{result.query}”.</p>;
+  return (
+    <>
+      <p className="srch-count" aria-live="polite">
+        {result.hits.length} passage{result.hits.length === 1 ? "" : "s"}
+        {" "}· {Math.round(result.took_ms)} ms
+      </p>
+      <ol className="srch-hits" aria-label={`Results for ${result.query}`}>
+        {result.hits.map((h) => <Hit key={h.chunk_id} hit={h} />)}
+      </ol>
+    </>
+  );
+}
+
+const label = (c: SearchCompany) => (c.ticker ? `${c.name} (${c.ticker})` : c.name);
+const names = (cs: SearchCompany[]) => cs.map(label).join(", ");
+
+/** Which companies were searched, and why — in words. */
+export function Scope({ result }: { result: SearchResponse }) {
+  const uncovered = result.companies.filter((c) => !c.covered);
+  const covered = result.companies.filter((c) => c.covered);
+  const onRecord = result.on_record.length ? names(result.on_record) : "no company yet";
+  const reason = result.scope?.reason;
+  const about = result.topic ? <> about “{result.topic}”</> : null;
+  return (
+    <div className="srch-scope" data-testid="scope">
+      {uncovered.length > 0 && (
+        <p className="srch-note" role="status">
+          <b>No filings for {names(uncovered)} yet.</b> Evident has filings for {onRecord}.
+        </p>
+      )}
+      {reason === "named" && covered.length > 0 && (
+        <p className="srch-scope-line">Showing filings from <b>{names(covered)}</b>{about}.</p>
+      )}
+      {reason === "filter" && (
+        <p className="srch-scope-line">
+          Showing <b>{result.scope?.tickers?.join(", ")}</b> filings{about}.{" "}
+          <a href={`/search?${new URLSearchParams({ q: result.query })}`}>Search every company</a>
+        </p>
+      )}
+      {reason === "all" && (
+        <p className="srch-scope-line">
+          {result.understood_by === "rules"
+            ? "Couldn’t check which company you meant, so this searches"
+            : "Your search names no company, so it searches"}{" "}
+          every company on record: {onRecord}.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** One company at a glance: its filings, and what the latest one changed. */
+export function CompanyCard({ timeline }: { timeline: CompanyTimeline }) {
+  const t = timeline.ticker.toLowerCase();
+  const latest = timeline.filings[0];
+  const changes = timeline.events
+    .filter((e) => e.kind !== "filed" && e.topic && e.filing.accession === latest?.accession)
+    .slice(0, 5);
+  return (
+    <section className="tl2-card srch-company" aria-label={`${timeline.company} at a glance`}>
+      <div>
+        <p className="tl2-meta">
+          <span className="tl2-kind">{timeline.ticker}</span>
+          <span>
+            {timeline.filings.length} filing{timeline.filings.length === 1 ? "" : "s"} on record
+            {latest ? `, latest ${latest.form_type} ${filedLabel(latest.filed_at)}` : ""}
+          </span>
+        </p>
+        <h2 className="tl2-title">{timeline.company}</h2>
+        {changes.length > 0 && (
+          <>
+            <p className="tl2-summary">What changed in the latest filing</p>
+            <ul className="srch-changes">
+              {changes.map((e) => (
+                <li key={e.id}>
+                  {e.evidence?.chunk_id ? (
+                    <a href={evidenceUrl(e.evidence.chunk_id, e.evidence.paragraph_id,
+                                         e.topic?.slug)}>{e.title}</a>
+                  ) : (
+                    e.title
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <p className="tl2-foot">
+          <a className="tl2-evidence" href={`/memory/${t}`}>Company memory →</a>
+          <a className="tl2-evidence" href={`/timeline/${t}`}>Full timeline →</a>
+        </p>
+      </div>
+    </section>
   );
 }
 

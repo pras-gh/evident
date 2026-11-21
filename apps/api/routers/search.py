@@ -1,18 +1,36 @@
-"""Semantic search over chunks."""
+"""Semantic search over chunks — scoped to the companies a query is about.
+
+Vector search alone ranks every passage on record by meaning, so it answers
+"Wesco International" with the nearest NVIDIA paragraph. Before ranking
+anything, search works out which companies the query names:
+
+* by rule, the companies Evident holds filings for (`evident_retrieval.companies`);
+* by model, through the AI gateway, every company it names — including ones
+  with no filings here — and the topic left once they are taken out
+  (`evident_ai.query`). When the model is unavailable, rules alone decide.
+
+Then: named companies on record are searched, and only they; named companies
+with no filings are reported, never substituted; a query naming none searches
+the request's `ticker` filter, or everything.
+"""
 from __future__ import annotations
 
+import logging
 import time
 
+import anyio
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from evident_db import Chunk, Company, Document
 
-from ..deps import get_db
-from ..schemas import SearchHitOut, SearchRequest, SearchResponse
+from ..deps import get_db, get_gateway
+from ..schemas import (SearchCompanyOut, SearchHitOut, SearchRequest, SearchResponse,
+                       SearchScopeOut)
 
 router = APIRouter(tags=["search"])
+log = logging.getLogger("evident.search")
 
 
 class SearchUnavailable(RuntimeError):
@@ -24,19 +42,90 @@ class SearchUnavailable(RuntimeError):
         self.error, self.message = error, message
 
 
+async def _understand(query: str, gw):
+    """(intent, "rules+provider:model"), or (None, "rules") when no model could
+    read the query. Search must not fail because this step did."""
+    from evident_ai.gateway import AIContext, internal_organization_id
+    from evident_ai.query import understand
+    try:
+        org = await anyio.to_thread.run_sync(internal_organization_id)
+        ctx = AIContext(organization_id=org, source="api:/v1/search")
+        intent, r = await anyio.to_thread.run_sync(lambda: understand(query, ctx, gw))
+    except Exception as exc:          # the gateway has logged the detail
+        log.warning("search: the query was read by rules only (%s: %s)",
+                    type(exc).__name__, str(exc)[:200])
+        return None, "rules"
+    return intent, f"rules+{r.provider}:{r.model}"
+
+
+def _mentions(query: str, on_record, intent) -> list[SearchCompanyOut]:
+    """Companies the query names: those on record by rule, then whatever the
+    model found, matched to the record by ticker or name. Each once."""
+    from evident_retrieval.companies import named, same_company, short_name
+    out: list[SearchCompanyOut] = []
+    seen: set[str] = set()
+
+    def add(name: str, ticker: str | None, covered: bool) -> None:
+        key = (ticker or short_name(name)).lower()
+        if key and key not in seen:
+            seen.add(key)
+            out.append(SearchCompanyOut(name=name, ticker=ticker, covered=covered))
+
+    for c in named(query, on_record):
+        add(c.name, c.ticker, True)
+    for nc in (intent.companies if intent else []):
+        match = next((c for c in on_record if same_company(nc.name, nc.ticker, c)), None)
+        if match:
+            add(match.name, match.ticker, True)
+        else:
+            add(nc.name, nc.ticker.strip().upper().lstrip("$") if nc.ticker else None, False)
+    return out
+
+
 @router.post("/search", response_model=SearchResponse, summary="Semantic search")
-async def search(req: SearchRequest,
-                 db: AsyncSession = Depends(get_db)) -> SearchResponse:
-    """Nearest chunks, each carrying the citation it came from.
+async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
+                 gw=Depends(get_gateway)) -> SearchResponse:
+    """Nearest chunks from the companies the query is about, each carrying the
+    citation it came from.
 
     Retrieval is a supporting index, not the product — so a hit that cannot name
     its document, page and paragraph is not a usable result, and the response
     model makes that non-optional.
     """
+    from evident_retrieval.companies import OnRecord
     from evident_retrieval.embed import EmbeddingError, default_provider
     from evident_retrieval.rerank import rerank
 
     started = time.perf_counter()
+    on_record = [OnRecord(t, n) for t, n in (await db.execute(
+        select(Company.ticker, Company.name)
+        .join(Document, Document.company_id == Company.id)
+        .where(Company.ticker.is_not(None)).distinct()
+        .order_by(Company.ticker))).all()]
+
+    intent, understood_by = await _understand(req.query, gw)
+    mentioned = _mentions(req.query, on_record, intent)
+    if mentioned:
+        scope = SearchScopeOut(tickers=[m.ticker for m in mentioned if m.covered],
+                               reason="named")
+    elif req.ticker:
+        scope = SearchScopeOut(tickers=[req.ticker.upper()], reason="filter")
+    else:
+        scope = SearchScopeOut(tickers=None, reason="all")
+    topic = (intent.topic.strip() or None) if intent else None
+    about = dict(query=req.query, companies=mentioned, scope=scope, topic=topic,
+                 understood_by=understood_by,
+                 on_record=[SearchCompanyOut(name=c.name, ticker=c.ticker, covered=True)
+                            for c in on_record])
+
+    def ms() -> float:
+        return round((time.perf_counter() - started) * 1000, 2)
+
+    # Only companies with no filings here: say so, rather than answer with the
+    # nearest passage from somebody else's.
+    if scope.tickers == []:
+        return SearchResponse(hits=[], took_ms=ms(), **about)
+
     try:
         embedder = default_provider()
     except EmbeddingError as exc:
@@ -54,7 +143,8 @@ async def search(req: SearchRequest,
             "Run `python workers/embedding_worker.py` to index them.")
 
     try:
-        vector = embedder.embed_query([req.query])[0]
+        # the topic, not "what is going on with" — the company is the filter
+        vector = embedder.embed_query([topic or req.query])[0]
     except EmbeddingError as exc:
         raise SearchUnavailable("search_unavailable", str(exc)) from exc
 
@@ -73,9 +163,9 @@ async def search(req: SearchRequest,
             # over-fetch so re-ranking has room to move things; ordering by
             # distance alone would fix the top k before recency is considered
             .limit(req.k * 3))
-    if req.ticker:
+    if scope.tickers is not None:
         stmt = stmt.join(Company, Company.id == Document.company_id).where(
-            Company.ticker == req.ticker.upper())
+            Company.ticker.in_(scope.tickers))
     if req.form_types:
         stmt = stmt.where(Document.form_type.in_(req.form_types))
 
@@ -92,6 +182,5 @@ async def search(req: SearchRequest,
     # restated in 2025 is mostly interesting in its 2025 form
     hits = rerank(hits)[:req.k]
 
-    return SearchResponse(query=req.query, hits=hits,
-                          took_ms=round((time.perf_counter() - started) * 1000, 2),
-                          embedder=f"{embedder.name}/{embedder.model}")
+    return SearchResponse(hits=hits, took_ms=ms(),
+                          embedder=f"{embedder.name}/{embedder.model}", **about)

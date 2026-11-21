@@ -629,6 +629,89 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(r.json()["error"], "search_not_indexed")
         self.assertIn("embedding_worker", r.json()["message"])
 
+    def _search_gateway(self, *answers):
+        """A gateway whose classification route answers `answers` in order —
+        a JSON intent, or an exception to stand for a provider failing."""
+        import json as _json
+        from evident_ai.gateway import (Gateway, MemoryStore, internal_organization_id,
+                                        set_gateway)
+        from evident_ai.gateway.config import from_dict
+        from test_ai_gateway import RAW, Script, ok
+        outcomes = [a if isinstance(a, Exception) else ok(text=_json.dumps(a)) for a in answers]
+        # each test truncates organizations, so forget any id cached by the last
+        set_gateway(None)
+        org = internal_organization_id(DSN)
+        g = Gateway(from_dict(RAW, today=date(2026, 11, 21)),
+                    {"groq": Script("groq", *outcomes), "gemini": Script("gemini"),
+                     "anthropic": Script("anthropic")},
+                    MemoryStore(orgs={org: {}}), sleep=lambda s: None)
+        set_gateway(g)
+        self.addCleanup(set_gateway, None)
+        return g
+
+    async def _search(self, query, **body):
+        async with await self._client() as c:
+            r = await c.post("/v1/search", json={"query": query, **body})
+        self.assertEqual(r.status_code, 200, r.text)
+        return r.json()
+
+    async def test_a_company_with_no_filings_here_gets_none_of_anyone_elses(self):
+        """The reported bug: "wesco international" showed NVIDIA filings."""
+        from workers import embedding_worker
+        embedding_worker.run(url=DSN)
+        self._search_gateway({"companies": [{"name": "WESCO International", "ticker": "WCC"}],
+                              "topic": ""})
+        body = await self._search("wesco international", ticker="NVDA")
+        self.assertEqual(body["hits"], [], "NVIDIA passages for a Wesco search")
+        self.assertIsNone(body["embedder"], "nothing to search, so nothing embedded")
+        self.assertEqual(body["companies"],
+                         [{"name": "WESCO International", "ticker": "WCC", "covered": False}])
+        self.assertEqual(body["scope"], {"tickers": [], "reason": "named"},
+                         "the query's company beats the page's NVDA filter")
+        self.assertEqual(body["on_record"],
+                         [{"name": "NVIDIA Corp", "ticker": "NVDA", "covered": True}])
+
+    async def test_a_company_on_record_is_found_by_rule_when_the_model_is_down(self):
+        from evident_ai.gateway.providers.base import ErrorKind, ProviderError
+        from workers import embedding_worker
+        embedding_worker.run(url=DSN)
+        self._search_gateway(*[ProviderError(ErrorKind.SERVER, "down")] * 3)
+        body = await self._search("what is going on with nvda")
+        self.assertEqual(body["understood_by"], "rules")
+        self.assertEqual(body["scope"], {"tickers": ["NVDA"], "reason": "named"})
+        self.assertTrue(body["hits"])
+
+    async def test_the_topic_is_searched_within_the_named_company(self):
+        from workers import embedding_worker
+        embedding_worker.run(url=DSN)
+        self._search_gateway({"companies": [{"name": "Nvidia", "ticker": None}],
+                              "topic": "data centre capacity"})
+        from unittest import mock
+        from evident_retrieval.embed import HashingEmbedder
+        embedded = []
+
+        class Spy(HashingEmbedder):
+            def embed_query(self, texts):
+                embedded.extend(texts)
+                return super().embed_query(texts)
+
+        with mock.patch("evident_retrieval.embed.default_provider", lambda: Spy()):
+            body = await self._search("nvidia data centre capacity")
+        self.assertEqual(embedded, ["data centre capacity"],
+                         "the topic is searched; the company is the filter")
+        self.assertEqual(body["topic"], "data centre capacity")
+        self.assertEqual(body["companies"], [{"name": "NVIDIA Corp", "ticker": "NVDA",
+                                              "covered": True}])
+        self.assertTrue(body["understood_by"].startswith("rules+groq:"))
+        self.assertTrue(body["hits"])
+
+    async def test_a_query_naming_no_company_searches_everything(self):
+        from workers import embedding_worker
+        embedding_worker.run(url=DSN)
+        self._search_gateway({"companies": [], "topic": "export controls"})
+        body = await self._search("export controls")
+        self.assertEqual(body["scope"], {"tickers": None, "reason": "all"})
+
     async def test_semantic_search_returns_cited_hits(self):
         from workers import embedding_worker
         embedding_worker.run(url=DSN)

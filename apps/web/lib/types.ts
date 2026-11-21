@@ -390,11 +390,29 @@ export interface SearchHit {
   citation: string;
 }
 
+/** A company a search names; `covered` when Evident holds its filings. */
+export interface SearchCompany {
+  name: string;
+  ticker: string | null;
+  covered: boolean;
+}
+
 export interface SearchResponse {
   query: string;
   hits: SearchHit[];
   took_ms: number;
-  embedder: string;
+  /** null when nothing was searched (only uncovered companies named) */
+  embedder: string | null;
+  /** every company the query names, covered or not */
+  companies: SearchCompany[];
+  /** tickers searched (null = every company on record), and why */
+  scope: { tickers: string[] | null; reason: "named" | "filter" | "all" } | null;
+  /** what the query asks once the companies are taken out */
+  topic: string | null;
+  /** every company Evident holds filings for */
+  on_record: SearchCompany[];
+  /** "rules", or "rules+provider:model" when a model also read the query */
+  understood_by: string;
 }
 
 /** A search either answers, or says why it could not: the API's 503 `error`
