@@ -217,10 +217,15 @@ export function coverageNote(t: CompanyTimeline): string {
       : `${fs.length} ${form}s, each compared with the one before; the oldest, ${label}, is the baseline`;
   });
   const { min_delta, min_ratio } = t.thresholds;
+  const withheld = t.withheld ?? 0;
   return (
     `On record: ${parts.join("; ")}. A topic is marked expanded when it is cited in ` +
     `at least ${min_delta} more paragraphs than in the previous filing of the same form, ` +
-    `and at least ${min_ratio}× as many; narrowed is the reverse.`
+    `and at least ${min_ratio}× as many; narrowed is the reverse.` +
+    (withheld > 0
+      ? ` ${withheld} apparent ${withheld === 1 ? "change" : "changes"} not shown: a topic ` +
+        `looked new or dropped, but a sentence quoted for it is in both filings.`
+      : "")
   );
 }
 

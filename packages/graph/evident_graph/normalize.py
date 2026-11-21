@@ -26,6 +26,9 @@ _EXPANSIONS = {
     "opex": "operating expenditure",
     "ip": "intellectual property",
     "us": "united states",
+    # "U.S." splits into two tokens, so it needs the pair; filings write it far
+    # more often than "US"
+    "u s": "united states",
     "usg": "united states government",
     "ev": "electric vehicle",
     "iot": "internet of things",

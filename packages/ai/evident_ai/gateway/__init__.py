@@ -67,13 +67,31 @@ def internal_organization_id(url: str | None = None) -> uuid.UUID:
     return _internal_org
 
 
+def missing_keys(task: TaskType, config: GatewayConfig | None = None) -> str | None:
+    """Why no provider on `task`'s route could answer, or None if one can.
+
+    For tools about to start paid work: a run with no key would log a failure
+    per call and store nothing, so it should stop before it starts.
+    """
+    config = config or load()
+    route = config.route(task)
+    if any(config.providers[t.provider].api_key() for t in route):
+        return None
+    names = " or ".join(sorted({config.providers[t.provider].api_key_env for t in route}))
+    return (f"no key for any provider on the {task.value} route "
+            f"({', '.join(t.key for t in route)}). Set {names}, "
+            "or change the route in config/ai.toml.")
+
+
 def system_context(source: str) -> AIContext:
-    """For work no person asked for: ingest, extraction, backfills."""
-    return AIContext(organization_id=internal_organization_id(), user_id=None, source=source)
+    """For work no person asked for: ingest, extraction, backfills. Background,
+    so it waits out a provider's rate limit rather than failing."""
+    return AIContext(organization_id=internal_organization_id(), user_id=None, source=source,
+                     background=True)
 
 
 __all__ = ["AIContext", "AllProvidersFailed", "CacheSpec", "ConfigError", "Gateway",
            "GatewayConfig", "GatewayError", "LLMRequest", "LLMResponse", "Limits",
            "MemoryStore", "SqlStore", "Target", "TaskType", "UnknownOrganization", "Usage",
            "UsageLimitExceeded", "estimate_tokens", "gateway", "internal_organization_id",
-           "load", "set_gateway", "system_context"]
+           "load", "missing_keys", "set_gateway", "system_context"]

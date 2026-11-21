@@ -102,6 +102,9 @@ class ThreeYears(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
     async def test_the_events_are_what_the_filings_say(self):
         d = await self._timeline()
+        # keyword extraction is literal: nothing it reports is contradicted
+        self.assertEqual(d["withheld"], 0)
+        self.assertEqual(d["thresholds"]["carried_over"], 0.5)
         self.assertEqual([(e["date_label"], e["category"], e["title"]) for e in d["events"]],
                          EXPECTED)
         self.assertEqual(d["total"], len(EXPECTED))
@@ -204,6 +207,43 @@ class ThreeYears(_ApiMixin, unittest.IsolatedAsyncioTestCase):
                          "https://www.sec.gov/Archives/edgar/data/1045810/"
                          "000104581026000021/0001045810-26-000021-index.htm")
         self.assertEqual([f["page_count"] for f in d["filings"]], [85, 87, 85])
+
+
+@unittest.skipUnless(DSN, "set TEST_DATABASE_URL to run")
+class ExtractionMissesAYear(_ApiMixin, unittest.IsolatedAsyncioTestCase):
+    """A model that misses a topic in one filing is the commonest way real
+    extraction differs from the keyword matcher. Simulated here on the real
+    filings: FY2026's China mentions are deleted, as if extraction missed them.
+    The paragraphs that name China are still in FY2026, so the timeline must
+    not say China was dropped."""
+
+    @classmethod
+    def setUpClass(cls):
+        from sqlalchemy import delete, select
+        from evident_db import Document, Entity, EntityMention, session_scope
+        _ingest_and_extract(filings=3)
+        with session_scope(DSN) as db:
+            fy26 = db.execute(select(Document.id).where(Document.accession == FY26)).scalar_one()
+            china = db.execute(select(Entity.id).where(Entity.slug == "china")).scalar_one()
+            db.execute(delete(EntityMention).where(EntityMention.document_id == fy26,
+                                                   EntityMention.entity_id == china))
+
+    async def test_a_missed_topic_is_withheld_not_reported_dropped(self):
+        async with await self._client() as c:
+            d = (await c.get("/v1/company/NVDA/timeline")).json()
+            only_china = (await c.get("/v1/company/NVDA/timeline",
+                                      params={"entity": "china"})).json()
+        titles = [e["title"] for e in d["events"]]
+        fy26_china = [e["title"] for e in d["events"]
+                      if e["filing"]["accession"] == FY26 and e["topic"]
+                      and e["topic"]["slug"] == "china"]
+        self.assertEqual(fy26_china, [], "neither dropped nor, with no mentions, expanded")
+        self.assertIn("China Expanded", titles, "FY2025's real expansion is untouched")
+        self.assertEqual(d["withheld"], 1)
+        self.assertEqual(only_china["withheld"], 1, "the filters apply to withheld too")
+        # everything else is as the filings say
+        self.assertIn("H20 Newly Disclosed", titles)
+        self.assertIn("DGX Cloud No Longer Disclosed", titles)
 
 
 if __name__ == "__main__":

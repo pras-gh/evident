@@ -125,6 +125,48 @@ Expanded.
 Each evidence object says whether it was chosen this way (`new_paragraph`), so
 the UI marks it "new this filing" only when that is true.
 
+### Checked against the text
+
+Mentions record what extraction found, not what the filing says. A model names
+a topic differently from year to year, or misses it, and each slip reads as a
+change: dropped under one name, new under another. So "newly disclosed",
+"disclosed again" and "no longer disclosed" are checked against the full text
+of the compared filing. The event is **withheld** when a sentence quoted for
+the topic is in both filings. For a new topic that means this year's quote
+was already in last year's filing. For a drop, it means last year's quote is
+still in this year's.
+
+"In both" is the carried-over test applied to a quote: at least half its
+four-word phrases are in the other filing (`CARRIED_OVER`). NVIDIA edits most
+sentences a little each year, and sometimes the edit *is* the disclosure, so
+two more conditions must hold:
+
+- **The edit didn't add or remove the topic's name.** FY2025 kept a FY2024
+  sentence and added "by the January 2025 AI Diffusion IFR": 73% carried over,
+  but the new words are the topic. A name word counts as added or removed when
+  it is outside the shared phrases and neither neighbour pair ("to china") is
+  in the other filing either. A word that merely sits beside an edit keeps its
+  pair; one that was inserted or cut does not.
+- **No new clause.** Four or more new words in a row are a new clause. It may
+  name the topic in other words than its name, so the event stands.
+
+Expanded and narrowed are not checked this way. They compare counts of
+paragraphs present in both filings, which the text doesn't contradict.
+
+Measured on the demo 10-Ks:
+
+| extraction | change events | withheld | the 10 keyword events |
+|---|---|---|---|
+| keyword matcher | 10 | 0 | all kept |
+| Gemini 3.5 Flash-Lite | 128 → 61 | 67 (32 drops, 31 new, 4 returning) | — |
+
+A sample of the withheld Gemini events was all extraction drift: "ransomware
+attacks", "State of Israel" and "IT infrastructure", each quoted verbatim from
+both years.
+
+The response counts withheld events (`withheld`, under the same filters), and
+the page says how many it isn't showing.
+
 ## What the NVIDIA corpus produces
 
 `tests/fixtures/edgar-timeline`: Risk Factors from the FY2024, FY2025 and FY2026
@@ -151,13 +193,16 @@ that names the topic.
 
 ## Computed on read
 
-Events are derived from `documents`, `entity_mentions` and the text of the
-chunks those mentions cite, at request time, not stored. That is what makes the
+Events are derived from `documents`, `entity_mentions` and the filings' text,
+at request time, not stored. That is what makes the
 feature nearly free: no second copy of the truth to keep in sync, no backfill
 when extraction improves, and a re-extracted filing changes the timeline the
-moment it lands. The three-filing demo builds in about 50 ms. If a company with
-decades of filings makes it slow, cache the response per company keyed on the
-newest extraction — do not store events.
+moment it lands. Each filing's text is indexed once per process
+(`timeline.said`, an LRU of 64 filings), since the same filings are compared
+on every request. The three-filing demo takes about 90 ms on the first
+request and 20 ms after. If a company with decades of filings makes it slow, cache
+the response per company keyed on the newest extraction — do not store
+events.
 
 The existing `timeline_events` table stays what it is — a raw event log, served
 at `/v1/companies/{ticker}/timeline`.
@@ -177,15 +222,30 @@ Each event has `id` (accession, kind and slug — stable across rebuilds),
 `compared_with`, `paragraphs`, `previous_paragraphs` and `evidence`
 (`chunk_id`, `paragraph_id`, `document_id`, `page`, `quote`, `new_paragraph`,
 `citation`). Filings link to their EDGAR index page, whatever origin they were
-ingested from.
+ingested from. `withheld` counts the changes the text did not bear out (see
+"Checked against the text"). `thresholds` reports `min_delta`, `min_ratio` and
+`carried_over`.
 
 ## What it cannot tell you
 
-- **A drop is only as good as extraction recall.** "No longer disclosed" means
-  no paragraph of the new filing was extracted as citing the topic. With the
-  keyword matcher that is literal; with Claude, a missed mention looks exactly
-  like a dropped disclosure. The evidence points at where it last appeared so a
-  reader can check.
+- **New and dropped rest on extraction, checked by the text.** A drop means
+  no paragraph of the new filing was extracted as citing the topic, and none
+  of last year's quotes for it survives. That catches a missed mention whose
+  sentence is still there. It cannot catch one whose sentence was rewritten.
+
+  Before the text check, real extraction (Gemini 3.5 Flash-Lite, the three
+  demo 10-Ks, 2026-11-21) gave 131 events against the keyword matcher's 13.
+  Of its 54 "no longer disclosed", 38 pointed at a paragraph still in the
+  newer filing. After the check, 64 events remain.
+- **Spelling variants of one name are still two topics.** "GB200 NVL 72" is
+  dropped and "GB200 NVL72" is new where the sentence around it was
+  rewritten; "datacenter GPUs" and "data center GPUs" likewise. "U.S." now
+  folds into "United States", as "US" did. Other variants need a resolver
+  that knows more than spelling.
+- **Extraction picks some poor topics.** "Charge", "non-data center" and
+  whole phrases ("carbon taxes, fuel or energy taxes, pollution limits, …")
+  are real text, quoted correctly, but weak topics. That is a prompt problem,
+  not a timeline one.
 - **Counts measure emphasis, not stance.** Export Controls Expanded says the
   filing discusses export controls in more paragraphs; it does not say the
   controls got stricter. The evidence paragraph is where to read which.
