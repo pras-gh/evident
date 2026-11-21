@@ -29,7 +29,7 @@ schema, because they depend on the input we sent:
 - its quote must be in that paragraph. Matching allows for case, curly quotes,
   dashes and whitespace, and the stored quote is the sentence that contains
   it (see "Prompt v4" below);
-- its name must be a topic, at most `MAX_NAME_WORDS` (6) words;
+- its name must be a topic, at most `MAX_NAME_WORDS` (7) words;
 - a relationship's two endpoints must both be entities in the same response,
   and its quote must be in its paragraph too.
 
@@ -63,7 +63,7 @@ v3.1 on Gemini 3.5 Flash-Lite, over the three demo 10-Ks, had three problems:
 - **A topic's name drifted between years.** The timeline then reported it as
   dropped under one name and new under another.
 
-v4 (`extract_entities@4.0.0`) makes three changes.
+v4 (`extract_entities@4.2.0`) makes three changes.
 
 **Known topics in each request.** The memory builder passes the company's topics
 on file, most-cited first. Each request lists up to 40 of those that share a
@@ -73,7 +73,9 @@ year can reuse the last year's names. The system prompt is unchanged per
 request; the list goes in the user message.
 
 **Short names.** The prompt asks for one to five words, and validation drops
-names over six as a backstop.
+names over seven words, counted by spaces, as a backstop. The limit was six
+counted by punctuation until v4.2 returned "U.S. Department of Commerce's U.S.
+Entity List": a real name, scored as ten.
 
 **Quotes anchored in code.** The model still returns a short span, which keeps
 output tokens, the expensive side, low. The code finds the span in the cited
@@ -83,22 +85,42 @@ A quote found in the other part of a paragraph the chunker split moves the
 citation there. A quote that isn't found drops its item with a reason; nothing
 checked this before. A sentence over 600 characters keeps the span.
 
-Measured on the same corpus and model, 2026-11-21:
+Measured on the same corpus and model, 2026-11-21, one run each:
 
-| | v3.1 | v4 |
+| | v3.1 | v4.2 |
 |---|---|---|
 | quotes under 4 words | 84% (median 2 words) | 5% (median 35) |
-| names over 5 words | 10 | 0 |
-| entities / mentions / relationships | 140 / 551 / 8 | 87 / 623 / 27 |
-| topics in all three filings | 51 | 62 |
-| timeline: changes shown / withheld by the text check | 61 / 67 | 38 / 4 |
-| items dropped by validation, final run | — (quotes not checked) | 6 |
-| cost of the full extraction, list price | $0.12 | $0.16 |
+| names over 5 words | 10, up to 17 | 1 ("EU-U.S. Data Privacy Framework") |
+| entities / mentions / relationships | 140 / 551 / 8 | 107 / 684 / 36 |
+| topics in all three filings | 51 | 81 |
+| headline-topic recall | 113/131 (86%) | 125/131 (95%) |
+| timeline: changes shown / withheld by the text check | 61 / 67 | 38 / 3 |
+| cost of the full extraction, list price | $0.12 | $0.19 |
 
-The drops seen are real misquotes: four relationship quotes reading "negative
-impact demand" where the filing says "negatively impact demand", and a quote
-absent from the paragraph cited. No v4 answer had a name over six words (0 of
-136), so that check is purely a backstop.
+**Headline-topic recall** measures, for eight topics (H20, Blackwell, Export
+Controls, China, AI Diffusion, Taiwan, Hopper, GB200), how many of the
+paragraphs whose text names the topic the model cited for it. It is computed
+from each version's raw answers in the response cache. Export Controls went
+from 32 to 45 of 46, because "export restrictions" now reuses the known name.
+
+**How v4 got there.** Each step was found by measuring the one before:
+
+- **v4.0** used examples taken from the demo filings. "H20 Inventory Charge"
+  was one, and the model returned exactly that for the paragraph it came
+  from, but not H20 itself. Examples are now neutral, and a test keeps corpus
+  phrases out of the rules.
+- **v4.1** folded a new rule into a broader known topic: with "Export
+  Controls" listed, the AI Diffusion IFR, new in FY2025, fell from 10 to 7 of
+  12 paragraphs. The prompt now says a specific rule, product or event is its
+  own entity; v4.2 has it in 9 of 12.
+
+The remaining differences of one or two paragraphs are within what one run to
+the next could move. Run-to-run variance hasn't been measured.
+
+Validation dropped 2 items in the final run. One was that Entity List name,
+under the old limit. The other was a relationship whose quote isn't in its
+paragraph. Quote drops in earlier runs were real misquotes, such as "negative
+impact demand" where the filing says "negatively impact demand".
 
 **Known topics are part of the input, so they are part of the cache key.** A
 filing's cached answers hold as long as the earlier filings' topics don't

@@ -116,10 +116,13 @@ class Validation(unittest.TestCase):
 
     def test_a_phrase_is_not_a_topic_name(self):
         phrase = "loss of data or other information technology assets"
+        names = ["Country Groups D1, D4, and D5",
+                 # v4.2 returned this; split on punctuation it is ten words,
+                 # split on spaces seven, and it is a name
+                 "U.S. Department of Commerce\u2019s U.S. Entity List"]
         kept = self.validate(entity(name=phrase, quote="H20"),
-                             entity(name="Country Groups D1, D4, and D5", quote="H20"))
-        self.assertEqual([e.name for e in kept], ["Country Groups D1, D4, and D5"],
-                         f"{MAX_NAME_WORDS} words is still a name")
+                             *(entity(name=n, quote="H20") for n in names))
+        self.assertEqual([e.name for e in kept], names)
         self.assertIn("a phrase, not a topic's name", self.report.reasons[0])
 
     def test_a_quote_in_another_part_of_the_same_paragraph_moves_the_citation(self):

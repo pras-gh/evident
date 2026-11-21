@@ -51,10 +51,11 @@ from .schema import (EntityExtractionResponse, ExtractedEntity,
 #: unparseable one, so there is no reason to shave this.
 MAX_TOKENS = 16000
 
-#: A name longer than this is a phrase about a topic, not its name: "loss of
-#: data or other information technology assets". The prompt asks for one to
-#: five words; this is the backstop.
-MAX_NAME_WORDS = 6
+#: A name longer than this, in words separated by spaces, is a phrase about a
+#: topic rather than its name: "loss of data or other information technology
+#: assets" (8). The prompt asks for one to five; this is the backstop, with room
+#: for proper names such as "U.S. Department of Commerce's U.S. Entity List" (7).
+MAX_NAME_WORDS = 7
 
 #: A quote is widened to its sentence unless the sentence runs past this. A
 #: 300-word list with no full stop is not evidence anyone will read.
@@ -290,7 +291,7 @@ def validate_entities(entities: Iterable[ExtractedEntity], valid_ids: set[str],
             _drop(report, f"{e.name!r}: cites paragraph {e.paragraph_id!r}, "
                           "which was not supplied", e.paragraph_id)
             continue
-        if len(_WORDS.findall(e.name)) > MAX_NAME_WORDS:
+        if len(e.name.split()) > MAX_NAME_WORDS:
             _drop(report, f"{e.name!r}: a phrase, not a topic's name "
                           f"(over {MAX_NAME_WORDS} words)")
             continue

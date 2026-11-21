@@ -159,9 +159,9 @@ Measured on the demo 10-Ks:
 |---|---|---|---|
 | keyword matcher | 10 | 0 | all kept |
 | Gemini 3.5 Flash-Lite, prompt v3.1 | 128 → 61 | 67 (32 drops, 31 new, 4 returning) | — |
-| Gemini 3.5 Flash-Lite, prompt v4 | 42 → 38 | 4 | — |
+| Gemini 3.5 Flash-Lite, prompt v4.2 | 41 → 38 | 3 | — |
 
-Prompt v4 reuses known topic names (`docs/real-entity-extraction.md`), so
+Prompt v4.2 reuses known topic names (`docs/real-entity-extraction.md`), so
 drift mostly doesn't happen in the first place, and the text check has little
 left to withhold.
 
