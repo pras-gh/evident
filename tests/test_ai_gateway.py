@@ -10,14 +10,17 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import unittest
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from unittest import mock
 
 from evident_ai.gateway import (AIContext, AllProvidersFailed, CacheSpec, ConfigError,
                                 Gateway, LLMRequest, MemoryStore, TaskType,
-                                UnknownOrganization, Usage, UsageLimitExceeded, load)
+                                UnknownOrganization, Usage, UsageLimitExceeded, load,
+                                missing_keys)
 from evident_ai.gateway import logs as gw_logs
 from evident_ai.gateway.config import Target, from_dict
 from evident_ai.gateway.providers.base import ErrorKind, ProviderError
@@ -111,6 +114,7 @@ def req(task=TaskType.FILING_SUMMARIZATION, user="Summarise this filing.", max_o
 
 
 CTX = AIContext(organization_id=ORG, user_id=USER, source="test")
+BG = AIContext(organization_id=ORG, source="worker:test", background=True)
 
 
 # ====================================================================== config
@@ -121,6 +125,9 @@ class Config(unittest.TestCase):
         for task in TaskType:
             for t in c.route(task):
                 self.assertGreater(c.price(t, date(2026, 11, 21)).output, 0, t.key)
+        # Gemini's free tier asks for up to a minute; background work must outwait it
+        self.assertGreaterEqual(c.reliability.background_max_wait_s, 60)
+        self.assertLess(c.reliability.max_retry_wait_s, 60)
 
     def test_one_environment_variable_moves_a_task_from_gemini_to_claude(self):
         """The success criterion: a configuration change, no code change."""
@@ -161,6 +168,30 @@ class Config(unittest.TestCase):
         self.assertEqual(c.limits.monthly_spend_usd, Decimal("25"))
         self.assertEqual(c.limits.override(daily_requests_per_user=50, monthly_tokens=None),
                          c.limits.__class__(50, 1_000_000, Decimal("25"), 50_000, 4_000))
+
+
+class MissingKeys(unittest.TestCase):
+    """Checked before paid work starts, so a run that would fail every call
+    stops instead of logging a failure per chunk."""
+
+    def test_no_key_on_the_route_names_the_variables_to_set(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            why = missing_keys(TaskType.FINANCIAL_EXTRACTION, config())
+        self.assertIn("financial_extraction", why)
+        self.assertIn("GEMINI_API_KEY or GROQ_API_KEY", why)
+
+    def test_a_key_for_any_provider_on_the_route_is_enough(self):
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "gsk_test"}, clear=True):
+            self.assertIsNone(missing_keys(TaskType.FINANCIAL_EXTRACTION, config()))
+            self.assertIsNotNone(missing_keys(TaskType.COMPLEX_FINANCIAL_REASONING, config()),
+                                 "groq is not on that route")
+
+    def test_a_renamed_key_variable_is_the_one_checked(self):
+        renamed = config(providers={"gemini": {"api_key_env": "VAULT_GEMINI"}})
+        with mock.patch.dict(os.environ, {"GEMINI_API_KEY": "x"}, clear=True):
+            self.assertIn("VAULT_GEMINI", missing_keys(TaskType.FINANCIAL_EXTRACTION, renamed))
+        with mock.patch.dict(os.environ, {"VAULT_GEMINI": "x"}, clear=True):
+            self.assertIsNone(missing_keys(TaskType.FINANCIAL_EXTRACTION, renamed))
 
 
 class Cost(unittest.TestCase):
@@ -234,6 +265,71 @@ class Routing(unittest.TestCase):
         self.assertEqual((r.provider, r.fallback), ("groq", True))
         self.assertEqual([row.status for row in store.rows], ["failed", "fallback"])
 
+    def test_background_work_waits_out_a_rate_limit_instead_of_falling_back(self):
+        """A per-minute limit says when it lifts. Measured: Gemini's free tier
+        answers its 16th request in a minute with RESOURCE_EXHAUSTED,
+        quotaId GenerateRequestsPerMinutePerProjectPerModel-FreeTier and
+        retryDelay "54s"."""
+        g, store, p, clock = gw(gemini=Script("gemini", fail(ErrorKind.RATE_LIMITED, retry_after=54),
+                                              ok()),
+                                groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((clock.slept, r.provider, r.fallback, p["groq"].calls),
+                         ([54], "gemini", False, []))
+        self.assertEqual([row.status for row in store.rows], ["failed", "success"])
+
+        # someone waiting on an answer is not made to wait a minute for it
+        g, _, _, clock = gw(gemini=Script("gemini", fail(ErrorKind.RATE_LIMITED, retry_after=54)),
+                            groq=Script("groq", ok()))
+        r = g.complete(req(), CTX)
+        self.assertEqual((clock.slept, r.provider), ([], "groq"))
+
+    def test_background_work_treats_a_hint_as_a_floor_and_keeps_trying(self):
+        """Seen on the demo: a 429 saying "retry in 1s", then another. Someone
+        waiting falls back after three tries; background work backs off and
+        gets its answer from the primary."""
+        hint = fail(ErrorKind.RATE_LIMITED, retry_after=1)
+        g, store, p, clock = gw(gemini=Script("gemini", hint, hint, hint, ok()),
+                                groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((r.provider, p["groq"].calls), ("gemini", []))
+        # backoff_base_s is 1 here: steps 1, 2, 4 against a hint of 1
+        self.assertEqual(clock.slept, [1, 2, 4], "the longer of the hint and the backoff")
+
+    def test_background_work_rides_out_high_demand_past_an_opened_circuit(self):
+        """Seen on the demo: "UNAVAILABLE: high demand" for longer than three
+        quick tries. The circuit opens at the third failure (breaker_failures
+        is 3 here); background work keeps going and its success closes it."""
+        busy = fail(ErrorKind.OVERLOADED)
+        g, _, p, clock = gw(gemini=Script("gemini", *[busy] * 5, ok()),
+                            groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((r.provider, len(p["gemini"].calls)), ("gemini", 6))
+        self.assertEqual(clock.slept, [1, 2, 4, 8, 16], "not capped at backoff_max_s (8)")
+        self.assertEqual(g.breaker.state("gemini:flash"), "closed")
+        # the same trouble for someone waiting: three tries, then the fallback
+        g, _, p, _ = gw(gemini=Script("gemini", *[busy] * 3), groq=Script("groq", ok()))
+        self.assertEqual(g.complete(req(), CTX).provider, "groq")
+
+    def test_background_work_has_a_budget_not_just_a_cap(self):
+        long = fail(ErrorKind.RATE_LIMITED, retry_after=100)
+        g, _, p, clock = gw(gemini=Script("gemini", long, long), groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((clock.slept, r.provider), ([100], "groq"),
+                         "100s fits in 180; another 100 does not")
+
+    def test_background_work_still_falls_back_past_its_own_cap(self):
+        g, _, _, clock = gw(gemini=Script("gemini", fail(ErrorKind.RATE_LIMITED, retry_after=3600)),
+                            groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((clock.slept, r.provider), ([], "groq"))
+
+    def test_system_work_is_background(self):
+        import evident_ai.gateway as gateway_module
+        with mock.patch.object(gateway_module, "_internal_org", ORG):
+            ctx = gateway_module.system_context("extraction")
+        self.assertEqual((ctx.background, ctx.user_id, ctx.organization_id), (True, None, ORG))
+
     def test_errors_that_waiting_cannot_fix_are_not_retried(self):
         for kind in (ErrorKind.BAD_REQUEST, ErrorKind.AUTH, ErrorKind.NOT_FOUND,
                      ErrorKind.TOO_LARGE, ErrorKind.QUOTA_EXHAUSTED):
@@ -296,6 +392,21 @@ class Breaker(unittest.TestCase):
         clock.t += 120                                   # past the 60s cooldown, inside 600s
         g.complete(req(), CTX)
         self.assertEqual(len(p["gemini"].calls), 1)
+
+    def test_a_request_refused_because_every_circuit_is_open_is_still_logged(self):
+        """No provider is called, so no attempt logs it — but the request was
+        made and failed, and it has to be findable."""
+        g, store, _, _ = gw(gemini=Script("gemini", fail(ErrorKind.AUTH)),
+                            groq=Script("groq", fail(ErrorKind.AUTH)))
+        with self.assertRaises(AllProvidersFailed):
+            g.complete(req(), CTX)
+        with self.assertRaises(AllProvidersFailed) as cm:
+            g.complete(req(), CTX)
+        self.assertEqual(len(store.rows), 3, "two attempts, then the refused request")
+        last = store.rows[-1]
+        self.assertEqual((last.status, last.provider, last.request_id, last.user_id),
+                         ("failed", "gemini", cm.exception.request_id, USER))
+        self.assertIn("open circuit", last.error_message)
 
     def test_bad_requests_do_not_count_against_the_provider(self):
         g, _, _, _ = gw(cfg=config(gateway={"max_attempts": 1}),

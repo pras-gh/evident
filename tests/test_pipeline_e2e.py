@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import unittest
 
 from test_ingest_e2e import DSN, fixture_origin
@@ -64,27 +65,27 @@ class _Client:
             def create(self, **kw):
                 outer.calls.append(kw)
                 sent = kw["messages"][0]["content"]
-                # "[42_7] some text..." — the id the chunker really produced.
-                # One chunk per request, so there is exactly one.
-                pid = sent.split("]", 1)[0].lstrip("[")
+                # "[42_7] some text..." — the id the chunker really produced,
+                # and a quote from that paragraph, which is checked against it
+                pid, said = re.search(r"^\[([^\]]+)\] (.*)$", sent, re.M).groups()
                 return _Response({
                     "entities": [
                         {"name": "Blackwell", "entity_type": "product",
                          "confidence": 0.99, "paragraph_id": pid,
-                         "quote": sent[:60]},
+                         "quote": said[:60]},
                         {"name": "AI Infrastructure", "entity_type": "strategy",
                          "confidence": 0.97, "paragraph_id": pid,
-                         "quote": sent[:60]},
+                         "quote": said[:60]},
                         {"name": "Export Controls", "entity_type": "risk",
                          "confidence": 0.95, "paragraph_id": pid,
-                         "quote": sent[:60]},
+                         "quote": said[:60]},
                     ],
                     "relationships": [
                         {"source_name": "AI Infrastructure",
                          "target_name": "Blackwell",
                          "relationship_type": "drives_investment",
                          "confidence": 0.9, "paragraph_id": pid,
-                         "quote": sent[:60]},
+                         "quote": said[:60]},
                     ],
                 })
         return _M()

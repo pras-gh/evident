@@ -1,9 +1,11 @@
 # Real Entity Extraction
 
-Everything runs against Claude. No free-form output anywhere in the path.
+Extraction goes through the AI gateway (`docs/ai-gateway.md`). The task
+`financial_extraction` is routed by `config/ai.toml`, Gemini 3.5 Flash-Lite by
+default. No free-form output anywhere in the path.
 
 ```
-chunk  ->  Claude API  ->  JSON Schema  ->  Pydantic  ->  entities + relationships  ->  Postgres
+chunk  ->  gateway  ->  JSON Schema  ->  Pydantic  ->  entities + relationships  ->  Postgres
 ```
 
 ## Never free-form
@@ -20,11 +22,16 @@ a response becomes objects. A response that will not parse is rejected whole —
 not partially read, not repaired, not "best effort". There is no code path from
 raw model text to the database.
 
-**3. Per-item validation, after parsing.** Two rules cannot be expressed in a
+**3. Per-item validation, after parsing.** Some rules cannot be expressed in a
 schema, because they depend on the input we sent:
 
-- an entity must cite a `paragraph_id` we actually supplied
-- a relationship's two endpoints must both be entities in the same response
+- an entity must cite a `paragraph_id` we actually supplied;
+- its quote must be in that paragraph. Matching allows for case, curly quotes,
+  dashes and whitespace, and the stored quote is the sentence that contains
+  it (see "Prompt v4" below);
+- its name must be a topic, at most `MAX_NAME_WORDS` (7) words;
+- a relationship's two endpoints must both be entities in the same response,
+  and its quote must be in its paragraph too.
 
 These are checked per item and violators are dropped and counted, rather than
 failing the batch — one hallucinated citation should not cost the other
@@ -45,6 +52,84 @@ different fix:
 A rejected response never yields partial entities. The alternative — salvaging
 what parses — means storing an entity from a response we know was cut off,
 which is the kind of data that looks fine until someone audits it.
+
+## Prompt v4: names that persist, evidence that reads
+
+v3.1 on Gemini 3.5 Flash-Lite, over the three demo 10-Ks, had three problems:
+
+- **Quotes were bare names.** 84% were under four words, with a median of two.
+- **Names were sometimes phrases**, up to 17 words: "loss of data or other
+  information technology assets".
+- **A topic's name drifted between years.** The timeline then reported it as
+  dropped under one name and new under another.
+
+v4 (`extract_entities@4.2.0`) makes three changes.
+
+**Known topics in each request.** The memory builder passes the company's topics
+on file, most-cited first. Each request lists up to 40 of those that share a
+meaningful word with its paragraphs, and the prompt says to reuse a listed name
+exactly when it is the same thing. Filings are extracted oldest first, so each
+year can reuse the last year's names. The system prompt is unchanged per
+request; the list goes in the user message.
+
+**Short names.** The prompt asks for one to five words, and validation drops
+names over seven words, counted by spaces, as a backstop. The limit was six
+counted by punctuation until v4.2 returned "U.S. Department of Commerce's U.S.
+Entity List": a real name, scored as ten.
+
+**Quotes anchored in code.** The model still returns a short span, which keeps
+output tokens, the expensive side, low. The code finds the span in the cited
+paragraph and stores the whole sentence that contains it. Matching allows for
+case, curly quotes, dashes, whitespace and "..." between verbatim fragments.
+A quote found in the other part of a paragraph the chunker split moves the
+citation there. A quote that isn't found drops its item with a reason; nothing
+checked this before. A sentence over 600 characters keeps the span.
+
+Measured on the same corpus and model, 2026-11-21, one run each:
+
+| | v3.1 | v4.2 |
+|---|---|---|
+| quotes under 4 words | 84% (median 2 words) | 5% (median 35) |
+| names over 5 words | 10, up to 17 | 1 ("EU-U.S. Data Privacy Framework") |
+| entities / mentions / relationships | 140 / 551 / 8 | 107 / 684 / 36 |
+| topics in all three filings | 51 | 81 |
+| headline-topic recall | 113/131 (86%) | 125/131 (95%) |
+| timeline: changes shown / withheld by the text check | 61 / 67 | 38 / 3 |
+| cost of the full extraction, list price | $0.12 | $0.19 |
+
+**Headline-topic recall** measures, for eight topics (H20, Blackwell, Export
+Controls, China, AI Diffusion, Taiwan, Hopper, GB200), how many of the
+paragraphs whose text names the topic the model cited for it. It is computed
+from each version's raw answers in the response cache. Export Controls went
+from 32 to 45 of 46, because "export restrictions" now reuses the known name.
+
+**How v4 got there.** Each step was found by measuring the one before:
+
+- **v4.0** used examples taken from the demo filings. "H20 Inventory Charge"
+  was one, and the model returned exactly that for the paragraph it came
+  from, but not H20 itself. Examples are now neutral, and a test keeps corpus
+  phrases out of the rules.
+- **v4.1** folded a new rule into a broader known topic: with "Export
+  Controls" listed, the AI Diffusion IFR, new in FY2025, fell from 10 to 7 of
+  12 paragraphs. The prompt now says a specific rule, product or event is its
+  own entity; v4.2 has it in 9 of 12.
+
+The remaining differences of one or two paragraphs are within what one run to
+the next could move. Run-to-run variance hasn't been measured.
+
+Validation dropped 2 items in the final run. One was that Entity List name,
+under the old limit. The other was a relationship whose quote isn't in its
+paragraph. Quote drops in earlier runs were real misquotes, such as "negative
+impact demand" where the filing says "negatively impact demand".
+
+**Known topics are part of the input, so they are part of the cache key.** A
+filing's cached answers hold as long as the earlier filings' topics don't
+change. If an earlier filing gains or loses a topic, for example because a
+chunk that failed last time succeeds this time, later filings are extracted
+again. That's correct, but it is why background requests now retry hard
+(`docs/ai-gateway.md`, Reliability): a run that completes is a run whose
+re-run costs $0. That held here; the second run of the complete seed cost
+nothing.
 
 ## Relationships come from the same call
 
@@ -119,18 +204,15 @@ integration test is what surfaced it.
 
 ## Still not proven
 
-**The live call has not happened.** There are no Anthropic credentials in this
-environment, so every test drives a fake client. The request shape, schema,
-caching block and batch path follow the SDK reference, but nothing has been
-sent. Two things can only be measured on a real run: the drop rate, and whether
-the system prompt is long enough to cache — at 3,429 characters it is roughly
-900 tokens, likely just under the ~1024-token minimum, in which case caching
-saves nothing and `cache_hit_rate()` will report zero.
+**Claude has never been called.** Extraction has run live on Gemini 3.5
+Flash-Lite only: `tools/extract_live.py` on three chunks, and the whole demo
+corpus through `tools/seed_demo.py --extract gateway`. Routing it to Claude
+is one line in `config/ai.toml`, but the Anthropic adapter has only been tested
+against mocked HTTP.
 
-**The only filing on disk is synthetic.** `tests/fixtures/edgar/...` has real
-inline-XBRL structure and word-salad prose, which is right for testing the
-parser and useless for testing extraction. A real run needs a real filing
-ingested from SEC, which this network blocks at the edge.
+**Full 10-Ks have not been extracted.** The real filings on disk are excerpts:
+Risk Factors sections, 94 chunks across three years. A full 10-K is about 470
+chunks, and sec.gov blocks this network at the edge.
 
 ## The live run
 
@@ -138,7 +220,7 @@ ingested from SEC, which this network blocks at the edge.
 criterion:
 
 ```bash
-export ANTHROPIC_API_KEY=...        # or: ant auth login
+export GEMINI_API_KEY=...           # whichever key the financial_extraction route needs
 export DATABASE_URL=postgresql+psycopg://localhost/evident
 python tools/extract_live.py --ticker NVDA --limit 3 --seed --verify
 ```
@@ -151,8 +233,8 @@ extraction. Seeding locally also means the run does not need sec.gov, which
 blocks many networks at the edge.
 
 `--verify` prints each criterion with a PASS/FAIL and exits non-zero on
-failure. Run it twice — the first run writes the prompt cache, the second reads
-it.
+failure. Run it twice: the first run stores each answer in the gateway's
+response cache, and the second is answered from it for $0.
 
 ### The cache criterion needed a fix first
 
@@ -169,14 +251,8 @@ extraction on their own; clearing the cache floor is the second benefit, not
 the reason. The run reports actual cached tokens either way, so the criterion is
 measured rather than assumed.
 
-### Not run against Claude
+### Run live on Gemini
 
-No API call has been made. There are no Anthropic credentials in the
-environment this was built in — `api.anthropic.com` answers, it just answers
-401 — so the command above has never been executed for real.
-
-The harness itself was exercised against a stub that returns canned responses
-with token counts, which proved the report renders, entities deduplicate across
-chunks, edges persist with their evidence chunk, and a second run adds no
-duplicate rows. That is the plumbing working. It is not evidence that Claude
-returns good entities, and nothing here should be read as if it were.
+On 2026-11-21, three chunks gave 0 rejected responses, 23 entities and 1
+relationship for $0.0056. The re-run was answered from the cache. Seeding the
+three demo 10-Ks through the gateway extracted all 94 chunks.

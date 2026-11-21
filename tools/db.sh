@@ -4,7 +4,8 @@
 # own port, started and stopped by this script.
 #
 #   tools/db.sh up       create if needed, start, create the database, migrate
-#   tools/db.sh seed     load three NVIDIA 10-Ks (keyword extraction, no API key)
+#   tools/db.sh seed     load three NVIDIA 10-Ks (keyword extraction, no API key;
+#                        replaces NVDA's memory, including a Gemini-extracted one)
 #   tools/db.sh status   is it running, and at what URL
 #   tools/db.sh url      print DATABASE_URL
 #   tools/db.sh stop
@@ -100,7 +101,9 @@ case "$1" in
   up) up ;;
   seed)
     running || die "not running — tools/db.sh up"
-    DATABASE_URL="$URL" "$PY" tools/seed_demo.py --corpus timeline
+    # --replace: keyword seeding is free and deterministic, so it always
+    # starts clean rather than mixing into a model-extracted memory
+    DATABASE_URL="$URL" "$PY" tools/seed_demo.py --corpus timeline --replace
     ;;
   stop)
     if running; then pg "$BIN/pg_ctl" -D "$DATA" -w stop >/dev/null; echo "db: stopped"; else echo "db: not running"; fi

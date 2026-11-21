@@ -83,7 +83,19 @@ async def load_timeline(db: AsyncSession, company: Company) -> engine.Timeline:
               if r.chunk_id is not None else None),
     ) for r in rows]
 
-    return engine.build_timeline(filings, topics, mentions)
+    # Each filing's whole text, so a topic is reported new or dropped only when
+    # the text bears it out, not merely because extraction named it
+    # differently in one of the two years.
+    parts: dict[int, list[str]] = {}
+    for r in (await db.execute(
+            select(Chunk.document_id, Chunk.text)
+            .join(Document, Document.id == Chunk.document_id)
+            .where(Document.company_id == company.id)
+            .order_by(Chunk.document_id, Chunk.ordinal))).all():
+        parts.setdefault(r.document_id, []).append(r.text)
+    full_text = {doc: "\n\n".join(chunks) for doc, chunks in parts.items()}
+
+    return engine.build_timeline(filings, topics, mentions, full_text)
 
 
 def _ref(f: engine.Filing | None) -> TimelineFilingRef | None:
@@ -128,15 +140,19 @@ async def company_timeline(
 
     # Filters apply after the build: `since` must not change what a filing was
     # compared with, or the first filing after it would become a baseline.
-    events = [e for e in timeline.events
-              if (kind is None or e.kind == kind)
-              and (entity is None or (e.topic and e.topic.slug == entity))
-              and (since is None or e.date >= since)]
+    def wanted(e: engine.Event) -> bool:
+        return ((kind is None or e.kind == kind)
+                and (entity is None or (e.topic and e.topic.slug == entity))
+                and (since is None or e.date >= since))
+
+    events = [e for e in timeline.events if wanted(e)]
     categories: dict[str, int] = {}
     for e in events:
         categories[e.category] = categories.get(e.category, 0) + 1
+    withheld = [e for e in timeline.withheld if wanted(e)]
     if category:
         events = [e for e in events if e.category.lower() == category.lower()]
+        withheld = [e for e in withheld if e.category.lower() == category.lower()]
 
     forms = {f.document_id: f.form_type for f in timeline.filings}
     return CompanyTimelineOut(
@@ -148,7 +164,8 @@ async def company_timeline(
             url=filing_url(company.cik, f.accession),
         ) for f in reversed(timeline.filings)],
         thresholds=TimelineThresholds(min_delta=engine.MIN_DELTA,
-                                      min_ratio=engine.MIN_RATIO),
-        categories=categories, total=len(events),
+                                      min_ratio=engine.MIN_RATIO,
+                                      carried_over=engine.CARRIED_OVER),
+        categories=categories, total=len(events), withheld=len(withheld),
         events=[entry(e, forms) for e in events[:limit]],
     )

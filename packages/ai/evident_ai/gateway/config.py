@@ -128,6 +128,8 @@ class Reliability:
     backoff_base_s: float = 0.5
     backoff_max_s: float = 8.0
     max_retry_wait_s: float = 20.0
+    background_max_wait_s: float = 180.0
+    background_max_attempts: int = 8
     breaker_failures: int = 5
     breaker_cooldown_s: float = 60.0
 

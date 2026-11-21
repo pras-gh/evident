@@ -362,9 +362,12 @@ export interface CompanyTimeline {
   ticker: string;
   company: string;
   filings: TimelineFiling[];
-  thresholds: { min_delta: number; min_ratio: number };
+  thresholds: { min_delta: number; min_ratio: number; carried_over?: number };
   /** events per category, ignoring the category filter */
   categories: Record<string, number>;
   total: number;
+  /** new or dropped topics extraction implied but the text did not: a
+   *  sentence quoted for each is in both filings. Not in `events`. */
+  withheld?: number;
   events: TimelineEvent[];
 }

@@ -8,7 +8,9 @@ The rules under test, each one a way a timeline goes wrong:
 * a change must be large in both absolute and relative terms to be reported;
 * paragraphs are counted once each, however the chunker cut them;
 * every change points at a paragraph, and the one it points at is the first
-  in reading order — preferring one that is new this year.
+  in reading order — preferring one that is new this year;
+* given the filings' text, a topic is new or dropped only if the text says so:
+  extraction that names a topic differently, or misses it, is not a change.
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ from datetime import date
 
 from evident_graph.timeline import (CARRIED_OVER, MIN_DELTA, MIN_RATIO, Filing,
                                     Mention, Topic, build_timeline, expanded,
-                                    narrowed, overlap, shingles)
+                                    narrowed, overlap, said, shingles)
 
 K24 = Filing(1, "0000000001-24-000001", "10-K", date(2024, 2, 21), "FY2024", 85)
 Q1 = Filing(2, "0000000001-24-000002", "10-Q", date(2024, 5, 29), "Q1 FY2025")
@@ -329,6 +331,136 @@ class Ordering(unittest.TestCase):
         self.assertEqual(len(keys), len(set(keys)))
         self.assertIn(f"{K25.accession}:expanded:export_controls", keys)
         self.assertIn(f"{K25.accession}:filed:", keys)
+
+
+def quoted(topic: Topic, filing: Filing, quote: str, page: int = 20) -> Mention:
+    return Mention(topic.entity_id, filing.document_id, chunk_id=filing.document_id * 1000 + page,
+                   paragraph_id=f"{page}_1", page=page, quote=quote)
+
+
+EXPORT_SENTENCE = "Export controls restrict shipments of our data center products to China."
+FILLER = ("Our business depends on the success of our partners. We compete in markets "
+          "that change quickly. ")
+
+
+class TheTextHasTheFinalSay(unittest.TestCase):
+    """Mentions are what extraction found, not what the filing says. Real
+    extraction names a topic differently from year to year, or misses it,
+    and without the text each slip is an event: on the demo 10-Ks extracted
+    by Gemini, 38 of 54 "no longer disclosed" pointed at a paragraph still in
+    the newer filing."""
+
+    def texts(self, **by_filing: str) -> dict[int, str]:
+        names = {"k24": K24, "k25": K25, "k26": K26}
+        return {names[k].document_id: v for k, v in by_filing.items()}
+
+    def test_a_topic_whose_sentence_is_still_there_is_not_dropped(self):
+        mentions = [quoted(CHINA, K25, EXPORT_SENTENCE)]          # FY2026 missed it
+        texts = self.texts(k25=FILLER + EXPORT_SENTENCE, k26=EXPORT_SENTENCE + " " + FILLER)
+        t = build_timeline([K25, K26], TOPICS, mentions, texts)
+        self.assertNotIn("china", kinds(t))
+        self.assertEqual([(e.kind, e.topic.slug) for e in t.withheld],
+                         [("no_longer_disclosed", "china")])
+        # without the text, the engine can only believe extraction
+        self.assertEqual(kinds(build_timeline([K25, K26], TOPICS, mentions)),
+                         {"china": "no_longer_disclosed"})
+
+    def test_lightly_edited_still_counts_as_there(self):
+        edited = EXPORT_SENTENCE.replace("our data center products", "our data center products and systems")
+        t = build_timeline([K25, K26], TOPICS, [quoted(CHINA, K25, EXPORT_SENTENCE)],
+                           self.texts(k25=EXPORT_SENTENCE, k26=edited))
+        self.assertNotIn("china", kinds(t))
+
+    def test_a_sentence_edited_only_to_remove_the_name_is_still_a_drop(self):
+        before = ("We offer NVIDIA DGX Cloud, NVIDIA AI Enterprise and NVIDIA Omniverse "
+                  "to enterprises through our cloud partners around the world.")
+        after = before.replace("NVIDIA DGX Cloud, ", "")
+        self.assertTrue(said(after).has_sentence(before), "most of the sentence survives")
+        t = build_timeline([K25, K26], TOPICS, [quoted(DGX, K25, before)],
+                           self.texts(k25=before, k26=after))
+        self.assertEqual(kinds(t), {"dgx_cloud": "no_longer_disclosed"})
+        self.assertEqual(t.withheld, [])
+
+    def test_a_topic_quoted_from_last_years_sentence_is_not_new(self):
+        # FY2025's extraction did not record China; the sentence was there
+        t = build_timeline([K25, K26], TOPICS, [quoted(CHINA, K26, EXPORT_SENTENCE)],
+                           self.texts(k25=FILLER + EXPORT_SENTENCE, k26=EXPORT_SENTENCE))
+        self.assertEqual(kinds(t), {})
+        self.assertEqual([e.kind for e in t.withheld], ["newly_disclosed"])
+
+    def test_a_sentence_edited_only_to_add_the_name_is_still_new(self):
+        before = ("We expect demand for our data center products to remain strong "
+                  "in fiscal year 2026 across every region we serve.")
+        after = before.replace("our data center products", "our H20 data center products")
+        self.assertTrue(said(before).has_sentence(after))
+        t = build_timeline([K25, K26], TOPICS, [quoted(H20, K26, after)],
+                           self.texts(k25=before, k26=after))
+        self.assertEqual(kinds(t), {"h20": "newly_disclosed"})
+
+    def test_a_quote_that_is_only_the_name_is_looked_up_as_a_name(self):
+        mentions = [quoted(H20, K26, "H20")]
+        t = build_timeline([K25, K26], TOPICS, mentions,
+                           self.texts(k25=FILLER, k26="Sales of H20 require a license."))
+        self.assertEqual(kinds(t), {"h20": "newly_disclosed"})
+        t = build_timeline([K25, K26], TOPICS, mentions,
+                           self.texts(k25=FILLER + "We introduced the H20 for China.",
+                                      k26="Sales of H20 require a license."))
+        self.assertEqual(kinds(t), {})
+
+    def test_a_clause_added_about_the_topic_is_the_change(self):
+        """From the real FY2025 10-K: last year's sentence, plus the clause that
+        is the disclosure. The topic's canonical name ("AI Diffusion Rule") is
+        not in the quote, which says "IFR", so the check is on new words."""
+        before = ("Such controls have been and may again be very broad in scope and "
+                  "application, prohibit us from exporting our products to any or all "
+                  "customers in one or more markets, including but not limited to China, "
+                  "and could negatively impact our manufacturing, testing and warehousing "
+                  "locations and options.")
+        after = before.replace("including but not limited to China,",
+                               "including but not limited to China and over 150 countries "
+                               "designated \u201cTier 2\u201d by the January 2025 AI Diffusion IFR,")
+        diffusion = Topic(14, "ai_diffusion_rule", "AI Diffusion Rule", "risk")
+        self.assertTrue(said(before).has_sentence(after), "most of it is last year's")
+        t = build_timeline([K25, K26], TOPICS + [diffusion], [quoted(diffusion, K26, after)],
+                           self.texts(k25=before, k26=after))
+        self.assertEqual(kinds(t), {"ai_diffusion_rule": "newly_disclosed"})
+
+    def test_a_new_clause_in_other_words_is_the_change_too(self):
+        before = ("We may be unable to sell our inventory of such products and may be "
+                  "unable to develop replacement products in time to meet demand.")
+        after = before.replace("in time to meet demand.",
+                               "in time to meet demand, because shipments abroad now need "
+                               "government approval.")
+        licensing = Topic(15, "licensing", "Licensing Requirements", "risk")
+        self.assertTrue(said(before).has_sentence(after), "most of it is last year's")
+        t = build_timeline([K25, K26], TOPICS + [licensing], [quoted(licensing, K26, after)],
+                           self.texts(k25=before, k26=after))
+        self.assertEqual(kinds(t), {"licensing": "newly_disclosed"},
+                         "a new clause, though it never says 'licensing'")
+
+    def test_a_name_is_matched_on_whole_words(self):
+        self.assertTrue(said("sales in the U.S. grew").has_name("U.S."))
+        self.assertFalse(said("our Chinatown office").has_name("China"))
+
+    def test_disclosed_again_is_checked_the_same_way(self):
+        sentence = "Our DGX Cloud service rents clusters of our systems to enterprises by the month."
+        mentions = [quoted(DGX, K24, sentence), quoted(DGX, K26, sentence)]
+        texts = self.texts(k24=sentence, k25=FILLER + sentence, k26=sentence)
+        t = build_timeline([K24, K25, K26], TOPICS, mentions, texts)
+        self.assertEqual(kinds(t), {}, "FY2025 missed it, and that is all that happened")
+        self.assertEqual(sorted(e.kind for e in t.withheld),
+                         ["disclosed_again", "no_longer_disclosed"])
+
+    def test_expanded_and_narrowed_are_counts_and_are_not_checked(self):
+        mentions = cite(EXPORT, K25, 4, text=EXPORT_SENTENCE) + cite(EXPORT, K26, 9, text=EXPORT_SENTENCE)
+        t = build_timeline([K25, K26], TOPICS, mentions,
+                           self.texts(k25=EXPORT_SENTENCE, k26=EXPORT_SENTENCE))
+        self.assertEqual(kinds(t), {"export_controls": "expanded"})
+
+    def test_without_both_texts_a_comparison_reports_what_extraction_found(self):
+        mentions = [quoted(CHINA, K25, EXPORT_SENTENCE)]
+        t = build_timeline([K25, K26], TOPICS, mentions, self.texts(k26=EXPORT_SENTENCE))
+        self.assertEqual(kinds(t), {"china": "no_longer_disclosed"})
 
 
 if __name__ == "__main__":

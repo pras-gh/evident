@@ -170,21 +170,40 @@ Entries expire after `cache_ttl_days` (90).
 - **Retries:** up to `max_attempts` per provider (3), only for retryable kinds
   (rate limited, overloaded, 5xx, timeout, connection). Backoff is exponential
   with jitter (0.5s, 1s, 2s… capped at 8s). A `retry-after`/`RetryInfo` delay is
-  honoured up to `max_retry_wait_s` (20s); a longer one falls back immediately,
-  since in practice it's a quota.
+  honoured up to `max_retry_wait_s` (20s) when someone is waiting; a longer one
+  falls back immediately.
+- **Background work tries harder.** Requests made under `system_context()`
+  (extraction, backfills) are marked `background`. They get
+  `background_max_attempts` (8) attempts and `background_max_wait_s` (180s)
+  to spend waiting in all. Their backoff isn't capped at `backoff_max_s`, and a
+  provider's delay hint is a floor rather than a promise: the wait is the
+  longer of the two. They also keep retrying after their own failures open the
+  circuit, and a success closes it again. Each rule comes from extracting the
+  demo 10-Ks on Gemini's free tier:
+  - a per-minute limit asking for 54s, which the interactive 20s cap refused;
+  - a "retry in 1s" followed by another refusal;
+  - "UNAVAILABLE: high demand" outlasting three quick tries.
+
+  Without these rules, every failed chunk is a gap in a company's memory.
 - **Not retried:** bad request, auth, model not found, too large, quota
   exhausted. Each falls back once.
 - **Circuit breaker:** per provider and model. It opens after
   `breaker_failures` (5) consecutive failures, for `breaker_cooldown_s` (60s),
   then lets one probe through. Quota, auth and not-found errors open it at
   once. Bad requests don't count. State is per process, which suits one API
-  instance and a few workers.
+  instance and a few workers. A request refused because every circuit on its
+  route is open calls no provider, but it's still logged as `failed` against
+  the primary.
 - **Refusals** (safety blocks, `refusal` stop reasons) are returned, not
   retried or rerouted.
 - **Errors** are classified per provider:
   - Gemini `RESOURCE_EXHAUSTED` with a per-day quota violation, an Anthropic 429
     without `retry-after` (a spend cap), and a Groq 429 with a long wait are all
     quota exhaustion.
+  - Gemini's per-minute limit is a rate limit. Seen live on the free tier: a
+    `QuotaFailure` with quotaId
+    `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`, plus
+    `RetryInfo.retryDelay: "54s"`, and no `retry-after` header.
   - Anthropic 529 and Groq 498 are overloaded.
 
 ## Security
@@ -282,9 +301,10 @@ tokens as it reads. From those, estimated:
   - extraction works on real chunks;
   - repeats are answered from the cache, all logged and costed.
 
+  Gemini's per-minute rate-limit error has also been seen live (shape above).
   Groq and Anthropic adapters are tested only against each provider's
   documented wire format over mocked HTTP. Not yet seen live:
-  - a Gemini quota error (its detail shape);
+  - a Gemini per-day quota error;
   - Groq's `max_completion_tokens` field.
 
   The `anthropic-version` sent is the one the official SDK sends.
