@@ -339,26 +339,31 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         with session_scope(DSN) as db:
             document = db.execute(select(Document).where(
                 Document.id == self.document_id)).scalar_one()
-            pid = (db.execute(select(Chunk).where(
+            first = db.execute(select(Chunk).where(
                 Chunk.document_id == self.document_id)
-                .order_by(Chunk.ordinal)).scalars().first().paragraph_ids or [""])[0]
+                .order_by(Chunk.ordinal)).scalars().first()
+            pid = (first.paragraph_ids or [""])[0]
+            # quotes are checked against the paragraph, so they must be in it
+            from evident_parser.anchors import split_chunk
+            parts = split_chunk(first.text, first.paragraph_ids, first.page_number)
+            said = (parts[0].text if parts else first.text)[:40]
 
             client = _Client({
                 "entities": [
                     {"name": "Blackwell", "entity_type": "product",
                      "confidence": 0.99, "paragraph_id": pid,
-                     "quote": "accelerate Blackwell deployment"},
+                     "quote": said},
                     {"name": "AI Infrastructure", "entity_type": "strategy",
                      "confidence": 0.97, "paragraph_id": pid,
-                     "quote": "investing in AI infrastructure"},
+                     "quote": said},
                 ],
                 "relationships": [
                     {"source_name": "AI Infrastructure", "target_name": "Blackwell",
                      "relationship_type": "drives_investment", "confidence": 0.9,
-                     "paragraph_id": pid, "quote": "investing in AI infrastructure"},
+                     "paragraph_id": pid, "quote": said},
                     {"source_name": "Ghost", "target_name": "Blackwell",
                      "relationship_type": "supplies", "confidence": 0.9,
-                     "paragraph_id": pid, "quote": "nothing said this"},
+                     "paragraph_id": pid, "quote": said},
                 ],
             })
             stats = build_for_document(db, company_id=self.company_id,
@@ -423,6 +428,34 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
             mb.build_for_document(db, company_id=self.company_id, document=document,
                                   limit=1, use_cache=False)
         self.assertIsNone(seen["cache"])
+
+    def test_the_topics_on_file_go_to_extraction_most_cited_first(self):
+        """So the model can reuse a name rather than coin this year's wording."""
+        from unittest import mock
+        from sqlalchemy import delete, select
+        import workers.memory_builder as mb
+        from evident_ai.extract import DropReport, Usage
+        from evident_db import Document, Entity, session_scope
+
+        seen = {}
+
+        def spy(groups, **kw):
+            seen.update(kw)
+            return {}, DropReport(), Usage()
+
+        with session_scope(DSN) as db, mock.patch.object(mb, "extract_document", spy):
+            db.execute(delete(Entity).where(Entity.company_id == self.company_id))
+            db.add_all([Entity(company_id=self.company_id, slug="china", name="China",
+                               entity_type="geography", mention_count=2),
+                        Entity(company_id=self.company_id, slug="export_controls",
+                               name="Export Controls", entity_type="risk", mention_count=9)])
+            db.flush()
+            document = db.execute(select(Document).where(
+                Document.id == self.document_id)).scalar_one()
+            mb.build_for_document(db, company_id=self.company_id, document=document, limit=1)
+            db.rollback()
+
+        self.assertEqual(seen["known"], [("Export Controls", "risk"), ("China", "geography")])
 
     def test_a_rejected_response_stores_nothing(self):
         """A truncated response must not leave half a document behind."""

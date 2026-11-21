@@ -26,6 +26,11 @@ from pydantic import ValidationError
 VALID = {"7_1", "7_2"}
 
 
+#: The prompt's worked example; the default fixtures quote from it.
+WORKED_EXAMPLE = ("NVIDIA continues investing in AI infrastructure to accelerate "
+                  "Blackwell deployment despite export restrictions into China.")
+
+
 def ent(**over):
     base = {"name": "Blackwell", "entity_type": "product", "confidence": 0.99,
             "paragraph_id": "7_1", "quote": "accelerate Blackwell deployment"}
@@ -369,7 +374,7 @@ class Recording(unittest.TestCase):
 
     def setUp(self):
         self.blocks = [Block(paragraph_id="7_1", ordinal=0, page_number=7,
-                             text="NVIDIA invests in AI infrastructure.")]
+                             text=WORKED_EXAMPLE)]
 
     def test_fires_for_accepted_and_rejected_alike(self):
         # a response that failed is the most useful artefact there is when

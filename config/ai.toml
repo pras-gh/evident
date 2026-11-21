@@ -18,9 +18,12 @@ backoff_base_s = 0.5
 backoff_max_s = 8.0
 # a rate limit asking us to wait longer than this falls back instead of waiting
 max_retry_wait_s = 20.0
-# ...unless no one is waiting (extraction, backfills): then up to this long.
-# Gemini's free tier asks for up to a minute when its per-minute limit is hit.
-background_max_wait_s = 120.0
+# ...unless no one is waiting (extraction, backfills): then this many attempts,
+# with up to this long spent waiting in all. Gemini's free tier asks for up to
+# a minute when its per-minute limit is hit, and "high demand" outlasts a few
+# quick retries.
+background_max_attempts = 8
+background_max_wait_s = 180.0
 # consecutive failures that open a provider/model's circuit, and for how long
 breaker_failures = 5
 breaker_cooldown_s = 60.0

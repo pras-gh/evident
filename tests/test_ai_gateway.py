@@ -284,6 +284,40 @@ class Routing(unittest.TestCase):
         r = g.complete(req(), CTX)
         self.assertEqual((clock.slept, r.provider), ([], "groq"))
 
+    def test_background_work_treats_a_hint_as_a_floor_and_keeps_trying(self):
+        """Seen on the demo: a 429 saying "retry in 1s", then another. Someone
+        waiting falls back after three tries; background work backs off and
+        gets its answer from the primary."""
+        hint = fail(ErrorKind.RATE_LIMITED, retry_after=1)
+        g, store, p, clock = gw(gemini=Script("gemini", hint, hint, hint, ok()),
+                                groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((r.provider, p["groq"].calls), ("gemini", []))
+        # backoff_base_s is 1 here: steps 1, 2, 4 against a hint of 1
+        self.assertEqual(clock.slept, [1, 2, 4], "the longer of the hint and the backoff")
+
+    def test_background_work_rides_out_high_demand_past_an_opened_circuit(self):
+        """Seen on the demo: "UNAVAILABLE: high demand" for longer than three
+        quick tries. The circuit opens at the third failure (breaker_failures
+        is 3 here); background work keeps going and its success closes it."""
+        busy = fail(ErrorKind.OVERLOADED)
+        g, _, p, clock = gw(gemini=Script("gemini", *[busy] * 5, ok()),
+                            groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((r.provider, len(p["gemini"].calls)), ("gemini", 6))
+        self.assertEqual(clock.slept, [1, 2, 4, 8, 16], "not capped at backoff_max_s (8)")
+        self.assertEqual(g.breaker.state("gemini:flash"), "closed")
+        # the same trouble for someone waiting: three tries, then the fallback
+        g, _, p, _ = gw(gemini=Script("gemini", *[busy] * 3), groq=Script("groq", ok()))
+        self.assertEqual(g.complete(req(), CTX).provider, "groq")
+
+    def test_background_work_has_a_budget_not_just_a_cap(self):
+        long = fail(ErrorKind.RATE_LIMITED, retry_after=100)
+        g, _, p, clock = gw(gemini=Script("gemini", long, long), groq=Script("groq", ok()))
+        r = g.complete(req(), BG)
+        self.assertEqual((clock.slept, r.provider), ([100], "groq"),
+                         "100s fits in 180; another 100 does not")
+
     def test_background_work_still_falls_back_past_its_own_cap(self):
         g, _, _, clock = gw(gemini=Script("gemini", fail(ErrorKind.RATE_LIMITED, retry_after=3600)),
                             groq=Script("groq", ok()))
