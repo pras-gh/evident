@@ -371,3 +371,36 @@ export interface CompanyTimeline {
   withheld?: number;
   events: TimelineEvent[];
 }
+
+// ------------------------------------------------------------------ search
+
+/** One passage from POST /v1/search, with the citation it came from. */
+export interface SearchHit {
+  chunk_id: number;
+  chunk_hash: string;
+  paragraph_ids: string[];
+  /** cosine similarity, 0–1 */
+  score: number;
+  text: string;
+  accession: string;
+  form_type: string;
+  filed_at: string;
+  page_number: number | null;
+  section_title: string | null;
+  citation: string;
+}
+
+export interface SearchResponse {
+  query: string;
+  hits: SearchHit[];
+  took_ms: number;
+  embedder: string;
+}
+
+/** A search either answers, or says why it could not: the API's 503 `error`
+ *  codes, "too_short" for a query the API refuses as under two characters,
+ *  and "unreachable" when the API itself did not answer. */
+export type SearchOutcome =
+  | { ok: true; result: SearchResponse }
+  | { ok: false; error: "search_not_configured" | "search_not_indexed" | "search_unavailable"
+        | "too_short" | "unreachable" | "failed"; message: string };

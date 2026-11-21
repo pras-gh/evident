@@ -12,6 +12,8 @@ import type {
   PageView,
   ResolvedCitation,
   ResolvedEvidence,
+  SearchOutcome,
+  SearchResponse,
 } from "./types";
 
 const BASE = process.env.API_URL ?? "http://localhost:8000/v1";
@@ -108,3 +110,29 @@ export const getCompanyTimeline = (t: string, category?: string, entity?: string
   if (entity) q.set("entity", entity);
   return get<CompanyTimeline>(`/company/${encodeURIComponent(t)}/timeline?${q}`);
 };
+
+/** Passages from the filings nearest a question, each with its citation.
+ *  Never cached: the same question after a re-index should see the new index.
+ *  The API's refusals come back as values, so the page can say what to do. */
+export async function searchFilings(query: string, ticker?: string,
+                                    k = 20): Promise<SearchOutcome> {
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/search`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query, k, ...(ticker ? { ticker } : {}) }),
+      cache: "no-store",
+    });
+  } catch {
+    return { ok: false, error: "unreachable",
+             message: "The API is not reachable. Start it with tools/dev.sh api." };
+  }
+  const body = await res.json().catch(() => null);
+  if (res.ok) return { ok: true, result: body as SearchResponse };
+  if (res.status === 503 && body?.error)
+    return { ok: false, error: body.error, message: body.message ?? "" };
+  if (res.status === 422)
+    return { ok: false, error: "too_short", message: "Type at least two characters." };
+  return { ok: false, error: "failed", message: `Search failed: HTTP ${res.status}.` };
+}
