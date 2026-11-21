@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
-import { RESOLVE_BATCH, resolveCitations } from "./api";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { RESOLVE_BATCH, resolveCitations, searchFilings } from "./api";
 import type { CitationRef, ResolvedCitation } from "./types";
 
 /** Stands in for POST /v1/evidence/resolve: refuses more than the API does,
@@ -56,5 +56,45 @@ describe("resolveCitations", () => {
     const post = fakePost();
     expect(await resolveCitations([], post as never)).toEqual([]);
     expect(post).not.toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------------------------------ search
+
+function respond(status: number, body: unknown) {
+  return vi.fn(async () => new Response(JSON.stringify(body), { status }));
+}
+
+describe("searchFilings", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("posts the query, uncached, and returns the hits", async () => {
+    const fetch = respond(200, { query: "chips", hits: [], took_ms: 5, embedder: "gemini/x" });
+    vi.stubGlobal("fetch", fetch);
+    const out = await searchFilings("chips", "nvda", 5);
+    expect(out).toEqual({ ok: true, result: { query: "chips", hits: [], took_ms: 5,
+                                              embedder: "gemini/x" } });
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toMatch(/\/search$/);
+    expect(init.method).toBe("POST");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(init.body as string)).toEqual({ query: "chips", k: 5, ticker: "nvda" });
+  });
+
+  it("passes the API's reason through when search cannot answer", async () => {
+    vi.stubGlobal("fetch", respond(503, { error: "search_not_indexed",
+                                          message: "Run workers/embedding_worker.py" }));
+    expect(await searchFilings("chips")).toEqual({
+      ok: false, error: "search_not_indexed", message: "Run workers/embedding_worker.py" });
+  });
+
+  it("explains a query the API refuses as too short", async () => {
+    vi.stubGlobal("fetch", respond(422, { detail: [{ type: "string_too_short" }] }));
+    expect(await searchFilings("x")).toMatchObject({ ok: false, error: "too_short" });
+  });
+
+  it("says when the API is not running at all", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
+    expect(await searchFilings("chips")).toMatchObject({ ok: false, error: "unreachable" });
   });
 });
