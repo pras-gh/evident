@@ -112,6 +112,14 @@ class Normalization(unittest.TestCase):
                       "Accelerated Computing"):
             self.assertEqual(entity_key(label), "ai_infrastructure")
 
+    def test_us_in_every_spelling_is_one_entity(self):
+        """Seen in real extraction: "U.S." and "United States" were two
+        entities, each with half the mentions."""
+        for label in ("U.S.", "United States", "US", "u.s."):
+            self.assertEqual(entity_key(label), "united_states", label)
+        self.assertEqual(entity_key("U.S. government"), entity_key("USG"))
+        self.assertEqual(entity_key("Uses of cash"), "uses_of_cash")
+
     def test_keys_use_underscores_to_match_the_contract(self):
         self.assertEqual(entity_key("Export Controls"), "export_controls")
         self.assertNotIn("-", entity_key("China export restrictions"))

@@ -366,6 +366,9 @@ class TimelineEntryOut(BaseModel):
 class TimelineThresholds(BaseModel):
     min_delta: int
     min_ratio: float
+    #: share of a quote's four-word phrases that must be in the other filing
+    #: for the quote to count as said there too
+    carried_over: float
 
 
 class CompanyTimelineOut(BaseModel):
@@ -379,6 +382,10 @@ class CompanyTimelineOut(BaseModel):
     categories: dict[str, int]
     #: events matching the filters, before `limit`
     total: int
+    #: new, returning or dropped topics that extraction implied but the text
+    #: did not bear out (a sentence quoted for the topic is in both filings),
+    #: matching the same filters; not in `events`
+    withheld: int = 0
     events: list[TimelineEntryOut]
 
 

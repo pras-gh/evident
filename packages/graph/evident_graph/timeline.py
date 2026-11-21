@@ -6,8 +6,14 @@ Evident *ingested* that names it, not the first filing the company wrote about
 it; a timeline built from it would announce everything in the oldest loaded
 filing as new. See docs/timeline-engine.md.
 
-Pure: no database, no clock. The API loads filings and mentions and calls
-`build_timeline`; tests call it with literals.
+Pure: no database, no clock. The API loads filings, mentions and each
+filing's text and calls `build_timeline`; tests call it with literals.
+
+**New and dropped are checked against the text.** Mentions say what extraction
+found, not what the filing says: a model that names a topic differently next
+year, or misses it, would otherwise report it dropped one way and new the
+other. Given each filing's text, an event is withheld when a sentence quoted
+for the topic is in both filings — see `already_said`.
 
 The unit of measure is the **paragraph**. A topic cited in 20 paragraphs of a
 filing, up from 13 in the last one, has been expanded. Paragraphs are counted
@@ -19,10 +25,11 @@ reason small differences are not reported: see `MIN_DELTA`.
 """
 from __future__ import annotations
 
+import functools
 import re
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Iterable, Literal, Sequence
+from typing import Iterable, Literal, Mapping, Sequence
 
 Kind = Literal["newly_disclosed", "disclosed_again", "expanded", "narrowed",
                "no_longer_disclosed", "filed"]
@@ -202,6 +209,9 @@ class Timeline:
     #: accession → "baseline" | "compared" | "not compared"
     coverage: dict[str, str] = field(default_factory=dict)
     filings: list[Filing] = field(default_factory=list)
+    #: new, returning and dropped topics the mentions implied but the text did
+    #: not: a sentence quoted for the topic is in both filings (`already_said`)
+    withheld: list[Event] = field(default_factory=list)
 
 
 def _paras(n: int) -> str:
@@ -251,6 +261,120 @@ def shingles(text: str) -> set[tuple[str, ...]]:
     return {tuple(words[i:i + SHINGLE]) for i in range(len(words) - SHINGLE + 1)}
 
 
+def _ngrams(words: list[str]) -> set[tuple[str, ...]]:
+    return {tuple(words[i:i + SHINGLE]) for i in range(len(words) - SHINGLE + 1)}
+
+
+@dataclass(frozen=True, slots=True)
+class Said:
+    """Everything one filing says, indexed to ask whether a sentence or a name
+    is in it."""
+    phrases: frozenset[tuple[str, ...]]
+    #: adjacent word pairs, to tell a name that was added or removed from one
+    #: that only sits next to an edit
+    pairs: frozenset[tuple[str, str]]
+    #: the filing's words, space-padded, for phrases shorter than a shingle
+    words: str
+
+    def has_name(self, name: str) -> bool:
+        """`name`'s words, in order and adjacent: "U.S." is in "the U.S.
+        government", "China" is not in "Chinatown"."""
+        words = _WORD.findall(name.lower())
+        return bool(words) and f" {' '.join(words)} " in self.words
+
+    def has_sentence(self, sentence: str) -> bool:
+        """At least CARRIED_OVER of the sentence's phrases are here — the
+        paragraph test, applied to a quote. Lightly edited still counts."""
+        words = _WORD.findall(sentence.lower())
+        if len(words) < SHINGLE:
+            return self.has_name(sentence)
+        mine = _ngrams(words)
+        return len(mine & self.phrases) / len(mine) >= CARRIED_OVER
+
+
+@functools.lru_cache(maxsize=64)
+def said(text: str) -> Said:
+    """Index a filing's text. Cached: the same filings are compared on every
+    request, and a 10-K is a megabyte."""
+    words = _WORD.findall(text.lower())
+    return Said(frozenset(_ngrams(words)), frozenset(zip(words, words[1:])),
+                f" {' '.join(words)} ")
+
+
+#: An inserted run of this many words is a new clause, not a light edit.
+NEW_CLAUSE = SHINGLE
+_FILLER = frozenset({"the", "a", "an", "of", "and", "or", "in", "on", "for", "to",
+                     "our", "its", "with", "by"})
+
+
+def new_words(sentence: str, other: Said) -> list[str | None]:
+    """The sentence's words, each kept if it is new relative to `other` (in no
+    four-word phrase `other` also has) and None if it is not. A deletion
+    leaves every word covered; an insertion shows up as a run of new ones."""
+    words = _WORD.findall(sentence.lower())
+    if len(words) < SHINGLE:
+        return [None] * len(words) if other.has_name(sentence) else list(words)
+    covered = [False] * len(words)
+    for i in range(len(words) - SHINGLE + 1):
+        if tuple(words[i:i + SHINGLE]) in other.phrases:
+            covered[i:i + SHINGLE] = [True] * SHINGLE
+    return [None if c else w for w, c in zip(words, covered)]
+
+
+def _name_changed(sentence: str, marks: list[str | None], name: set[str], other: Said) -> bool:
+    """Whether the edit added or removed the topic's name: a name word that is
+    new, and not even beside the same neighbour in `other`. Next to an edit
+    ("products and systems to China") a word loses its four-word phrases
+    while its neighbour pair ("to china") survives; a name that was added
+    ("our H20 data") or cut ("NVIDIA DGX Cloud,") loses both."""
+    words = _WORD.findall(sentence.lower())
+    for i, w in enumerate(marks):
+        if w is None or w not in name:
+            continue
+        before = i > 0 and (words[i - 1], w) in other.pairs
+        after = i + 1 < len(words) and (w, words[i + 1]) in other.pairs
+        if not (before or after):
+            return True
+    return False
+
+
+def _longest_run(marks: list[str | None]) -> int:
+    best = run = 0
+    for w in marks:
+        run = run + 1 if w is not None else 0
+        best = max(best, run)
+    return best
+
+
+def already_said(topic: Topic, mentions: Sequence[Mention], other: Said) -> bool:
+    """True when a sentence quoted for `topic` is also in `other`, the filing it
+    is compared with — so the topic is in both, whatever extraction made of
+    either, and "newly disclosed" or "no longer disclosed" would be wrong.
+
+    "Also in" means three things, because NVIDIA edits most sentences a little
+    every year and the edit is sometimes the disclosure:
+
+    * at least CARRIED_OVER of the quote's phrases are in `other`;
+    * the edit didn't add or remove the topic's name (`_name_changed`) — a
+      sentence edited to add "DGX Cloud", or "by the January 2025 AI
+      Diffusion IFR", is the change, not a carry-over;
+    * no NEW_CLAUSE or more new words in a row, which catch a clause that
+      names the topic in words other than its name.
+
+    For a drop the roles swap: the quote is last year's, `other` is this
+    year's, and the new words are what this year took out.
+    """
+    name = set(_WORD.findall(topic.name.lower())) - _FILLER
+    for m in mentions:
+        if not m.quote or not other.has_sentence(m.quote):
+            continue
+        marks = new_words(m.quote, other)
+        if _name_changed(m.quote, marks, name, other) or _longest_run(marks) >= NEW_CLAUSE:
+            continue
+        return True
+    return False
+
+
 def overlap(text: str, earlier: set[tuple[str, ...]]) -> float:
     """The share of `text`'s phrases found in `earlier`: 1.0 when all of it was
     said before, 0.0 when none of it was."""
@@ -267,8 +391,14 @@ def narrowed(before: int, after: int) -> bool:
 
 
 def build_timeline(filings: Sequence[Filing], topics: Iterable[Topic],
-                   mentions: Iterable[Mention]) -> Timeline:
+                   mentions: Iterable[Mention],
+                   texts: Mapping[int, str] | None = None) -> Timeline:
     """Every event across `filings`, newest filing first.
+
+    `texts` maps a document id to its full text. Where both filings of a
+    comparison have it, new and dropped topics are checked against it and
+    those the text does not bear out go to `withheld`. Without it, every
+    event the mentions imply is reported.
 
     The earliest filing of each form is a **baseline**: it gets a `filed` event
     and nothing else, because nothing in it can be new relative to a filing
@@ -311,13 +441,23 @@ def build_timeline(filings: Sequence[Filing], topics: Iterable[Topic],
         else:
             timeline.coverage[filing.accession] = "compared"
             there = cited.get(prev.document_id, {})
+            text_here = (texts or {}).get(filing.document_id)
+            text_there = (texts or {}).get(prev.document_id)
+            both = text_here is not None and text_there is not None
             for entity_id in sorted(set(here) | set(there)):
-                timeline.events.extend(_compare(
+                events = _compare(
                     filing, prev, topic_by_id[entity_id],
                     after=count(filing.document_id, entity_id),
                     before=count(prev.document_id, entity_id),
                     here=here.get(entity_id, []), there=there.get(entity_id, []),
-                    seen_in=seen_in.get(entity_id, set())))
+                    seen_in=seen_in.get(entity_id, set()))
+                for event in events:
+                    if both and _contradicted(event, here.get(entity_id, []),
+                                              there.get(entity_id, []),
+                                              said(text_here), said(text_there)):
+                        timeline.withheld.append(event)
+                    else:
+                        timeline.events.append(event)
 
         previous_of_form[filing.form_type] = filing
         for entity_id in here:
@@ -328,6 +468,18 @@ def build_timeline(filings: Sequence[Filing], topics: Iterable[Topic],
         -abs((e.paragraphs or 0) - (e.previous_paragraphs or 0)),
         e.topic.name.lower() if e.topic else ""))
     return timeline
+
+
+def _contradicted(event: Event, here: list[Mention], there: list[Mention],
+                  said_here: Said, said_there: Said) -> bool:
+    """Whether the text says the topic is in both filings. Only appearing and
+    disappearing are checked; expanded and narrowed are counts of paragraphs
+    in both, which the text does not contradict the same way."""
+    if event.kind in ("newly_disclosed", "disclosed_again"):
+        return already_said(event.topic, here, said_there)
+    if event.kind == "no_longer_disclosed":
+        return already_said(event.topic, there, said_here)
+    return False
 
 
 def _compare(filing: Filing, prev: Filing, topic: Topic, *, after: int, before: int,
