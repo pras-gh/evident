@@ -3,7 +3,9 @@
  * POST /v1/search over the NVIDIA demo corpus.
  */
 import { cleanup, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 import { SearchView, excerpt, filedLabel } from "./SearchView";
 import type {
   CompanyTimeline,
@@ -126,6 +128,42 @@ describe("which companies were searched", () => {
     expect(screen.getByTestId("scope").textContent).toBe(
       "Couldn’t check which company you meant, so this searches every company on record: " +
       "NVIDIA CORP (NVDA).");
+  });
+});
+
+describe("companies with no filings here", () => {
+  const outcome = (company: Record<string, unknown>) => answered([], {
+    query: "google", embedder: null, scope: { tickers: [], reason: "named" },
+    companies: [{ name: "Alphabet Inc.", ticker: "GOOGL", covered: false, ...company }],
+  });
+
+  it("says it is fetching, and waits for the fetch", () => {
+    render(<SearchView query="google" outcome={outcome({ fetch: "running", fetch_id: 7 })} />);
+    expect(screen.getByRole("status").textContent).toMatch(
+      /^Fetching Alphabet Inc\. \(GOOGL\) from the SEC\. Its latest annual report is being downloaded and indexed/);
+    expect(screen.getByText(/Queued… 0s/)).toBeTruthy();
+  });
+
+  it("says why a fetch failed", () => {
+    render(<SearchView query="google" outcome={outcome({ fetch: "failed", fetch_id: 7,
+      fetch_error: "EDGAR lists no 10-K, 20-F or 40-F for Alphabet Inc." })} />);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Couldn’t fetch Alphabet Inc. (GOOGL) from the SEC. " +
+      "EDGAR lists no 10-K, 20-F or 40-F for Alphabet Inc.");
+  });
+
+  it("says when a company doesn't file with the SEC", () => {
+    render(<SearchView query="acme" outcome={outcome({ name: "Acme", ticker: null,
+      fetch: "not_on_edgar" })} />);
+    expect(screen.getByRole("status").textContent).toBe(
+      "Acme doesn’t file with the SEC, so Evident has no filings to search. " +
+      "Evident has filings for NVIDIA CORP (NVDA).");
+  });
+
+  it("says what is missing when the SEC can't be asked", () => {
+    render(<SearchView query="google" outcome={outcome({ fetch: "not_configured" })} />);
+    expect(screen.getByRole("status").textContent).toContain(
+      "Fetching them needs SEC_USER_AGENT set");
   });
 });
 

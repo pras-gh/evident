@@ -810,4 +810,28 @@ INSERT INTO organizations (id, slug, name, is_internal) VALUES (gen_random_uuid(
 
 UPDATE alembic_version SET version_num='0012' WHERE alembic_version.version_num = '0011';
 
+
+CREATE TABLE company_fetches (
+    id BIGSERIAL NOT NULL, 
+    cik VARCHAR(10) NOT NULL, 
+    ticker VARCHAR(16), 
+    name VARCHAR(255) NOT NULL, 
+    status VARCHAR(16) DEFAULT 'queued' NOT NULL, 
+    error TEXT, 
+    accession VARCHAR(32), 
+    form_type VARCHAR(16), 
+    chunks INTEGER, 
+    requested_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    started_at TIMESTAMP WITH TIME ZONE, 
+    finished_at TIMESTAMP WITH TIME ZONE, 
+    CONSTRAINT pk_company_fetches PRIMARY KEY (id), 
+    CONSTRAINT ck_company_fetches_ck_company_fetches_status CHECK (status in ('queued','running','done','failed'))
+);
+
+CREATE UNIQUE INDEX uq_company_fetches_active_cik ON company_fetches (cik) WHERE status in ('queued','running');
+
+CREATE INDEX ix_company_fetches_cik_requested_at ON company_fetches (cik, requested_at);
+
+UPDATE alembic_version SET version_num='0013' WHERE alembic_version.version_num = '0012';
+
 COMMIT;

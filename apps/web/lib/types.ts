@@ -395,6 +395,26 @@ export interface SearchCompany {
   name: string;
   ticker: string | null;
   covered: boolean;
+  /** for a company not covered: its fetch from EDGAR, or why there is none */
+  fetch?: "queued" | "running" | "failed" | "not_on_edgar" | "not_configured" | null;
+  fetch_id?: number | null;
+  fetch_error?: string | null;
+}
+
+/** GET /v1/fetches/{id}: one company's latest annual report, fetched on demand. */
+export interface CompanyFetch {
+  id: number;
+  cik: string;
+  ticker: string | null;
+  name: string;
+  status: "queued" | "running" | "done" | "failed";
+  error: string | null;
+  accession: string | null;
+  form_type: string | null;
+  chunks: number | null;
+  requested_at: string;
+  started_at: string | null;
+  finished_at: string | null;
 }
 
 export interface SearchResponse {

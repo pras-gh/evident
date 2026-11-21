@@ -16,8 +16,8 @@ from sqlalchemy import text
 from evident_ai.gateway import AllProvidersFailed, UnknownOrganization, UsageLimitExceeded
 from evident_ai.gateway.logs import configure_logging
 
-from .routers import (ai_usage, analysis, cards, documents, evidence, graph, ingest,
-                      memory, search, timeline)
+from .routers import (ai_usage, analysis, cards, documents, evidence, fetches, graph,
+                      ingest, memory, search, timeline)
 from .routers.search import SearchUnavailable
 
 API_VERSION = "1.0.0"
@@ -44,6 +44,7 @@ app.include_router(analysis.router, prefix="/v1")
 app.include_router(cards.router, prefix="/v1")
 app.include_router(documents.router, prefix="/v1")
 app.include_router(evidence.router, prefix="/v1")
+app.include_router(fetches.router, prefix="/v1")
 app.include_router(graph.router, prefix="/v1")
 app.include_router(ingest.router, prefix="/v1")
 app.include_router(memory.router, prefix="/v1")

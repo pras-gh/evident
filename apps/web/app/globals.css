@@ -559,6 +559,8 @@ a.tl2-evidence:hover{color:var(--ink);border-color:rgba(52,211,153,.45)}
 .srch-note{max-width:76ch;padding:12px 14px;border-radius:var(--r);border:1px solid rgba(251,191,36,.35);
   background:rgba(251,191,36,.06);font-size:13px;line-height:1.55;color:var(--ink-2)}
 .srch-note b{color:var(--ink)}
+.srch-note.is-busy{border-color:rgba(52,211,153,.35);background:rgba(52,211,153,.06)}
+.srch-wait{display:inline-block;margin-left:4px;color:var(--emerald);font-variant-numeric:tabular-nums}
 .srch-count{margin-bottom:10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
 .srch-hits{display:grid;gap:10px;list-style:none;padding:0}
 .srch-hit{grid-template-columns:minmax(0,1fr)}

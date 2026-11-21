@@ -11,11 +11,15 @@ one are throttled or refused.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
+import re
 import time
 import urllib.request
+import zlib
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
 
@@ -47,28 +51,94 @@ def _get(url: str) -> bytes:
                                                "Accept-Encoding": "gzip, deflate"})
     with urllib.request.urlopen(req, timeout=30) as resp:
         data = resp.read()
+        encoding = (resp.headers.get("Content-Encoding") or "").strip().lower()
     _last_call = time.monotonic()
+    return decode(data, encoding)
+
+
+def decode(data: bytes, encoding: str) -> bytes:
+    """The body as sent, before compression. This client asks for gzip, and
+    sec.gov answers with it; read raw, the company list does not parse as
+    JSON, a filing parses as garbage, and the content digest is of the
+    compressed bytes. (Only the uncompressed fixture server had been used.)"""
+    if encoding == "gzip":
+        return gzip.decompress(data)
+    if encoding == "deflate":
+        try:
+            return zlib.decompress(data)
+        except zlib.error:                       # raw deflate, without a header
+            return zlib.decompress(data, -zlib.MAX_WBITS)
     return data
 
 
-_TICKER_MAP: dict[str, str] | None = None
+def has_user_agent() -> bool:
+    """Whether EDGAR can be asked anything: it refuses requests without a
+    contact in the User-Agent."""
+    return bool(os.environ.get(_UA_ENV))
 
 
-def cik_for_ticker(ticker: str) -> str:
-    """Resolve a ticker to a zero-padded CIK via EDGAR's own mapping file.
+@dataclass(frozen=True, slots=True)
+class SecCompany:
+    """A row of EDGAR's company list. A company with two share classes has a
+    row per ticker (GOOGL, GOOG), both with its one CIK."""
+    cik: str
+    ticker: str
+    name: str
 
-    Cached for the process lifetime — the file is ~1MB and changes rarely, and
-    re-fetching it per request would burn the rate limit on data we already have.
-    """
+
+#: EDGAR's company list, fetched once per process: ~1MB, changes rarely, and
+#: re-fetching it per request would burn the rate limit on data we already
+#: have. Set it to None to fetch it again (tests switching origins do).
+_TICKER_MAP: list[SecCompany] | None = None
+
+
+def companies() -> list[SecCompany]:
     global _TICKER_MAP
     if _TICKER_MAP is None:
         raw = json.loads(_get(f"{WWW}/files/company_tickers.json"))
-        _TICKER_MAP = {row["ticker"].upper(): str(row["cik_str"]).zfill(10)
-                       for row in raw.values()}
-    cik = _TICKER_MAP.get(ticker.upper())
-    if cik is None:
+        _TICKER_MAP = [SecCompany(str(row["cik_str"]).zfill(10), row["ticker"].upper(),
+                                  row.get("title") or row["ticker"].upper())
+                       for row in raw.values()]
+    return _TICKER_MAP
+
+
+def cik_for_ticker(ticker: str) -> str:
+    """Resolve a ticker to a zero-padded CIK via EDGAR's own mapping file."""
+    found = lookup(ticker=ticker)
+    if found is None:
         raise LookupError(f"{ticker.upper()} is not in EDGAR's ticker map")
-    return cik
+    return found.cik
+
+
+_WORDS = re.compile(r"[a-z0-9]+")
+_SUFFIXES = frozenset({"inc", "incorporated", "corp", "corporation", "co", "company",
+                       "ltd", "limited", "plc", "llc", "lp", "holdings", "group", "sa",
+                       "nv", "ag", "se", "the", "class", "a", "b", "c", "com", "de"})
+
+
+def _plain(name: str) -> str:
+    words = _WORDS.findall(name.lower())
+    while words and words[-1] in _SUFFIXES:
+        words.pop()
+    return " ".join(w for w in words if w != "the")
+
+
+def lookup(*, ticker: str | None = None, name: str | None = None) -> SecCompany | None:
+    """A company on EDGAR, by ticker ("GOOGL", "$googl") or, failing that, by
+    name as people say it ("Wesco International" for WESCO INTERNATIONAL INC).
+    None when EDGAR has no such filer — a private company, or a foreign one
+    that does not file with the SEC."""
+    rows = companies()
+    if ticker:
+        t = ticker.strip().upper().lstrip("$")
+        hit = next((c for c in rows if c.ticker == t), None)
+        if hit:
+            return hit
+    if name:
+        plain = _plain(name)
+        if plain:
+            return next((c for c in rows if _plain(c.name) == plain), None)
+    return None
 
 
 def recent_filings(submission: dict[str, Any], *, form_types: list[str] | None = None,

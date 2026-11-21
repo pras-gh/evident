@@ -39,6 +39,9 @@ class OnRecord:
     """A company we hold filings for."""
     ticker: str
     name: str
+    #: its SEC registration, which outlives a ticker and is shared by its
+    #: share classes (GOOGL and GOOG are one CIK)
+    cik: str | None = None
 
     @property
     def short_name(self) -> str:

@@ -104,6 +104,27 @@ class SearchCompanyOut(BaseModel):
     ticker: str | None = None
     #: whether Evident holds filings for it
     covered: bool
+    #: for a company not covered: its fetch from EDGAR — queued, running or
+    #: failed; "not_on_edgar" when the SEC has no such filer; "not_configured"
+    #: when EDGAR cannot be asked (no SEC_USER_AGENT); None if not attempted
+    fetch: Literal["queued", "running", "failed", "not_on_edgar", "not_configured"] | None = None
+    fetch_id: int | None = None
+    fetch_error: str | None = None
+
+
+class FetchOut(BaseModel):
+    id: int
+    cik: str
+    ticker: str | None
+    name: str
+    status: Literal["queued", "running", "done", "failed"]
+    error: str | None = None
+    accession: str | None = None
+    form_type: str | None = None
+    chunks: int | None = None
+    requested_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
 
 class SearchScopeOut(BaseModel):
