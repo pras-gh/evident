@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import unittest
+from unittest import mock
 from datetime import date, datetime, timezone
 
 DSN = os.environ.get("TEST_DATABASE_URL")
@@ -661,15 +662,19 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         embedding_worker.run(url=DSN)
         self._search_gateway({"companies": [{"name": "WESCO International", "ticker": "WCC"}],
                               "topic": ""})
-        body = await self._search("wesco international", ticker="NVDA")
+        # no SEC contact, so nothing is fetched: this is about what is searched
+        with mock.patch.dict(os.environ):
+            os.environ.pop("SEC_USER_AGENT", None)
+            body = await self._search("wesco international", ticker="NVDA")
         self.assertEqual(body["hits"], [], "NVIDIA passages for a Wesco search")
         self.assertIsNone(body["embedder"], "nothing to search, so nothing embedded")
-        self.assertEqual(body["companies"],
-                         [{"name": "WESCO International", "ticker": "WCC", "covered": False}])
+        self.assertEqual([(c["name"], c["ticker"], c["covered"], c["fetch"])
+                          for c in body["companies"]],
+                         [("WESCO International", "WCC", False, "not_configured")])
         self.assertEqual(body["scope"], {"tickers": [], "reason": "named"},
                          "the query's company beats the page's NVDA filter")
-        self.assertEqual(body["on_record"],
-                         [{"name": "NVIDIA Corp", "ticker": "NVDA", "covered": True}])
+        self.assertEqual([(c["name"], c["ticker"]) for c in body["on_record"]],
+                         [("NVIDIA Corp", "NVDA")])
 
     async def test_a_company_on_record_is_found_by_rule_when_the_model_is_down(self):
         from evident_ai.gateway.providers.base import ErrorKind, ProviderError
@@ -700,8 +705,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(embedded, ["data centre capacity"],
                          "the topic is searched; the company is the filter")
         self.assertEqual(body["topic"], "data centre capacity")
-        self.assertEqual(body["companies"], [{"name": "NVIDIA Corp", "ticker": "NVDA",
-                                              "covered": True}])
+        self.assertEqual([(c["name"], c["ticker"], c["covered"]) for c in body["companies"]],
+                         [("NVIDIA Corp", "NVDA", True)])
         self.assertTrue(body["understood_by"].startswith("rules+groq:"))
         self.assertTrue(body["hits"])
 

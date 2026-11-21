@@ -9,9 +9,11 @@ anything, search works out which companies the query names:
   with no filings here — and the topic left once they are taken out
   (`evident_ai.query`). When the model is unavailable, rules alone decide.
 
-Then: named companies on record are searched, and only they; named companies
-with no filings are reported, never substituted; a query naming none searches
-the request's `ticker` filter, or everything.
+Then: named companies on record are searched, and only they; a query naming
+none searches the request's `ticker` filter, or everything. A named company
+with no filings here is never substituted: if EDGAR has it, its latest annual
+report is fetched (`fetches.request_fetch`) and the response says so; if not,
+the response says that.
 """
 from __future__ import annotations
 
@@ -58,6 +60,42 @@ async def _understand(query: str, gw):
     return intent, f"rules+{r.provider}:{r.model}"
 
 
+async def _fetch_uncovered(db: AsyncSession, mentioned: list[SearchCompanyOut],
+                           on_record) -> None:
+    """For each named company with no filings here: on record after all under
+    another ticker (GOOG for GOOGL) — then covered; on EDGAR — then fetched, or
+    joined to the fetch under way; otherwise marked for the page to explain."""
+    from evident_parser import edgar
+    from .fetches import request_fetch
+
+    todo = [m for m in mentioned if not m.covered]
+    if not todo:
+        return
+    if not edgar.has_user_agent():
+        for m in todo:
+            m.fetch = "not_configured"
+        return
+    try:
+        await anyio.to_thread.run_sync(edgar.companies)
+    except Exception as exc:
+        log.warning("search: EDGAR's company list is unavailable (%s)", str(exc)[:200])
+        for m in todo:
+            m.fetch, m.fetch_error = "failed", "EDGAR could not be reached"
+        return
+    by_cik = {c.cik: c for c in on_record if c.cik}
+    for m in todo:
+        sec = edgar.lookup(ticker=m.ticker, name=m.name)
+        if sec is None:
+            m.fetch = "not_on_edgar"
+        elif sec.cik in by_cik:
+            c = by_cik[sec.cik]
+            m.covered, m.name, m.ticker = True, c.name, c.ticker
+        else:
+            f = await request_fetch(db, cik=sec.cik, ticker=sec.ticker, name=sec.name)
+            m.ticker = m.ticker or sec.ticker
+            m.fetch, m.fetch_id, m.fetch_error = f.status, f.id, f.error
+
+
 def _mentions(query: str, on_record, intent) -> list[SearchCompanyOut]:
     """Companies the query names: those on record by rule, then whatever the
     model found, matched to the record by ticker or name. Each once."""
@@ -97,14 +135,15 @@ async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
     from evident_retrieval.rerank import rerank
 
     started = time.perf_counter()
-    on_record = [OnRecord(t, n) for t, n in (await db.execute(
-        select(Company.ticker, Company.name)
+    on_record = [OnRecord(t, n, cik) for t, n, cik in (await db.execute(
+        select(Company.ticker, Company.name, Company.cik)
         .join(Document, Document.company_id == Company.id)
         .where(Company.ticker.is_not(None)).distinct()
         .order_by(Company.ticker))).all()]
 
     intent, understood_by = await _understand(req.query, gw)
     mentioned = _mentions(req.query, on_record, intent)
+    await _fetch_uncovered(db, mentioned, on_record)
     if mentioned:
         scope = SearchScopeOut(tickers=[m.ticker for m in mentioned if m.covered],
                                reason="named")
