@@ -1,4 +1,4 @@
-"""Embedding providers: one interface, three implementations, one config change.
+"""Embedding providers: one interface, four implementations, one config change.
 
 The API calls are faked. What is worth asserting offline is the shape of the
 request each provider builds and what it refuses to return — a provider that
@@ -12,9 +12,9 @@ import unittest
 
 from evident_db import EMBEDDING_DIM as COLUMN_DIM
 from evident_retrieval.embed import (EMBEDDING_DIM, EmbeddingError,
-                                     EmbeddingProvider, HashingEmbedder,
-                                     OpenAIEmbedder, PROVIDERS, VoyageEmbedder,
-                                     default_provider, get_provider)
+                                     EmbeddingProvider, GeminiEmbedder,
+                                     HashingEmbedder, OpenAIEmbedder, PROVIDERS,
+                                     VoyageEmbedder, default_provider, get_provider)
 
 
 def vec(n=EMBEDDING_DIM, fill=0.1):
@@ -204,6 +204,137 @@ class OpenAI(unittest.TestCase):
         out = OpenAIEmbedder(client=c, api_key="k").embed(["x"] * 300)
         self.assertEqual([len(call["input"]) for call in c.calls], [128, 128, 44])
         self.assertEqual(len(out), 300)
+
+
+class _Resp:
+    def __init__(self, status, body):
+        self.status_code, self._body = status, body
+        self.text = str(body)
+
+    def json(self):
+        return self._body
+
+
+class _FakeGeminiHTTP:
+    """Answers batchEmbedContents with one vector per request, after playing
+    back any scripted failures."""
+
+    def __init__(self, *failures, dim=EMBEDDING_DIM, fill=0.1):
+        self.failures = list(failures)
+        self.calls: list[tuple[str, dict, dict]] = []
+        self.dim, self.fill = dim, fill
+
+    def post(self, url, *, json, headers):
+        self.calls.append((url, json, headers))
+        if self.failures:
+            return self.failures.pop(0)
+        return _Resp(200, {"embeddings": [{"values": vec(self.dim, self.fill)}
+                                          for _ in json["requests"]],
+                           "usageMetadata": {"promptTokenCount": 7}})
+
+
+def _rate_limited(seconds):
+    return _Resp(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED",
+                                 "message": "Quota exceeded",
+                                 "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo",
+                                              "retryDelay": f"{seconds}s"}]}})
+
+
+def _overloaded():
+    return _Resp(503, {"error": {"code": 503, "status": "UNAVAILABLE",
+                                 "message": "high demand"}})
+
+
+class Gemini(unittest.TestCase):
+    def embedder(self, http, **kw):
+        self.slept: list[float] = []
+        return GeminiEmbedder(api_key="test-key", http=http, sleep=self.slept.append, **kw)
+
+    def test_the_task_goes_in_the_text_for_gemini_embedding_2(self):
+        """It takes no taskType; Google's docs give these prefixes instead."""
+        http = _FakeGeminiHTTP()
+        e = self.embedder(http)
+        e.embed(["Export controls restrict shipments."])
+        e.embed_query(["export rules"])
+        (_, doc, _), (_, query, _) = http.calls
+        [d], [q] = doc["requests"], query["requests"]
+        self.assertEqual(d["content"]["parts"][0]["text"],
+                         "title: none | text: Export controls restrict shipments.")
+        self.assertEqual(q["content"]["parts"][0]["text"],
+                         "task: search result | query: export rules")
+        self.assertNotIn("taskType", d)
+        self.assertEqual((d["model"], d["outputDimensionality"]),
+                         ("models/gemini-embedding-2", EMBEDDING_DIM))
+
+    def test_the_key_goes_in_a_header_never_the_url(self):
+        http = _FakeGeminiHTTP()
+        self.embedder(http).embed(["x"])
+        url, _, headers = http.calls[0]
+        self.assertEqual(headers, {"x-goog-api-key": "test-key"})
+        self.assertNotIn("test-key", url)
+        self.assertTrue(url.endswith("/v1beta/models/gemini-embedding-2:batchEmbedContents"))
+
+    def test_gemini_embedding_001_uses_task_types_and_is_normalised(self):
+        http = _FakeGeminiHTTP(fill=0.5)
+        e = self.embedder(http, model="gemini-embedding-001")
+        [v] = e.embed(["x"])
+        e.embed_query(["y"])
+        self.assertEqual([c[1]["requests"][0]["taskType"] for c in http.calls],
+                         ["RETRIEVAL_DOCUMENT", "RETRIEVAL_QUERY"])
+        self.assertEqual(http.calls[0][1]["requests"][0]["content"]["parts"][0]["text"], "x")
+        self.assertAlmostEqual(sum(x * x for x in v), 1.0, places=6)
+
+    def test_one_request_per_text_batched_by_the_hundred(self):
+        """Several parts in one request would be averaged into one vector."""
+        http = _FakeGeminiHTTP()
+        out = self.embedder(http).embed([f"t{i}" for i in range(250)])
+        self.assertEqual(len(out), 250)
+        self.assertEqual([len(c[1]["requests"]) for c in http.calls], [100, 100, 50])
+
+    def test_the_worker_waits_out_a_rate_limit_honouring_the_hint(self):
+        http = _FakeGeminiHTTP(_rate_limited(3), _overloaded())
+        self.assertEqual(len(self.embedder(http).embed(["x"])), 1)
+        self.assertEqual(self.slept, [3.0, 2.0], "the hint, then backoff")
+
+    def test_a_search_gets_one_quick_retry_then_a_clear_error(self):
+        http = _FakeGeminiHTTP(_overloaded(), _overloaded())
+        with self.assertRaises(EmbeddingError) as ctx:
+            self.embedder(http).embed_query(["q"])
+        self.assertIn("HTTP 503", str(ctx.exception))
+        self.assertEqual((len(http.calls), self.slept), (2, [1.0]))
+
+    def test_a_search_does_not_wait_a_long_hint(self):
+        http = _FakeGeminiHTTP(_rate_limited(30))
+        with self.assertRaises(EmbeddingError):
+            self.embedder(http).embed_query(["q"])
+        self.assertEqual(self.slept, [])
+
+    def test_a_bad_request_is_not_retried(self):
+        http = _FakeGeminiHTTP(_Resp(400, {"error": {"message": "bad dimension"}}))
+        with self.assertRaises(EmbeddingError) as ctx:
+            self.embedder(http).embed(["x"])
+        self.assertIn("bad dimension", str(ctx.exception))
+        self.assertEqual(len(http.calls), 1)
+
+    def test_a_wrong_width_is_refused(self):
+        with self.assertRaises(EmbeddingError):
+            self.embedder(_FakeGeminiHTTP(dim=768)).embed(["x"])
+
+    def test_missing_key_names_the_variable_and_the_way_out(self):
+        old = os.environ.pop("GEMINI_API_KEY", None)
+        try:
+            with self.assertRaises(EmbeddingError) as ctx:
+                GeminiEmbedder(http=_FakeGeminiHTTP()).embed(["x"])
+            self.assertIn("GEMINI_API_KEY", str(ctx.exception))
+            self.assertIn("EMBEDDING_PROVIDER", str(ctx.exception))
+        finally:
+            if old is not None:
+                os.environ["GEMINI_API_KEY"] = old
+
+    def test_no_texts_makes_no_call(self):
+        http = _FakeGeminiHTTP()
+        self.assertEqual(self.embedder(http).embed([]), [])
+        self.assertEqual(http.calls, [])
 
 
 class Hashing(unittest.TestCase):

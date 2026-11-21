@@ -15,6 +15,15 @@ from ..schemas import SearchHitOut, SearchRequest, SearchResponse
 router = APIRouter(tags=["search"])
 
 
+class SearchUnavailable(RuntimeError):
+    """Search cannot answer, and the caller should be told why: a 503 with a
+    machine-readable `error` and a `message` that says what to do."""
+
+    def __init__(self, error: str, message: str) -> None:
+        super().__init__(message)
+        self.error, self.message = error, message
+
+
 @router.post("/search", response_model=SearchResponse, summary="Semantic search")
 async def search(req: SearchRequest,
                  db: AsyncSession = Depends(get_db)) -> SearchResponse:
@@ -24,12 +33,30 @@ async def search(req: SearchRequest,
     its document, page and paragraph is not a usable result, and the response
     model makes that non-optional.
     """
-    from evident_retrieval.embed import default_provider
+    from evident_retrieval.embed import EmbeddingError, default_provider
     from evident_retrieval.rerank import rerank
 
     started = time.perf_counter()
-    embedder = default_provider()
-    vector = embedder.embed_query([req.query])[0]
+    try:
+        embedder = default_provider()
+    except EmbeddingError as exc:
+        raise SearchUnavailable("search_not_configured", str(exc)) from exc
+
+    # Checked before embedding the query, so an empty index costs no API call
+    # and says what to run instead of returning no hits as if none matched.
+    indexed = (await db.execute(select(Chunk.id).where(
+        Chunk.embedding_provider == embedder.name,
+        Chunk.embedding_model == embedder.model).limit(1))).first()
+    if indexed is None:
+        raise SearchUnavailable(
+            "search_not_indexed",
+            f"No chunks are embedded with {embedder.name}/{embedder.model} yet. "
+            "Run `python workers/embedding_worker.py` to index them.")
+
+    try:
+        vector = embedder.embed_query([req.query])[0]
+    except EmbeddingError as exc:
+        raise SearchUnavailable("search_unavailable", str(exc)) from exc
 
     distance = Chunk.embedding.cosine_distance(vector)
     stmt = (select(Chunk, Document, distance.label("distance"))
