@@ -190,6 +190,14 @@ describe("coverage note", () => {
     );
   });
 
+  it("says how many apparent changes the text did not bear out", () => {
+    expect(coverageNote({ ...timeline, withheld: 67 })).toMatch(
+      / 67 apparent changes not shown: a topic looked new or dropped, but a sentence quoted for it is in both filings\.$/,
+    );
+    expect(coverageNote({ ...timeline, withheld: 1 })).toMatch(/ 1 apparent change not shown/);
+    expect(coverageNote({ ...timeline, withheld: 0 })).toBe(coverageNote(timeline));
+  });
+
   it("says there is nothing to compare with one filing — not that nothing happened", () => {
     const one = { ...timeline, filings: [{ ...FY26, coverage: "baseline" as const }] };
     expect(coverageNote(one)).toMatch(/^On record: one 10-K \(FY2026\), so nothing to compare it with yet\./);
