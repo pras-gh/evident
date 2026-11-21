@@ -99,11 +99,36 @@ class SearchHitOut(BaseModel):
     citation: str
 
 
+class SearchCompanyOut(BaseModel):
+    name: str
+    ticker: str | None = None
+    #: whether Evident holds filings for it
+    covered: bool
+
+
+class SearchScopeOut(BaseModel):
+    #: the companies searched; None for every company on record, [] for none
+    tickers: list[str] | None
+    #: why: the query named them, the request's `ticker` filter, or neither
+    reason: Literal["named", "filter", "all"]
+
+
 class SearchResponse(BaseModel):
     query: str
     hits: list[SearchHitOut]
     took_ms: float
-    embedder: str
+    #: provider/model that embedded the query; None when nothing was searched
+    embedder: str | None = None
+    #: companies the query names, whether or not Evident covers them
+    companies: list[SearchCompanyOut] = Field(default_factory=list)
+    scope: SearchScopeOut | None = None
+    #: what the query asks with the companies taken out; searched instead of
+    #: the whole query when there is one
+    topic: str | None = None
+    #: every company Evident holds filings for
+    on_record: list[SearchCompanyOut] = Field(default_factory=list)
+    #: "rules", or "rules+provider:model" when a model also read the query
+    understood_by: str = "rules"
 
 
 # ---------------------------------------------------------------- graph

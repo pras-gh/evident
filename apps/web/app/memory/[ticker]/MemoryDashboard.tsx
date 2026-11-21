@@ -44,6 +44,10 @@ export function MemoryDashboard({
             <span className="nav-dot" aria-hidden />
             Timeline
           </a>
+          <a className="nav-item" href={`/search?ticker=${encodeURIComponent(t)}`}>
+            <span className="nav-dot" aria-hidden />
+            Search
+          </a>
         </nav>
       </aside>
 

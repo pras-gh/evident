@@ -542,6 +542,43 @@ a.tl2-evidence:hover{color:var(--ink);border-color:rgba(52,211,153,.45)}
   .tl2-delta{grid-column:2;justify-self:start}
 }
 
+/* ============================================================ search
+   Reuses the timeline's shell and cards; only the box and the passage text
+   are its own. */
+.srch-form{display:flex;gap:8px;max-width:720px;margin:6px 0 12px}
+.srch-label{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.srch-form input{flex:1;min-width:0;height:44px;padding:0 14px;border-radius:12px;
+  border:1px solid var(--line-2);background:var(--surface);color:var(--ink);font:inherit;font-size:14px;
+  transition:border-color .18s}
+.srch-form input::placeholder{color:var(--faint)}
+.srch-form input:focus{outline:none;border-color:rgba(52,211,153,.55)}
+.srch-form button{height:44px;padding:0 18px;border-radius:12px;border:1px solid rgba(52,211,153,.45);
+  background:rgba(52,211,153,.12);color:var(--ink);font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;
+  transition:background .18s}
+.srch-form button:hover{background:rgba(52,211,153,.2)}
+.srch-note{max-width:76ch;padding:12px 14px;border-radius:var(--r);border:1px solid rgba(251,191,36,.35);
+  background:rgba(251,191,36,.06);font-size:13px;line-height:1.55;color:var(--ink-2)}
+.srch-note b{color:var(--ink)}
+.srch-count{margin-bottom:10px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.srch-hits{display:grid;gap:10px;list-style:none;padding:0}
+.srch-hit{grid-template-columns:minmax(0,1fr)}
+.srch-text{margin-top:8px;font-size:13.5px;line-height:1.6;color:var(--ink-2)}
+.srch-scope{display:grid;gap:8px;margin-bottom:14px}
+.srch-scope-line{font-size:12.5px;color:var(--muted)}
+.srch-scope-line b{color:var(--ink-2);font-weight:600}
+.srch-scope-line a{color:var(--ink-2);text-decoration:underline;text-underline-offset:3px}
+.srch-company{grid-template-columns:minmax(0,1fr);margin-bottom:16px}
+.srch-changes{display:grid;gap:4px;margin-top:6px;padding-left:16px;font-size:13px;color:var(--ink-2)}
+.srch-changes a{color:var(--ink-2);text-decoration:underline;text-decoration-color:var(--line-2);
+  text-underline-offset:3px}
+.srch-changes a:hover{color:var(--ink)}
+
+@media (max-width:640px){
+  /* stacked: flex:1 would size the input's height, not its width, to zero */
+  .srch-form{flex-direction:column}
+  .srch-form input{flex:none}
+}
+
 /* ============================================================ admin: AI usage
    One accent for data marks — #14a374, the app's emerald stepped down until it
    passes the chart checks (lightness band, chroma, 3:1 contrast) on this dark

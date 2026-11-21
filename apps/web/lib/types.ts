@@ -371,3 +371,54 @@ export interface CompanyTimeline {
   withheld?: number;
   events: TimelineEvent[];
 }
+
+// ------------------------------------------------------------------ search
+
+/** One passage from POST /v1/search, with the citation it came from. */
+export interface SearchHit {
+  chunk_id: number;
+  chunk_hash: string;
+  paragraph_ids: string[];
+  /** cosine similarity, 0–1 */
+  score: number;
+  text: string;
+  accession: string;
+  form_type: string;
+  filed_at: string;
+  page_number: number | null;
+  section_title: string | null;
+  citation: string;
+}
+
+/** A company a search names; `covered` when Evident holds its filings. */
+export interface SearchCompany {
+  name: string;
+  ticker: string | null;
+  covered: boolean;
+}
+
+export interface SearchResponse {
+  query: string;
+  hits: SearchHit[];
+  took_ms: number;
+  /** null when nothing was searched (only uncovered companies named) */
+  embedder: string | null;
+  /** every company the query names, covered or not */
+  companies: SearchCompany[];
+  /** tickers searched (null = every company on record), and why */
+  scope: { tickers: string[] | null; reason: "named" | "filter" | "all" } | null;
+  /** what the query asks once the companies are taken out */
+  topic: string | null;
+  /** every company Evident holds filings for */
+  on_record: SearchCompany[];
+  /** "rules", or "rules+provider:model" when a model also read the query */
+  understood_by: string;
+}
+
+/** A search either answers, or says why it could not: the API's 503 `error`
+ *  codes, "too_short" for a query the API refuses as under two characters,
+ *  and "unreachable" when the API itself did not answer. */
+export type SearchOutcome =
+  | { ok: true; result: SearchResponse }
+  | { ok: false; error: "search_not_configured" | "search_not_indexed" | "search_unavailable"
+        | "too_short" | "unreachable" | "failed"; message: string };

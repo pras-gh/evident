@@ -632,8 +632,8 @@
 
     <p class="lede">Ask questions across SEC filings, earnings calls, investor presentations and years of company history. Every answer is backed by highlighted evidence.</p>
 
-    <!-- TODO: point action= at your real app endpoint -->
-    <form class="ask" id="askform" action="https://app.evident.com/ask" method="get" role="search">
+    <!-- the app's search page (apps/web /search?q=); change the origin when the app is deployed -->
+    <form class="ask" id="askform" action="http://localhost:3000/search" method="get" role="search">
       <svg class="ask-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
       <label class="sr-only" for="q">Ask about any public company</label>
       <span class="ask-field">
@@ -990,7 +990,7 @@
     <p class="eyebrow label rise"><i></i> Surface</p>
     <h2 class="arrival-title rise">Ask your first question.</h2>
     <p class="arrival-sub rise">Pick a company you already know well. See how long it takes to learn something you didn&rsquo;t.</p>
-    <form class="ask ask-end rise" action="https://app.evident.com/ask" method="get" role="search">
+    <form class="ask ask-end rise" action="http://localhost:3000/search" method="get" role="search">
       <svg class="ask-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
       <label class="sr-only" for="q2">Ask about any public company</label>
       <span class="ask-field"><input id="q2" name="q" type="text" autocomplete="off" spellcheck="false" placeholder="Search Apple, Nvidia, Tesla…"></span>
