@@ -172,11 +172,19 @@ Entries expire after `cache_ttl_days` (90).
   with jitter (0.5s, 1s, 2s… capped at 8s). A `retry-after`/`RetryInfo` delay is
   honoured up to `max_retry_wait_s` (20s) when someone is waiting; a longer one
   falls back immediately.
-- **Background work waits longer.** Requests made under `system_context()`
-  (extraction, backfills) are marked `background` and wait out a delay up to
-  `background_max_wait_s` (120s). A per-minute limit says when it lifts. Falling
-  back instead fails every following chunk until it does. Before this, the
-  first live seed on Gemini's free tier extracted only 19 of its 94 chunks.
+- **Background work tries harder.** Requests made under `system_context()`
+  (extraction, backfills) are marked `background`. They get
+  `background_max_attempts` (8) attempts and `background_max_wait_s` (180s)
+  to spend waiting in all. Their backoff isn't capped at `backoff_max_s`, and a
+  provider's delay hint is a floor rather than a promise: the wait is the
+  longer of the two. They also keep retrying after their own failures open the
+  circuit, and a success closes it again. Each rule comes from extracting the
+  demo 10-Ks on Gemini's free tier:
+  - a per-minute limit asking for 54s, which the interactive 20s cap refused;
+  - a "retry in 1s" followed by another refusal;
+  - "UNAVAILABLE: high demand" outlasting three quick tries.
+
+  Without these rules, every failed chunk is a gap in a company's memory.
 - **Not retried:** bad request, auth, model not found, too large, quota
   exhausted. Each falls back once.
 - **Circuit breaker:** per provider and model. It opens after

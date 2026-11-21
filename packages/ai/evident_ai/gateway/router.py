@@ -198,12 +198,15 @@ class Gateway:
     # ------------------------------------------------------------ attempts
     def _try(self, target: Target, request: LLMRequest, ctx: AIContext, request_id: uuid.UUID,
              attempts: list[Attempt], *, fallback: bool):
-        """Up to `max_attempts` calls to one provider. Returns (completion,
-        latency_ms) or None to move on to the next provider."""
+        """Up to `max_attempts` calls to one provider — `background_max_attempts`
+        for background work. Returns (completion, latency_ms) or None to move
+        on to the next provider."""
         rel = self.config.reliability
         provider = self.providers[target.provider]
         params = self.config.params(target)
-        for n in range(1, rel.max_attempts + 1):
+        limit = rel.background_max_attempts if ctx.background else rel.max_attempts
+        waited = 0.0
+        for n in range(1, limit + 1):
             t0 = self._monotonic()
             try:
                 completion = provider.complete(target.model, request, timeout=rel.timeout_s,
@@ -217,12 +220,16 @@ class Gateway:
                            provider=target.provider, model=target.model, attempt=n,
                            kind=exc.kind.value, status_code=exc.status, error=exc.message,
                            circuit_opened=opened)
-                wait = self._wait(exc, n, ctx)
-                if wait is None or n == rel.max_attempts or opened:
+                wait = self._wait(exc, n, ctx, waited)
+                # An opened circuit sends someone waiting straight to the
+                # fallback. Background work keeps trying within its budget; its
+                # own success closes the circuit again.
+                if wait is None or n == limit or (opened and not ctx.background):
                     return None
                 logs.event("ai.retry", request_id=str(request_id), provider=target.provider,
                            model=target.model, attempt=n, wait_s=round(wait, 2))
                 self._sleep(wait)
+                waited += wait
                 continue
             latency = self._ms(t0)
             self.breaker.success(target.key)
@@ -237,23 +244,33 @@ class Gateway:
             return completion, latency
         return None
 
-    def _wait(self, exc: ProviderError, attempt: int, ctx: AIContext) -> float | None:
+    def _wait(self, exc: ProviderError, attempt: int, ctx: AIContext,
+              waited: float = 0.0) -> float | None:
         """Seconds to wait before retrying the same provider, or None to fall
         back now. Never waits on an error that waiting cannot fix.
 
         With someone waiting, never longer than `max_retry_wait_s`: past that
-        the next provider is the better bet. Background work waits up to
-        `background_max_wait_s`, because a per-minute limit says exactly when
-        it lifts (Gemini's free tier asks for up to a minute), and a backfill
-        that falls back instead fails every chunk until it does."""
+        the next provider is the better bet.
+
+        Background work has `background_max_wait_s` to spend in all, across
+        retries, because a backfill that gives up fails every chunk until the
+        trouble passes. Its backoff is not capped at `backoff_max_s`, and a
+        provider's hint is a floor, not a promise: Gemini has said "retry in
+        1s" and refused again, so the wait is the longer of the two. Both were
+        seen extracting the demo 10-Ks — a per-minute limit asking for 54s,
+        and "UNAVAILABLE: high demand" lasting longer than three quick tries.
+        """
         rel = self.config.reliability
         if not exc.retryable:
             return None
-        cap = rel.background_max_wait_s if ctx.background else rel.max_retry_wait_s
-        if exc.retry_after is not None:
-            return exc.retry_after if exc.retry_after <= cap else None
-        backoff = min(rel.backoff_max_s, rel.backoff_base_s * 2 ** (attempt - 1))
-        return backoff * (0.5 + self._rng() / 2)       # jittered: 50–100% of the step
+        jitter = 0.5 + self._rng() / 2                 # 50–100% of the step
+        step = rel.backoff_base_s * 2 ** (attempt - 1)
+        if not ctx.background:
+            if exc.retry_after is not None:
+                return exc.retry_after if exc.retry_after <= rel.max_retry_wait_s else None
+            return min(rel.backoff_max_s, step) * jitter
+        wait = max(exc.retry_after or 0.0, step * jitter)
+        return wait if waited + wait <= rel.background_max_wait_s else None
 
     # ------------------------------------------------------------- cache
     def _cache_lookup(self, request: LLMRequest, route, ctx: AIContext) -> CacheEntry | None:
