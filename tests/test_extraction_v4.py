@@ -19,7 +19,7 @@ import unittest
 
 from evident_ai.extract import (KNOWN_HEADER, KNOWN_PER_REQUEST, MAX_NAME_WORDS,
                                 MAX_QUOTE_CHARS, DropReport, anchor,
-                                extract_from_blocks, locate, relevant_known,
+                                extract_from_blocks, find, locate, relevant_known,
                                 render, request_params, validate_entities,
                                 validate_relationships)
 from evident_ai.prompts import EXTRACT_ENTITIES
@@ -74,6 +74,22 @@ class Quotes(unittest.TestCase):
         self.assertIsNone(anchor("", PARAGRAPH))
         self.assertIsNone(anchor("   ", PARAGRAPH))
 
+    def test_a_quote_that_skips_words_is_found_fragment_by_fragment(self):
+        """Seen on the demo 10-Ks: 7 of 12 unfound quotes elided with "...",
+        every fragment verbatim."""
+        quote = "a license is required... H20 integrated circuits\u2026 to China"
+        start, end = locate(quote, PARAGRAPH)
+        self.assertTrue(PARAGRAPH[start:end].startswith("a license is required"))
+        self.assertTrue(PARAGRAPH[start:end].endswith("to China"))
+
+    def test_fragments_must_appear_in_order(self):
+        self.assertIsNone(locate("to China... a license is required", PARAGRAPH))
+
+    def test_one_changed_word_is_a_misquote(self):
+        """Also seen: "negative impact demand" for the filing's "negatively
+        impact demand". Close is not verbatim; the item is dropped."""
+        self.assertIsNone(locate("a licence is required", PARAGRAPH))
+
     def test_a_sentence_too_long_to_read_keeps_the_span(self):
         listing = "We sell " + ", ".join(f"product {i}" for i in range(200)) + "."
         self.assertGreater(len(listing), MAX_QUOTE_CHARS)
@@ -105,6 +121,19 @@ class Validation(unittest.TestCase):
         self.assertEqual([e.name for e in kept], ["Country Groups D1, D4, and D5"],
                          f"{MAX_NAME_WORDS} words is still a name")
         self.assertIn("a phrase, not a topic's name", self.report.reasons[0])
+
+    def test_a_quote_in_another_part_of_the_same_paragraph_moves_the_citation(self):
+        texts = {"28_3#1": "Export controls may hurt demand in Europe.",
+                 "28_3#2": "They may also hurt demand in Latin America.",
+                 "29_1": "Climate change may affect our operations."}
+        self.assertEqual(find("hurt demand in Europe", "28_3#2", texts),
+                         ("28_3#1", "Export controls may hurt demand in Europe."))
+        self.assertIsNone(find("Climate change", "28_3#2", texts),
+                          "another paragraph is another citation, not a repair")
+        kept = validate_entities([entity(name="Europe", entity_type="geography",
+                                         quote="demand in Europe", pid="28_3#2")],
+                                 set(texts), self.report, texts=texts)
+        self.assertEqual(kept[0].paragraph_id, "28_3#1")
 
     def test_relationship_quotes_are_anchored_too(self):
         ents = self.validate(entity(), entity(name="China", entity_type="geography",

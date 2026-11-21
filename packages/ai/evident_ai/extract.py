@@ -64,6 +64,7 @@ MAX_QUOTE_CHARS = 600
 KNOWN_PER_REQUEST = 40
 
 _WORDS = re.compile(r"\w+")
+_ELLIPSIS = re.compile(r"\s*(?:\.{3}|\u2026)\s*")
 _FOLD = str.maketrans({"\u2018": "'", "\u2019": "'", "\u201c": '"', "\u201d": '"',
                        "\u2013": "-", "\u2014": "-", "\u00a0": " "})
 
@@ -196,22 +197,43 @@ def _folded(text: str) -> tuple[str, list[int]]:
     return "".join(out), index
 
 
-def locate(quote: str, paragraph: str) -> tuple[int, int] | None:
-    """Where `quote` is in `paragraph`, allowing for case, curly quotes,
-    dashes and whitespace — the differences a model introduces copying text
-    — or None if it is not there."""
-    quote = quote.strip()
-    if not quote:
-        return None
-    at = paragraph.find(quote)
+def _locate_one(quote: str, paragraph: str, start: int = 0) -> tuple[int, int] | None:
+    at = paragraph.find(quote, start)
     if at >= 0:
         return at, at + len(quote)
     q, _ = _folded(quote)
     t, index = _folded(paragraph)
-    at = t.find(q) if q else -1
+    from_ = next((i for i, orig in enumerate(index) if orig >= start), len(t))
+    at = t.find(q, from_) if q else -1
     if at < 0:
         return None
     return index[at], index[at + len(q) - 1] + 1
+
+
+def locate(quote: str, paragraph: str) -> tuple[int, int] | None:
+    """Where `quote` is in `paragraph`, allowing for case, curly quotes,
+    dashes and whitespace — the differences a model introduces copying text
+    — or None if it is not there.
+
+    A quote that skips words with "..." is found when each fragment is, in
+    order: "exports of certain chips... to China... and Russia" spans from
+    the first fragment to the last."""
+    quote = quote.strip()
+    if not quote:
+        return None
+    whole = _locate_one(quote, paragraph)
+    if whole is not None:
+        return whole
+    fragments = [f for f in _ELLIPSIS.split(quote) if f.strip()]
+    if len(fragments) < 2:
+        return None
+    spans: list[tuple[int, int]] = []
+    for fragment in fragments:
+        span = _locate_one(fragment.strip(), paragraph, spans[-1][1] if spans else 0)
+        if span is None:
+            return None
+        spans.append(span)
+    return spans[0][0], spans[-1][1]
 
 
 def anchor(quote: str, paragraph: str) -> str | None:
@@ -225,6 +247,27 @@ def anchor(quote: str, paragraph: str) -> str | None:
     if end - start > MAX_QUOTE_CHARS:
         start, end = span
     return paragraph[start:end]
+
+
+def find(quote: str, paragraph_id: str,
+         texts: Mapping[str, str]) -> tuple[str, str] | None:
+    """(paragraph id, quote as its sentence) for a quote in the paragraph it
+    cites — or in another part of the same paragraph. The chunker splits a
+    long paragraph into parts (`28_3#1`, `28_3#2`), and a model citing one
+    part for a sentence in the other has still cited the right paragraph; the
+    citation moves to the part that has it, so the viewer highlights the
+    right text. A quote found only in a different paragraph is not repaired:
+    that is a different citation."""
+    quote_ = anchor(quote, texts.get(paragraph_id, ""))
+    if quote_ is not None:
+        return paragraph_id, quote_
+    base = paragraph_id.split("#", 1)[0]
+    for other in sorted(texts):
+        if other != paragraph_id and other.split("#", 1)[0] == base:
+            quote_ = anchor(quote, texts[other])
+            if quote_ is not None:
+                return other, quote_
+    return None
 
 
 # ------------------------------------------------------------- post-validation
@@ -252,11 +295,11 @@ def validate_entities(entities: Iterable[ExtractedEntity], valid_ids: set[str],
                           f"(over {MAX_NAME_WORDS} words)")
             continue
         if texts is not None:
-            quote = anchor(e.quote, texts.get(e.paragraph_id, ""))
-            if quote is None:
+            found = find(e.quote, e.paragraph_id, texts)
+            if found is None:
                 _drop(report, f"{e.name!r}: quote is not in paragraph {e.paragraph_id}")
                 continue
-            e = e.model_copy(update={"quote": quote})
+            e = e.model_copy(update={"paragraph_id": found[0], "quote": found[1]})
         report.kept += 1
         kept.append(e)
     return kept
@@ -300,12 +343,12 @@ def validate_relationships(relationships: Iterable[ExtractedRelationship],
                 "this response")
             continue
         if texts is not None:
-            quote = anchor(r.quote, texts.get(r.paragraph_id, ""))
-            if quote is None:
+            found = find(r.quote, r.paragraph_id, texts)
+            if found is None:
                 _drop(report, f"{r.source_name}->{r.target_name}: quote is not in "
                               f"paragraph {r.paragraph_id}")
                 continue
-            r = r.model_copy(update={"quote": quote})
+            r = r.model_copy(update={"paragraph_id": found[0], "quote": found[1]})
         report.kept += 1
         kept.append(r)
     return kept
