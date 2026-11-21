@@ -186,6 +186,16 @@ ingested from.
   keyword matcher that is literal; with Claude, a missed mention looks exactly
   like a dropped disclosure. The evidence points at where it last appeared so a
   reader can check.
+
+  Measured with real extraction (Gemini 3.5 Flash-Lite, the three demo 10-Ks,
+  2026-11-21): 131 events against the keyword matcher's 13. Of the 54 "no
+  longer disclosed", 38 point at a paragraph that is still in the newer filing
+  (at least half its 4-word shingles). The model named the topic differently
+  that year, or didn't extract it. Names drift too: "GB200 NVL 72" is dropped
+  and "GB200 NVL72" is new; "U.S." and "United States" are separate entities.
+  Every one of the 554 quotes was verbatim in its cited paragraph, so the
+  noise is in matching names across filings, not in the citations. Until that
+  is fixed, the keyword demo is the one whose timeline means what it says.
 - **Counts measure emphasis, not stance.** Export Controls Expanded says the
   filing discusses export controls in more paragraphs; it does not say the
   controls got stricter. The evidence paragraph is where to read which.

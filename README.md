@@ -51,6 +51,15 @@ tools/db.sh up      # create, start and migrate PostgreSQL on :5434; writes .env
 tools/db.sh seed    # three NVIDIA 10-Ks, keyword-extracted — no API key needed
 ```
 
+For the same filings extracted by a model, through the AI gateway: about $0.12
+on Gemini Flash-Lite, and free to repeat because it's cached. Seeding with
+`tools/db.sh seed` afterwards puts the keyword demo back.
+
+```bash
+DATABASE_URL=... GEMINI_API_KEY=... .venv/bin/python tools/seed_demo.py \
+  --corpus timeline --extract gateway --replace
+```
+
 The database is a private cluster in `.pgdata/` (git-ignored) on its own port;
 nothing system-wide is installed or started. `tools/db.sh status|stop` manage
 it. To use another PostgreSQL instead, put its URL in `.env` as
