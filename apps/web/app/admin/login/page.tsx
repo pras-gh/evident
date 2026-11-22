@@ -1,6 +1,7 @@
+import { ParallxMark } from "@/components/brand/ParallxMark";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Admin sign in — Evident" };
+export const metadata: Metadata = { title: "Admin sign in — Parallx" };
 
 const ERRORS: Record<string, string> = {
   missing: "Enter an API key.",
@@ -18,7 +19,8 @@ export default async function AdminLogin({
   return (
     <main className="adm-login">
       <form method="post" action="/admin/session" className="adm-login-card">
-        <p className="ev-kicker">Evident · Internal</p>
+        <ParallxMark size={28} className="adm-mark" />
+        <p className="ev-kicker">Parallx · Internal</p>
         <h1 className="ev-title">AI usage</h1>
         <label htmlFor="key" className="adm-label">Platform admin API key</label>
         <input id="key" name="key" type="password" autoComplete="off" spellCheck={false}

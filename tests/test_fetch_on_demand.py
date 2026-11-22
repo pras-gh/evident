@@ -53,7 +53,7 @@ class Client(unittest.TestCase):
             def __exit__(self, *a):
                 return False
 
-        with mock.patch.dict(os.environ, {"SEC_USER_AGENT": "Evident test"}), \
+        with mock.patch.dict(os.environ, {"SEC_USER_AGENT": "Parallx test"}), \
                 mock.patch("urllib.request.urlopen", lambda req, timeout: Resp()):
             self.assertEqual(edgar._get("https://www.sec.gov/files/company_tickers.json"), body)
 

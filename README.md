@@ -1,6 +1,11 @@
-# Evident
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="apps/web/public/brand/parallx-logo.svg">
+  <img alt="Parallx" src="apps/web/public/brand/parallx-logo-dark.svg" width="220">
+</picture>
 
-Structured company intelligence from SEC filings. Every answer cites a page and
+# Parallx
+
+[ll.ax](https://ll.ax) — structured company intelligence from SEC filings. Every answer cites a page and
 a paragraph.
 
 **This is not a vector database.** The unit of value is the company, not the

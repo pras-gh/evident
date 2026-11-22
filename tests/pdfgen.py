@@ -140,10 +140,10 @@ def write_pdf(path: str | Path, pages: list[list[str]], *, columns: int = COLUMN
         extra: dict[int, bytes] = {}
     else:
         widths = " ".join(str(custom_width(chr(c))) for c in range(32, 256))
-        font_obj = (b"<< /Type /Font /Subtype /Type1 /BaseFont /EvidentTest "
+        font_obj = (b"<< /Type /Font /Subtype /Type1 /BaseFont /ParallxTest "
                     b"/Encoding /WinAnsiEncoding /FirstChar 32 /LastChar 255 "
                     b"/Widths [" + widths.encode() + b"] /FontDescriptor 4 0 R >>")
-        extra = {4: (b"<< /Type /FontDescriptor /FontName /EvidentTest /Flags 32 "
+        extra = {4: (b"<< /Type /FontDescriptor /FontName /ParallxTest /Flags 32 "
                      b"/FontBBox [0 -200 1000 800] /ItalicAngle 0 /Ascent 800 "
                      b"/Descent -200 /CapHeight 700 /StemV 80 >>")}
 

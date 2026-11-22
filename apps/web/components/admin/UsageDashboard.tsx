@@ -1,3 +1,4 @@
+import { ParallxMark } from "@/components/brand/ParallxMark";
 import {
   compact,
   percent,
@@ -81,7 +82,10 @@ export function UsageDashboard({
     <main className="adm">
       <header className="adm-head">
         <div>
-          <p className="ev-kicker">Evident · Internal</p>
+          <p className="ev-kicker adm-kicker">
+            <ParallxMark size={14} />
+            Parallx · Internal
+          </p>
           <h1 className="ev-title">AI usage</h1>
           <p className="adm-sub">
             {dayLabel(data.date_from)} – {dayLabel(data.date_to)}, UTC

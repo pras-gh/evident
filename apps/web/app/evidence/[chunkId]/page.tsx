@@ -38,7 +38,7 @@ export async function generateMetadata({ params, searchParams }: {
   const cite = opening(chunkId, one(sp.cite));
   const ev = cite ? await getEvidence(cite.chunk_id, cite.paragraph_id, one(sp.entity)).catch(() => null) : null;
   const name = ev?.entities.find((e) => e.slug === one(sp.entity))?.name ?? ev?.entities[0]?.name;
-  return { title: `${name ?? "Evidence"}${ev?.ticker ? ` · ${ev.ticker}` : ""} — Evident` };
+  return { title: `${name ?? "Evidence"}${ev?.ticker ? ` · ${ev.ticker}` : ""} — Parallx` };
 }
 
 /** Reading order within the entity's citations: newest filing first, then by

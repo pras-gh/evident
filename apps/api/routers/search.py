@@ -4,7 +4,7 @@ Vector search alone ranks every passage on record by meaning, so it answers
 "Wesco International" with the nearest NVIDIA paragraph. Before ranking
 anything, search works out which companies the query names:
 
-* by rule, the companies Evident holds filings for (`evident_retrieval.companies`);
+* by rule, the companies Parallx holds filings for (`evident_retrieval.companies`);
 * by model, through the AI gateway, every company it names — including ones
   with no filings here — and the topic left once they are taken out
   (`evident_ai.query`). When the model is unavailable, rules alone decide.

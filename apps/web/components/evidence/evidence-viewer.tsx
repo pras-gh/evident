@@ -8,6 +8,8 @@ import type {
   ResolvedCitation,
   TimelineEvent,
 } from "@/lib/types";
+import { ParallxMark } from "@/components/brand/ParallxMark";
+import { ParallxWordmark } from "@/components/brand/ParallxWordmark";
 import { evidenceUrl } from "@/lib/cite";
 import { CitationChip } from "./citation-chip";
 import { EvidenceToolbar } from "./evidence-toolbar";
@@ -173,6 +175,10 @@ export function EvidenceViewer({
     <div className="evv" ref={shellRef}
       style={{ gridTemplateColumns: `${split}% 10px minmax(0, 1fr)` }}>
       <aside className="evv-left" aria-label="Evidence">
+        <a className="evv-brand" href="/" aria-label="Parallx — home">
+          <ParallxMark size={16} />
+          <ParallxWordmark height={8} />
+        </a>
         {ev && (
           <article className="evv-card" style={{ ["--hl" as string]: ev.highlight_color }}>
             <p className="evv-kicker">

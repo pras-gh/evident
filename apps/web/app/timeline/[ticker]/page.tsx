@@ -1,3 +1,4 @@
+import { AppHeader } from "@/components/brand/AppHeader";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CompanyTimelineView } from "@/components/timeline/CompanyTimeline";
@@ -10,7 +11,7 @@ type Search = Promise<{ category?: string | string[] }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { ticker } = await params;
-  return { title: `Timeline · ${ticker.toUpperCase()} — Evident` };
+  return { title: `Timeline · ${ticker.toUpperCase()} — Parallx` };
 }
 
 /** What changed between a company's filings, each change linked to the
@@ -32,5 +33,10 @@ export default async function TimelinePage({
   } catch {
     notFound();
   }
-  return <CompanyTimelineView timeline={timeline} category={category} />;
+  return (
+    <>
+      <AppHeader ticker={ticker} active="timeline" />
+      <CompanyTimelineView timeline={timeline} category={category} />
+    </>
+  );
 }

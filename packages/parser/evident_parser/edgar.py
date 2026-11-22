@@ -41,7 +41,7 @@ def _get(url: str) -> bytes:
     ua = os.environ.get(_UA_ENV)
     if not ua:
         raise RuntimeError(
-            f"Set {_UA_ENV} to something like 'Evident ingest (you@example.com)'. "
+            f"Set {_UA_ENV} to something like 'Parallx ingest (you@example.com)'. "
             "SEC refuses anonymous automated traffic."
         )
     wait = _MIN_INTERVAL - (time.monotonic() - _last_call)

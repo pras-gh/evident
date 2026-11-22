@@ -1,6 +1,6 @@
 # AI gateway
 
-Every AI request in Evident goes through one gateway. Business logic names a
+Every AI request in Parallx goes through one gateway. Business logic names a
 **task**; configuration decides which provider and model run it. Every
 request is limited, retried or rerouted when a provider fails, costed, and
 logged against the organization (and user) it was for.
@@ -240,7 +240,7 @@ which nothing else can answer truthfully.
   - the literal value of every `*_API_KEY`/`*_TOKEN`/`*SECRET` in the environment.
 - **Prompts and filing text are never logged by default.** `AI_LOG_PROMPTS=1`
   adds a redacted 500-character preview, for debugging.
-- **Evident API keys** are 256-bit random, shown once and stored as SHA-256.
+- **Parallx API keys** (`evk_…`) are 256-bit random, shown once and stored as SHA-256.
 - **Usage data is scoped by role in one function** (`apps/api/auth.py::usage_scope`):
   - a member sees their own usage;
   - an org admin sees their organization's;

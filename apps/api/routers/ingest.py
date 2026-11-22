@@ -57,7 +57,7 @@ async def ingest(req: IngestRequest) -> IngestResponse:
             503,
             "SEC_USER_AGENT is not set. SEC requires automated traffic to "
             "declare itself; set it to something like "
-            "'Evident ingest (+https://github.com/you/evident)'.",
+            "'Parallx ingest (you@example.com)'.",
         )
     try:
         # sync worker, so keep it off the event loop

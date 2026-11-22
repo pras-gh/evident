@@ -8,7 +8,7 @@ import { POST } from "./route";
 
 const me = (role: string, is_internal: boolean) => ({
   user_id: "u", email: "a@example.com", role,
-  organization: { id: "o", slug: "evident-internal", name: "Evident", is_internal },
+  organization: { id: "o", slug: "evident-internal", name: "Parallx", is_internal },
 });
 
 function login(key: string) {

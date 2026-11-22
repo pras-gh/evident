@@ -79,7 +79,7 @@ def _fixture_origin(directory: Path):
         os.environ.update({
             "SEC_WWW_URL": base, "SEC_DATA_URL": base,
             "SEC_ARCHIVES_URL": f"{base}/Archives/edgar/data",
-            "SEC_USER_AGENT": "Evident live-run",
+            "SEC_USER_AGENT": "Parallx live-run",
         })
         import evident_parser.edgar as edgar
         edgar._TICKER_MAP = None

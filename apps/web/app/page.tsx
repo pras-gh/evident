@@ -1,3 +1,4 @@
+import { AppHeader } from "@/components/brand/AppHeader";
 import { redirect } from "next/navigation";
 import { getCompanies } from "@/lib/api";
 
@@ -10,20 +11,24 @@ export default async function Home() {
     companies = await getCompanies();
   } catch {
     return (
-      <main className="tl2-shell">
-        <h1 className="ev-title">Evident</h1>
-        <p className="tl2-coverage">
-          The API is not reachable. Start it with <code>tools/dev.sh api</code>.
-        </p>
-      </main>
+      <>
+        <AppHeader />
+        <main className="tl2-shell">
+          <h1 className="ev-title">Parallx</h1>
+          <p className="tl2-coverage">
+            The API is not reachable. Start it with <code>tools/dev.sh api</code>.
+          </p>
+        </main>
+      </>
     );
   }
   const withTicker = companies.filter((c) => c.ticker);
   if (withTicker.length === 1) redirect(`/memory/${withTicker[0].ticker!.toLowerCase()}`);
 
   return (
+    <>
+    <AppHeader />
     <main className="tl2-shell">
-      <p className="ev-kicker">Evident</p>
       <h1 className="ev-title">Companies</h1>
       {withTicker.length === 0 ? (
         <p className="tl2-coverage">
@@ -43,5 +48,6 @@ export default async function Home() {
         </ul>
       )}
     </main>
+    </>
   );
 }

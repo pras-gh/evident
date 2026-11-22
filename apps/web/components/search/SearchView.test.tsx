@@ -90,7 +90,7 @@ describe("which companies were searched", () => {
       scope: { tickers: [], reason: "named" }, embedder: null,
     })} />);
     expect(screen.getByRole("status").textContent).toBe(
-      "No filings for WESCO International, Inc. (WCC) yet. Evident has filings for NVIDIA CORP (NVDA).");
+      "No filings for WESCO International, Inc. (WCC) yet. Parallx has filings for NVIDIA CORP (NVDA).");
     expect(screen.queryByRole("list", { name: /Results/ })).toBeNull();
     expect(screen.queryByText(/No passages found/)).toBeNull();
   });
@@ -156,8 +156,8 @@ describe("companies with no filings here", () => {
     render(<SearchView query="acme" outcome={outcome({ name: "Acme", ticker: null,
       fetch: "not_on_edgar" })} />);
     expect(screen.getByRole("status").textContent).toBe(
-      "Acme doesn’t file with the SEC, so Evident has no filings to search. " +
-      "Evident has filings for NVIDIA CORP (NVDA).");
+      "Acme doesn’t file with the SEC, so Parallx has no filings to search. " +
+      "Parallx has filings for NVIDIA CORP (NVDA).");
   });
 
   it("says what is missing when the SEC can't be asked", () => {

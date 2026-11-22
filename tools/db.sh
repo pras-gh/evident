@@ -1,5 +1,5 @@
 #!/bin/sh
-# A local PostgreSQL for Evident, kept in .pgdata/ (git-ignored). Nothing
+# A local PostgreSQL for Parallx, kept in .pgdata/ (git-ignored). Nothing
 # system-wide is installed, started or changed: it is a private cluster on its
 # own port, started and stopped by this script.
 #
@@ -43,7 +43,7 @@ BIN=$(find_bin)
 
 check_version() {
   major=$("$BIN/postgres" --version | sed -E 's/[^0-9]*([0-9]+).*/\1/')
-  [ "$major" -ge 15 ] || die "$BIN is PostgreSQL $major; Evident needs 15+ (migration 0009 uses NULLS NOT DISTINCT). Install a newer one or set PG_BIN."
+  [ "$major" -ge 15 ] || die "$BIN is PostgreSQL $major; Parallx needs 15+ (migration 0009 uses NULLS NOT DISTINCT). Install a newer one or set PG_BIN."
   [ -f "$("$BIN/pg_config" --sharedir)/extension/vector.control" ] \
     || die "pgvector is not installed for PostgreSQL $major ($BIN). brew install pgvector, or build it against this server."
 }

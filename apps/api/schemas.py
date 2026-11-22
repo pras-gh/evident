@@ -102,7 +102,7 @@ class SearchHitOut(BaseModel):
 class SearchCompanyOut(BaseModel):
     name: str
     ticker: str | None = None
-    #: whether Evident holds filings for it
+    #: whether Parallx holds filings for it
     covered: bool
     #: for a company not covered: its fetch from EDGAR — queued, running or
     #: failed; "not_on_edgar" when the SEC has no such filer; "not_configured"
@@ -185,13 +185,13 @@ class SearchResponse(BaseModel):
     took_ms: float
     #: provider/model that embedded the query; None when nothing was searched
     embedder: str | None = None
-    #: companies the query names, whether or not Evident covers them
+    #: companies the query names, whether or not Parallx covers them
     companies: list[SearchCompanyOut] = Field(default_factory=list)
     scope: SearchScopeOut | None = None
     #: what the query asks with the companies taken out; searched instead of
     #: the whole query when there is one
     topic: str | None = None
-    #: every company Evident holds filings for
+    #: every company Parallx holds filings for
     on_record: list[SearchCompanyOut] = Field(default_factory=list)
     #: "rules", or "rules+provider:model" when a model also read the query
     understood_by: str = "rules"

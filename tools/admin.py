@@ -137,7 +137,7 @@ def main(argv=None) -> int:
             org = db.execute(select(Organization).where(
                 Organization.slug == INTERNAL_ORG_SLUG)).scalar_one_or_none()
             if org is None:
-                org = Organization(slug=INTERNAL_ORG_SLUG, name="Evident (internal)", is_internal=True)
+                org = Organization(slug=INTERNAL_ORG_SLUG, name="Parallx (internal)", is_internal=True)
                 db.add(org)
                 db.flush()
             user = db.execute(select(User).where(User.email == args.email.lower())).scalar_one_or_none()

@@ -1,4 +1,4 @@
-/* Evident — the parallax world and the reveals are CSS scroll-driven
+/* Parallx — the parallax world and the reveals are CSS scroll-driven
    animations wherever the browser supports them. Everything below is a UI
    control, a low-frequency typewriter, or a fallback. No per-frame loop. */
 (function () {
