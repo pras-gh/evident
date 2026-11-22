@@ -1,4 +1,4 @@
--- evident — full schema, generated from the Alembic chain.
+-- parallx — full schema, generated from the Alembic chain.
 --
 -- DO NOT EDIT. Regenerate with:
 --     python3 tools/build_schema.py
@@ -838,5 +838,10 @@ UPDATE alembic_version SET version_num='0013' WHERE alembic_version.version_num 
 UPDATE organizations SET name = 'Parallx (internal)' WHERE slug = 'evident-internal' AND name = 'Evident (internal)';
 
 UPDATE alembic_version SET version_num='0014' WHERE alembic_version.version_num = '0013';
+
+
+UPDATE organizations SET slug = 'parallx-internal' WHERE slug = 'evident-internal';
+
+UPDATE alembic_version SET version_num='0015' WHERE alembic_version.version_num = '0014';
 
 COMMIT;

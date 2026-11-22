@@ -32,8 +32,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import AIUsageLog as L
-from evident_db import Organization
+from parallx_db import AIUsageLog as L
+from parallx_db import Organization
 
 from ..auth import Principal, get_principal, usage_scope
 from ..deps import get_db, get_gateway
@@ -201,8 +201,8 @@ async def limits(p: Principal = Depends(get_principal),
                  gw=Depends(get_gateway)) -> UsageLimitsOut:
     org, _ = usage_scope(p, organization_id, None)
     org = org or p.organization_id
-    from evident_ai.gateway import AIContext
-    from evident_ai.gateway.store import windows
+    from parallx_ai.gateway import AIContext
+    from parallx_ai.gateway.store import windows
 
     def read():
         ctx = AIContext(organization_id=org, user_id=p.user_id, source="api:limits")

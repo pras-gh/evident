@@ -21,8 +21,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Chunk, Company, Document, DocumentPage, store
-from evident_parser.anchors import chunk_anchor, paragraph_page, split_chunk
+from parallx_db import Chunk, Company, Document, DocumentPage, store
+from parallx_parser.anchors import chunk_anchor, paragraph_page, split_chunk
 
 from ..deps import get_company, get_db
 from ..schemas import (BoundingBox, CompanyDocumentsOut, DocumentBlockOut,

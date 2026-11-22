@@ -14,9 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_ai.gateway import AIContext
-from evident_ai.summarize import SummaryFailed, summarize_filing
-from evident_db import Chunk, Document
+from parallx_ai.gateway import AIContext
+from parallx_ai.summarize import SummaryFailed, summarize_filing
+from parallx_db import Chunk, Document
 
 from ..auth import Principal, get_principal
 from ..deps import get_db, get_gateway

@@ -135,11 +135,11 @@ class SqlStore:
     records ends — a crash later in the request does not lose it."""
 
     def __init__(self, url: str | None = None):
-        from evident_db import session_scope
+        from parallx_db import session_scope
         self._session = lambda: session_scope(url)
 
     def org_overrides(self, organization_id):
-        from evident_db import Organization
+        from parallx_db import Organization
         with self._session() as db:
             org = db.get(Organization, organization_id)
             if org is None:
@@ -149,7 +149,7 @@ class SqlStore:
                                                  "max_output_tokens")}
 
     def counts(self, organization_id, user_id, now):
-        from evident_db import AIUsageLog as L
+        from parallx_db import AIUsageLog as L
         day, _, month, _ = windows(now)
         with self._session() as db:
             tokens, spend = db.execute(
@@ -166,12 +166,12 @@ class SqlStore:
                       org_spend_month=Decimal(str(spend)))
 
     def log(self, row):
-        from evident_db import AIUsageLog
+        from parallx_db import AIUsageLog
         with self._session() as db:
             db.add(AIUsageLog(**{k: getattr(row, k) for k in LogRow.__slots__}))
 
     def cache_get(self, key, now):
-        from evident_db import AIResponseCache as C
+        from parallx_db import AIResponseCache as C
         with self._session() as db:
             hit = db.execute(select(C).where(C.cache_key == key)).scalar_one_or_none()
             if hit is None or (hit.expires_at is not None and hit.expires_at <= now):
@@ -182,7 +182,7 @@ class SqlStore:
 
     def cache_put(self, entry):
         from sqlalchemy.dialects.postgresql import insert
-        from evident_db import AIResponseCache
+        from parallx_db import AIResponseCache
         values = {k: getattr(entry, k) for k in CacheEntry.__slots__}
         with self._session() as db:
             db.execute(insert(AIResponseCache).values(**values).on_conflict_do_update(

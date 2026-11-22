@@ -1,6 +1,6 @@
 """The AI gateway: one way into every model, with every request accounted for.
 
-    from evident_ai.gateway import LLMRequest, TaskType, gateway, system_context
+    from parallx_ai.gateway import LLMRequest, TaskType, gateway, system_context
 
     response = gateway().complete(
         LLMRequest(task=TaskType.FILING_SUMMARIZATION, system=..., user=...,
@@ -55,7 +55,7 @@ def internal_organization_id(url: str | None = None) -> uuid.UUID:
     if _internal_org is not None:
         return _internal_org
     from sqlalchemy import select
-    from evident_db import INTERNAL_ORG_SLUG, Organization, session_scope
+    from parallx_db import INTERNAL_ORG_SLUG, Organization, session_scope
     with session_scope(url or os.environ.get("DATABASE_URL")) as db:
         org = db.execute(select(Organization).where(
             Organization.slug == INTERNAL_ORG_SLUG)).scalar_one_or_none()

@@ -13,7 +13,7 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-HEADER = """-- evident — full schema, generated from the Alembic chain.
+HEADER = """-- parallx — full schema, generated from the Alembic chain.
 --
 -- DO NOT EDIT. Regenerate with:
 --     python3 tools/build_schema.py
@@ -30,7 +30,7 @@ def main() -> int:
         [sys.executable, "-m", "alembic", "upgrade", "head", "--sql"],
         cwd=ROOT / "db", capture_output=True, text=True,
         env={"PATH": "/usr/bin:/bin", "DATABASE_URL":
-             "postgresql+psycopg://localhost/evident_offline_render",
+             "postgresql+psycopg://localhost/parallx_offline_render",
              "HOME": str(pathlib.Path.home())},
     )
     if out.returncode != 0:

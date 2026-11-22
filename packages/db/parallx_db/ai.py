@@ -35,7 +35,7 @@ from .base import Base, created_at
 
 #: Background jobs (ingest, extraction, rendering) run as this organization, so
 #: their spend is attributed and capped like a customer's.
-INTERNAL_ORG_SLUG = "evident-internal"
+INTERNAL_ORG_SLUG = "parallx-internal"
 
 ROLES = ("member", "org_admin", "platform_admin")
 USAGE_STATUSES = ("success", "failed", "fallback", "cached", "blocked")

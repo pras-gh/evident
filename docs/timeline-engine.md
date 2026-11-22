@@ -87,7 +87,7 @@ said ≥2 and ≥1.5×. Measured, a floor of 2 reports Israel going 4 → 6 and 
 to 4, movement the size of what re-paginating or splitting a bullet does on its
 own; and 1.5× misses China's 13 → 17 (1.31×) and FY2026's export controls
 20 → 26 (1.3×). They will need revisiting against filers who write differently; both are
-constants in `evident_graph/timeline.py` and reported in every response under
+constants in `parallx_graph/timeline.py` and reported in every response under
 `thresholds`.
 
 ### Which paragraph is the evidence

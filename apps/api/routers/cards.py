@@ -4,7 +4,7 @@ history of revisions.
     GET /v1/companies/{ticker}/cards
     GET /v1/companies/{ticker}/cards/{kind}
 
-Computed on read by `evident_memory.projection` from filings and entity
+Computed on read by `parallx_memory.projection` from filings and entity
 mentions; the card tables in `db/legacy-design` were never migrated, and a
 derived read model does not need them. A card the stored data cannot fill says
 why in `unavailable` rather than showing an empty history.
@@ -15,11 +15,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Chunk, Company, Document, Entity, EntityMention
-from evident_memory.cards import CardRevision, MemoryCard
-from evident_memory.projection import (Cited, CitedEvidence, Filing,
+from parallx_db import Chunk, Company, Document, Entity, EntityMention
+from parallx_memory.cards import CardRevision, MemoryCard
+from parallx_memory.projection import (Cited, CitedEvidence, Filing,
                                        ProjectedCards, project_cards)
-from evident_parser.anchors import paragraph_page
+from parallx_parser.anchors import paragraph_page
 
 from ..deps import get_company, get_db
 from ..schemas import (CardChangeOut, CardDeltaOut, CardDetailOut,
@@ -113,7 +113,7 @@ async def get_card(kind: str, company: Company = Depends(get_company),
 @router.get("/{ticker}/promises", summary="Promises — not built yet", status_code=501,
             responses={501: {"description": "Not built yet"}})
 async def promises(ticker: str) -> None:
-    # The promise lifecycle is designed and tested in evident_memory, but its
+    # The promise lifecycle is designed and tested in parallx_memory, but its
     # tables (db/legacy-design/002) were never migrated and nothing extracts
     # promises. 501 rather than 404: the route exists, the data does not.
     raise HTTPException(501, "Promises are not built yet: nothing extracts them and they "

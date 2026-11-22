@@ -47,7 +47,7 @@ def fixture_origin(root: Path = FIXTURES):
             "SEC_USER_AGENT": "Parallx test",
         })
         # the ticker map is cached for the process lifetime
-        import evident_parser.edgar as edgar
+        import parallx_parser.edgar as edgar
         edgar._TICKER_MAP = None
         edgar.BASE = base
         edgar.WWW = base
@@ -67,7 +67,7 @@ def fixture_origin(root: Path = FIXTURES):
 class Ingest(unittest.TestCase):
     def setUp(self):
         from sqlalchemy import text
-        from evident_db import Base, make_engine
+        from parallx_db import Base, make_engine
         engine = make_engine(DSN)
         with engine.begin() as c:
             c.execute(text("create extension if not exists vector"))
@@ -96,7 +96,7 @@ class Ingest(unittest.TestCase):
     def test_preserves_page_numbers_and_section_titles(self):
         """The requirement the whole citation promise rests on."""
         from sqlalchemy import select
-        from evident_db import Chunk, session_scope
+        from parallx_db import Chunk, session_scope
         from workers.ingest_worker import ingest_ticker
 
         with fixture_origin():

@@ -91,7 +91,7 @@ class HtmlFilings(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     async def test_every_citation_highlights_a_block_on_the_page_it_names(self):
         """All of them: every mention extraction stored, resolved in one call."""
         from sqlalchemy import select
-        from evident_db import EntityMention, session_scope
+        from parallx_db import EntityMention, session_scope
         with session_scope(DSN) as db:
             refs = [{"chunk_id": m.chunk_id, "paragraph_id": m.paragraph_id}
                     for m in db.execute(select(EntityMention)).scalars()]
@@ -153,7 +153,7 @@ class Batching(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls):
         _ingest_and_extract(filings=3)
         from sqlalchemy import select
-        from evident_db import EntityMention, session_scope
+        from parallx_db import EntityMention, session_scope
         with session_scope(DSN) as db:
             cls.refs = [{"chunk_id": m.chunk_id, "paragraph_id": m.paragraph_id}
                         for m in db.execute(select(EntityMention)).scalars()]
@@ -219,7 +219,7 @@ class RenderedFilings(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     def setUpClass(cls):
         import os
         from sqlalchemy import select
-        from evident_db import Document, session_scope
+        from parallx_db import Document, session_scope
         from workers.render_worker import render_document
 
         cls._store = tempfile.TemporaryDirectory()
@@ -264,7 +264,7 @@ class RenderedFilings(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     async def test_every_citation_box_sits_on_ink_in_the_image_the_api_serves(self):
         from PIL import Image
         from sqlalchemy import select
-        from evident_db import Entity, EntityMention, session_scope
+        from parallx_db import Entity, EntityMention, session_scope
         with session_scope(DSN) as db:
             refs = [{"chunk_id": m.chunk_id, "paragraph_id": m.paragraph_id, "entity": slug}
                     for m, slug in db.execute(select(EntityMention, Entity.slug)
@@ -295,7 +295,7 @@ class RenderedFilings(_ApiMixin, unittest.IsolatedAsyncioTestCase):
         self.assertGreater(len(images), 30)
 
     async def test_a_citation_is_coloured_by_the_entity_it_is_evidence_for(self):
-        from evident_graph.taxonomy import HIGHLIGHT_COLORS
+        from parallx_graph.taxonomy import HIGHLIGHT_COLORS
         async with await self._client() as c:
             doc = (await _get(self, c, "/v1/company/NVDA/documents"))["documents"][0]
             page = await _get(self, c, f"/v1/document/{doc['document_id']}/page/{doc['first_page']}")
@@ -322,7 +322,7 @@ class RenderedFilings(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
     async def test_unrendered_or_missing_files_are_404_not_500(self):
         from sqlalchemy import update
-        from evident_db import DocumentPage, session_scope
+        from parallx_db import DocumentPage, session_scope
         async with await self._client() as c:
             doc = (await _get(self, c, "/v1/company/NVDA/documents"))["documents"][0]
             await _get(self, c, f"/v1/document/{doc['document_id']}/page/1/image", status=404)
@@ -342,8 +342,8 @@ class PdfFiling(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         from sqlalchemy import select
-        from evident_db import Company, Document, session_scope
-        from evident_parser.html import parse_html
+        from parallx_db import Company, Document, session_scope
+        from parallx_parser.html import parse_html
         from seed_demo import KeywordClient
         from workers.ingest_worker import ingest_ticker
         from workers.memory_builder import build_for_document
@@ -423,7 +423,7 @@ class PdfFiling(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
     async def test_evidence_carries_the_cited_paragraphs_box(self):
         from sqlalchemy import select
-        from evident_db import EntityMention, session_scope
+        from parallx_db import EntityMention, session_scope
         with session_scope(DSN) as db:
             refs = [{"chunk_id": m.chunk_id, "paragraph_id": m.paragraph_id}
                     for m in db.execute(select(EntityMention)).scalars()]

@@ -25,9 +25,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from evident_db import FETCH_ACTIVE, Company, CompanyFetch, session_scope
+from parallx_db import FETCH_ACTIVE, Company, CompanyFetch, session_scope
 
-log = logging.getLogger("evident.fetch_worker")
+log = logging.getLogger("parallx.fetch_worker")
 
 #: Annual reports, newest first: a 10-K, or a foreign filer's 20-F / 40-F.
 ANNUAL_FORMS = ["10-K", "20-F", "40-F"]

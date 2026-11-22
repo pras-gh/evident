@@ -1,4 +1,4 @@
-# evident-ingest
+# parallx-ingest
 
 Automated ingestion for SEC filings. Takes an EDGAR accession number, produces
 structured, citable entities in PostgreSQL.
@@ -179,32 +179,30 @@ real provider before this serves anything.
 ## Running
 
 ```bash
-pip install -r requirements.txt
-psql "$DATABASE_URL" -f sql/001_schema.sql      # needs pgvector on the server
+tools/setup.sh                                   # venv, dependencies, .env
+tools/db.sh up                                   # Postgres + pgvector, migrated
 export SEC_USER_AGENT="Parallx ingest (you@example.com)"   # SEC refuses anonymous traffic
 
-python -m evident_ingest.cli ingest --cik 320193 --accession 0000320193-25-000073
+python -m workers.ingest_worker --ticker AAPL --forms 10-K --limit 1
 ```
 
-Parse a local file with no network and no database — useful for checking a
-parser change against a filing you already have:
-
-```bash
-python -m evident_ingest.cli parse --file filing.htm --accession 0000320193-25-000073
-```
+The worker looks the ticker up in EDGAR's company list, downloads the latest
+matching filings, parses, chunks and embeds them, and stores them with their
+evidence. Search does the same on demand: asking about a company with no
+filings here queues a fetch (`workers/fetch_worker.py`).
 
 ## Tests
 
-The core is dependency-free, so the suite runs with nothing installed:
+The parser's tests need no network and no database:
 
 ```bash
-python3 -m unittest discover -s tests
+python -m unittest tests.test_parser tests.test_pdf_parser
 ```
 
-22 tests cover paragraph-id stability, section/page/table extraction, the
-chunker's two invariants, and embedding determinism. The EDGAR, PDF and
-Postgres paths are excluded on purpose — they are thin adapters over
-third-party libraries, and the logic worth protecting is not in them.
+They cover paragraph-id stability, section/page/table extraction, the
+chunker's invariants, and embedding determinism. `tests/test_ingest_e2e.py`
+runs the whole path — EDGAR fixtures in, rows out — against a real database
+when `TEST_DATABASE_URL` is set.
 
 ## Known gaps
 

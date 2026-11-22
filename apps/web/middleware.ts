@@ -8,7 +8,7 @@ export function middleware(req: NextRequest) {
   if (pathname === "/admin/login" || pathname.startsWith("/admin/session")) {
     return NextResponse.next();
   }
-  if (!req.cookies.get("evident_admin")?.value) {
+  if (!req.cookies.get("parallx_admin")?.value) {
     const url = req.nextUrl.clone();
     url.pathname = "/admin/login";
     url.search = "";

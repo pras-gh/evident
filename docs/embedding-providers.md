@@ -117,7 +117,7 @@ ranking bug has even odds of fixing the wrong one.
 What survived is the part worth keeping, and it is now live rather than
 shelved:
 
-- `rerank` moved to `evident_retrieval/rerank.py` and is **wired into
+- `rerank` moved to `parallx_retrieval/rerank.py` and is **wired into
   `POST /v1/search`**, which now over-fetches `k * 3` and blends recency into
   the ordering. Previously the endpoint ranked on cosine distance alone while
   a tested recency-weighting function sat unused next door.

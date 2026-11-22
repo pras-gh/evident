@@ -11,8 +11,8 @@ import unittest
 from dataclasses import dataclass
 from datetime import date
 
-from evident_db import Chunk
-from evident_retrieval.rerank import rerank
+from parallx_db import Chunk
+from parallx_retrieval.rerank import rerank
 
 
 @dataclass

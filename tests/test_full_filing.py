@@ -17,10 +17,10 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from evident_parser.chunker import (DEFAULT_MAX_TOKENS, chunk_document,
+from parallx_parser.chunker import (DEFAULT_MAX_TOKENS, chunk_document,
                                     split_oversized)
-from evident_parser.html import parse_html
-from evident_parser.models import Block, Table
+from parallx_parser.html import parse_html
+from parallx_parser.models import Block, Table
 
 FIXTURE = (Path(__file__).resolve().parent / "fixtures" / "edgar" / "Archives" /
            "edgar" / "data" / "1045810" / "000104581025000023" /

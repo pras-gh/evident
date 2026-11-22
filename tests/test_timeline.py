@@ -17,7 +17,7 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from evident_graph.timeline import (CARRIED_OVER, MIN_DELTA, MIN_RATIO, Filing,
+from parallx_graph.timeline import (CARRIED_OVER, MIN_DELTA, MIN_RATIO, Filing,
                                     Mention, Topic, build_timeline, expanded,
                                     narrowed, overlap, said, shingles)
 

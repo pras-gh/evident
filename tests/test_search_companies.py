@@ -12,10 +12,10 @@ import unittest
 import uuid
 from datetime import date
 
-from evident_ai.gateway import AIContext, Gateway, MemoryStore
-from evident_ai.gateway.config import from_dict
-from evident_ai.query import UNDERSTAND_SEARCH, UnderstandingFailed, understand
-from evident_retrieval.companies import OnRecord, named, same_company, short_name
+from parallx_ai.gateway import AIContext, Gateway, MemoryStore
+from parallx_ai.gateway.config import from_dict
+from parallx_ai.query import UNDERSTAND_SEARCH, UnderstandingFailed, understand
+from parallx_retrieval.companies import OnRecord, named, same_company, short_name
 from test_ai_gateway import RAW, Script, ok
 
 NVDA = OnRecord("NVDA", "NVIDIA CORP")

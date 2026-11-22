@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import (Chunk, Company, Document, Entity, EntityMention,
+from parallx_db import (Chunk, Company, Document, Entity, EntityMention,
                         TimelineEvent)
 
 from ..deps import get_company, get_db

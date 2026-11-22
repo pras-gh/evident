@@ -17,7 +17,7 @@ business logic ──► gateway.complete(LLMRequest(task=…), ctx)
               ai_usage_logs (every attempt) · structured JSON logs · cost
 ```
 
-Code: `packages/ai/evident_ai/gateway/`. Config: `config/ai.toml`.
+Code: `packages/ai/parallx_ai/gateway/`. Config: `config/ai.toml`.
 
 ## Switching providers
 
@@ -42,7 +42,7 @@ cannot be capped.
 | `complex_financial_reasoning` | `anthropic:claude-sonnet-5-5` | `gemini:gemini-3.6-flash` |
 | `research_synthesis` | `gemini:gemini-3.6-flash` | `anthropic:claude-sonnet-5-5` |
 
-Entity extraction (`evident_ai.extract`) is `financial_extraction`. Filing
+Entity extraction (`parallx_ai.extract`) is `financial_extraction`. Filing
 summaries (`POST /v1/document/{id}/summary`) are `filing_summarization`. The
 other three tasks are routed and priced, ready for the features that need them.
 
@@ -96,7 +96,7 @@ counts every input token, cached ones included; `cached_tokens` is the part
 read from the provider's prompt cache.
 
 Background work (ingest, extraction) is attributed to the internal
-organization `evident-internal`, with no user. Its spend is capped like a
+organization `parallx-internal`, with no user. Its spend is capped like a
 customer's.
 
 **Cost** is computed from the provider's own token counts and the price in
@@ -235,12 +235,13 @@ which nothing else can answer truthfully.
   provider key. Its own admin key sits in an httpOnly, same-site-strict cookie
   that page JavaScript cannot read.
 - **Redaction** runs before any error or log line is stored. It masks:
-  - every key format (`sk-ant-…`, `gsk_…`, `AIza…`, `evk_…`);
+  - every key format (`sk-ant-…`, `gsk_…`, `AIza…`, `plx_…` and the older `evk_…`);
   - `Bearer` tokens, `key=` query parameters and API-key headers;
   - the literal value of every `*_API_KEY`/`*_TOKEN`/`*SECRET` in the environment.
 - **Prompts and filing text are never logged by default.** `AI_LOG_PROMPTS=1`
   adds a redacted 500-character preview, for debugging.
-- **Parallx API keys** (`evk_…`) are 256-bit random, shown once and stored as SHA-256.
+- **Parallx API keys** (`plx_…`; keys made before the rename start `evk_` and still
+  work) are 256-bit random, shown once and stored as SHA-256.
 - **Usage data is scoped by role in one function** (`apps/api/auth.py::usage_scope`):
   - a member sees their own usage;
   - an org admin sees their organization's;
@@ -287,7 +288,7 @@ python tools/admin.py create-org acme "Acme Capital" --monthly-spend 25
 python tools/admin.py create-user acme analyst@acme.com --role org_admin
 python tools/admin.py create-key analyst@acme.com --name laptop
 python tools/admin.py set-limits acme --daily-requests 100
-python tools/admin.py revoke-key evk_AbCdEfGh
+python tools/admin.py revoke-key plx_AbCdEfGh
 python tools/admin.py list
 ```
 
@@ -334,7 +335,7 @@ tokens as it reads. From those, estimated:
 - **Groq's developer-plan rate limits** (8K tokens per minute on the GPT-OSS
   models, per its docs) are below one large summarization request. As a
   summarization fallback, Groq will need a paid tier.
-- **Embeddings** go through `EmbeddingProvider` (`evident_retrieval.embed`),
+- **Embeddings** go through `EmbeddingProvider` (`parallx_retrieval.embed`),
   outside the gateway, and are not logged in `ai_usage_logs`; the Gemini
   provider logs token counts instead. Gemini (`gemini-embedding-2`, 1024
   dimensions) has been run live: the demo corpus is 94 chunks, 28,364 tokens,

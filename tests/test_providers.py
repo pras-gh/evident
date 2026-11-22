@@ -10,8 +10,8 @@ from __future__ import annotations
 import os
 import unittest
 
-from evident_db import EMBEDDING_DIM as COLUMN_DIM
-from evident_retrieval.embed import (EMBEDDING_DIM, EmbeddingError,
+from parallx_db import EMBEDDING_DIM as COLUMN_DIM
+from parallx_retrieval.embed import (EMBEDDING_DIM, EmbeddingError,
                                      EmbeddingProvider, GeminiEmbedder,
                                      HashingEmbedder, OpenAIEmbedder, PROVIDERS,
                                      VoyageEmbedder, default_provider, get_provider)

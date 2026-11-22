@@ -11,8 +11,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from evident_db.base import Base
-from evident_db import models  # noqa: F401  — registers every table
+from parallx_db.base import Base
+from parallx_db import models  # noqa: F401  — registers every table
 
 config = context.config
 if config.config_file_name:

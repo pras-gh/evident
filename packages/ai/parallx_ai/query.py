@@ -2,7 +2,7 @@
 
     query -> gateway (task classification) -> JSON Schema -> Pydantic
 
-Rules find the companies we hold filings for (`evident_retrieval.companies`).
+Rules find the companies we hold filings for (`parallx_retrieval.companies`).
 This finds every company the query names, including the ones we don't — which
 is how "Wesco International" can be answered with "we don't have its filings"
 instead of the nearest NVIDIA paragraph — and the topic left once the company

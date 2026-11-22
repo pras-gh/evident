@@ -18,9 +18,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Company, Document, Entity, EntityMention, Relationship
-from evident_graph.builder import EntityInput, build_graph
-from evident_graph.relationships import TypedEdge
+from parallx_db import Company, Document, Entity, EntityMention, Relationship
+from parallx_graph.builder import EntityInput, build_graph
+from parallx_graph.relationships import TypedEdge
 
 from ..deps import get_company, get_db
 from ..schemas import GraphOut, ImportanceExplanation
@@ -87,7 +87,7 @@ async def explain_node(node_id: str, company: Company = Depends(get_company),
 
     A score nobody can interrogate is the same failure as an uncited claim.
     """
-    from evident_graph.builder import explain
+    from parallx_graph.builder import explain
 
     rows = (await db.execute(
         select(Entity, func.count(EntityMention.id),

@@ -139,7 +139,7 @@ def clear_memory(db, company_id: int) -> int:
     relationships and metric observations. Filings, chunks and rendered pages
     stay, so nothing is ingested or rendered again. Returns entities deleted."""
     from sqlalchemy import delete
-    from evident_db import Entity
+    from parallx_db import Entity
     return db.execute(delete(Entity).where(Entity.company_id == company_id)).rowcount
 
 
@@ -160,15 +160,15 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.extract == "gateway":
-        from evident_ai.gateway import TaskType, missing_keys
+        from parallx_ai.gateway import TaskType, missing_keys
         if why := missing_keys(TaskType.FINANCIAL_EXTRACTION):
             print(f"error: {why}", file=sys.stderr)
             return 2
 
     from sqlalchemy import func, select
 
-    from evident_ai.gateway import UsageLimitExceeded
-    from evident_db import Company, Document, Entity, EntityMention, session_scope
+    from parallx_ai.gateway import UsageLimitExceeded
+    from parallx_db import Company, Document, Entity, EntityMention, session_scope
     from test_ingest_e2e import fixture_origin
     from workers.ingest_worker import ingest_ticker
     from workers.memory_builder import build_for_document

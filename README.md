@@ -118,7 +118,7 @@ paragraph's box on the same pixels it photographs. See `docs/evidence-viewer.md`
 
 ## AI gateway
 
-Every AI request goes through `evident_ai.gateway`: business logic names a
+Every AI request goes through `parallx_ai.gateway`: business logic names a
 task, and `config/ai.toml` routes it to Gemini, Groq or Claude, with fallback.
 Every request is retried or rerouted on failure, capped by per-user and
 per-organization limits, cached where it is filing analysis, costed, and logged

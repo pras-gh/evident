@@ -17,11 +17,11 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from evident_db import EMBEDDING_DIM, session_scope
-from evident_db.repositories import chunks_without_embeddings, set_embeddings
-from evident_retrieval.embed import EmbeddingProvider, default_provider
+from parallx_db import EMBEDDING_DIM, session_scope
+from parallx_db.repositories import chunks_without_embeddings, set_embeddings
+from parallx_retrieval.embed import EmbeddingProvider, default_provider
 
-log = logging.getLogger("evident.embedding_worker")
+log = logging.getLogger("parallx.embedding_worker")
 
 
 @dataclass(slots=True)

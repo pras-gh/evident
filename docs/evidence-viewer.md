@@ -58,7 +58,7 @@ plain filing style because it carries none of its own; a full EDGAR filing
 renders with its own styles. The toolbar links the original on EDGAR.
 
 **PDF filings** get their boxes at parse time from the PDF's text geometry
-(`evident_parser.pdf`), and their own bytes as the PDF. Page images for them
+(`parallx_parser.pdf`), and their own bytes as the PDF. Page images for them
 need a rasteriser, which is not wired up: the viewer shows those filings as
 text, highlighted by paragraph anchor.
 

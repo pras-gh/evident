@@ -58,7 +58,7 @@ client can say "4 updates, 3 material" rather than implying every filing
 mattered.
 
 Cards are **computed on read** from filings and entity mentions
-(`evident_memory.projection`); the card tables in `db/legacy-design` were never
+(`parallx_memory.projection`); the card tables in `db/legacy-design` were never
 migrated, and a derived read model does not need them. What that data can fill
 today is **Risks** (risk entities cited in Item 1A of annual filings) and
 **Litigation** (entities cited in Legal Proceedings). The others have no
@@ -91,7 +91,7 @@ between filings — computed, with evidence — use `GET /v1/company/{ticker}/ti
 
 ### `GET /v1/companies/{ticker}/promises`
 
-**Not built — returns 501.** Designed and tested in `evident_memory`, but
+**Not built — returns 501.** Designed and tested in `parallx_memory`, but
 nothing extracts promises and their tables were never migrated.
 
 `?status=open|kept|broken|abandoned|unclear`.

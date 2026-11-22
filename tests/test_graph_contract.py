@@ -13,11 +13,11 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from evident_graph.builder import EntityInput, build_graph, explain
-from evident_graph.importance import Signals, score_all
-from evident_graph.normalize import (canonical_label, display_label,
+from parallx_graph.builder import EntityInput, build_graph, explain
+from parallx_graph.importance import Signals, score_all
+from parallx_graph.normalize import (canonical_label, display_label,
                                      entity_key, fold)
-from evident_graph.relationships import TypedEdge, co_occurrence, strength
+from parallx_graph.relationships import TypedEdge, co_occurrence, strength
 
 NODE_FIELDS = {"id", "label", "type", "importance", "mentions"}
 EDGE_FIELDS = {"source", "target", "relationship", "strength"}

@@ -24,7 +24,7 @@ TICKER = "NVDA"
 
 def _reset_schema():
     from sqlalchemy import text
-    from evident_db import Base, make_engine
+    from parallx_db import Base, make_engine
     engine = make_engine(DSN)
     Base.metadata.drop_all(engine)
     with engine.begin() as c:
@@ -50,8 +50,8 @@ class Resolution(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         from sqlalchemy import select
-        from evident_db import Chunk, Document, session_scope
-        from evident_parser.anchors import paragraph_page
+        from parallx_db import Chunk, Document, session_scope
+        from parallx_parser.anchors import paragraph_page
         from workers.ingest_worker import ingest_ticker
 
         _reset_schema()
@@ -76,7 +76,7 @@ class Resolution(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     # ----------------------------------------------------------- one citation
     async def test_citation_resolves_the_paragraphs_page_not_the_chunks(self):
         """The failure this whole module is shaped around."""
-        from evident_parser.anchors import paragraph_page
+        from parallx_parser.anchors import paragraph_page
 
         chunk_id, pids, chunk_page = self.spanning
         last = pids[-1]
@@ -201,7 +201,7 @@ class Resolution(_ApiMixin, unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(anchors), expected, "a paragraph went missing")
 
     async def test_every_paragraph_sits_on_the_page_its_id_names(self):
-        from evident_parser.anchors import paragraph_page
+        from parallx_parser.anchors import paragraph_page
         async with await self._client() as c:
             view = (await c.get(f"/v1/documents/{self.document_id}/pages")).json()
         pages = [p["page"] for p in view["pages"]]
@@ -252,8 +252,8 @@ class Confidence(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         from datetime import date
         from sqlalchemy import select
-        from evident_db import Chunk, Company, Document, session_scope
-        from evident_db.repositories import add_entity_mention, upsert_entity
+        from parallx_db import Chunk, Company, Document, session_scope
+        from parallx_db.repositories import add_entity_mention, upsert_entity
         from workers.ingest_worker import ingest_ticker
 
         _reset_schema()
@@ -322,8 +322,8 @@ class OneMentionPerParagraph(unittest.TestCase):
     def setUp(self):
         from datetime import date
         from sqlalchemy import select
-        from evident_db import Chunk, Company, Document, session_scope
-        from evident_db.repositories import upsert_entity
+        from parallx_db import Chunk, Company, Document, session_scope
+        from parallx_db.repositories import upsert_entity
         from workers.ingest_worker import ingest_ticker
 
         _reset_schema()
@@ -343,7 +343,7 @@ class OneMentionPerParagraph(unittest.TestCase):
 
     def _mention(self, db, paragraph_id):
         from datetime import date
-        from evident_db.repositories import add_entity_mention
+        from parallx_db.repositories import add_entity_mention
         return add_entity_mention(db, entity_id=self.entity_id,
                                   document_id=self.document_id,
                                   chunk_id=self.chunk_id,
@@ -352,14 +352,14 @@ class OneMentionPerParagraph(unittest.TestCase):
 
     def _count(self):
         from sqlalchemy import func, select
-        from evident_db import Entity, EntityMention, session_scope
+        from parallx_db import Entity, EntityMention, session_scope
         with session_scope(DSN) as db:
             rows = db.execute(select(func.count(EntityMention.id))).scalar_one()
             counter = db.get(Entity, self.entity_id).mention_count
         return rows, counter
 
     def test_every_paragraph_citing_an_entity_in_one_chunk_is_kept(self):
-        from evident_db import session_scope
+        from parallx_db import session_scope
         with session_scope(DSN) as db:
             added = [self._mention(db, pid) for pid in self.pids[:3]]
         self.assertEqual(added, [True, True, True])
@@ -367,7 +367,7 @@ class OneMentionPerParagraph(unittest.TestCase):
 
     def test_citing_the_same_paragraph_again_is_still_a_no_op(self):
         """What the old constraint was for, and still has to do."""
-        from evident_db import session_scope
+        from parallx_db import session_scope
         with session_scope(DSN) as db:
             first = self._mention(db, self.pids[0])
             again = self._mention(db, self.pids[0])
@@ -377,7 +377,7 @@ class OneMentionPerParagraph(unittest.TestCase):
     def test_a_citation_with_no_paragraph_is_deduplicated_too(self):
         # NULL is distinct from NULL by default in a unique constraint, which
         # would let a rerun insert a table citation twice
-        from evident_db import session_scope
+        from parallx_db import session_scope
         with session_scope(DSN) as db:
             first = self._mention(db, None)
             again = self._mention(db, None)
@@ -403,9 +403,9 @@ class ExtractionCitesParagraphs(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
     async def test_a_mention_records_the_paragraph_that_supports_it(self):
         from sqlalchemy import select
-        from evident_db import (Chunk, Company, Document, EntityMention,
+        from parallx_db import (Chunk, Company, Document, EntityMention,
                                 session_scope)
-        from evident_parser.anchors import paragraph_page
+        from parallx_parser.anchors import paragraph_page
         from workers.memory_builder import build_for_document
 
         sent: list[list[str]] = []

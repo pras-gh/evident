@@ -51,7 +51,7 @@ def compute_cost(input_tokens: int, output_tokens: int,
     config/ai.toml. Used only where the gateway reported no cost (an old run);
     a run through the gateway sums the cost each call actually incurred, at
     whichever model answered it."""
-    from evident_ai.gateway import TaskType, Usage, load
+    from parallx_ai.gateway import TaskType, Usage, load
     config = load()
     price = config.price(config.route(TaskType.FINANCIAL_EXTRACTION)[0])
     return price.cost(Usage(input_tokens=input_tokens + cache_read + cache_created,
@@ -62,7 +62,7 @@ def compute_cost(input_tokens: int, output_tokens: int,
 def require_route_keys(die) -> tuple[str, str]:
     """(provider, model) of the extraction route's primary, after checking
     some provider on the route has a key — otherwise every call would fail."""
-    from evident_ai.gateway import TaskType, load, missing_keys
+    from parallx_ai.gateway import TaskType, load, missing_keys
     config = load()
     if why := missing_keys(TaskType.FINANCIAL_EXTRACTION, config):
         die(why)
@@ -87,7 +87,7 @@ def _fixture_origin(directory: Path):
         os.environ.update({"SEC_WWW_URL": base, "SEC_DATA_URL": base,
                            "SEC_ARCHIVES_URL": f"{base}/Archives/edgar/data",
                            "SEC_USER_AGENT": "Parallx benchmark"})
-        import evident_parser.edgar as edgar
+        import parallx_parser.edgar as edgar
         edgar._TICKER_MAP = None
         edgar.BASE = edgar.WWW = base
         edgar.ARCHIVES = f"{base}/Archives/edgar/data"
@@ -119,9 +119,9 @@ def main() -> int:
 
     from sqlalchemy import desc, func, select
 
-    from evident_ai.extract import Extraction, ExtractionRejected
-    from evident_ai.prompts import EXTRACT_ENTITIES
-    from evident_db import (Chunk, Company, Document, Entity, EntityMention,
+    from parallx_ai.extract import Extraction, ExtractionRejected
+    from parallx_ai.prompts import EXTRACT_ENTITIES
+    from parallx_db import (Chunk, Company, Document, Entity, EntityMention,
                             ExtractionCall, ExtractionRun, Relationship,
                             session_scope)
 

@@ -24,7 +24,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         # no longer falls back to hash vectors, so an unset variable is an
         # error here exactly as it would be on a server.
         os.environ.setdefault("EMBEDDING_PROVIDER", "hashing")
-        from evident_db import Base, make_engine
+        from parallx_db import Base, make_engine
         cls.engine = make_engine(DSN)
         Base.metadata.drop_all(cls.engine)
         with cls.engine.begin() as c:
@@ -37,15 +37,15 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         # without this the second seed correctly reports "content unchanged"
         # and every later assertion is testing the wrong state.
         from sqlalchemy import text
-        from evident_db import Base
+        from parallx_db import Base
         with self.engine.begin() as c:
             names = ", ".join(t.name for t in reversed(Base.metadata.sorted_tables))
             c.execute(text(f"truncate {names} restart identity cascade"))
 
-        from evident_db import session_scope
-        from evident_db.repositories import (replace_chunks, upsert_company,
+        from parallx_db import session_scope
+        from parallx_db.repositories import (replace_chunks, upsert_company,
                                              upsert_document)
-        from evident_parser.models import chunk_hash, content_id
+        from parallx_parser.models import chunk_hash, content_id
 
         with session_scope(DSN) as db:
             company = upsert_company(db, cik="1045810", name="NVIDIA Corp",
@@ -86,8 +86,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     def test_unchanged_bytes_are_reported_as_not_new(self):
         """The signal the ingest worker uses to skip re-parsing."""
         from datetime import datetime, timezone
-        from evident_db import session_scope
-        from evident_db.repositories import upsert_document
+        from parallx_db import session_scope
+        from parallx_db.repositories import upsert_document
 
         with session_scope(DSN) as db:
             _, is_new = upsert_document(
@@ -100,8 +100,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
 
     def test_changed_bytes_are_reported_as_new(self):
         from datetime import datetime, timezone
-        from evident_db import session_scope
-        from evident_db.repositories import upsert_document
+        from parallx_db import session_scope
+        from parallx_db.repositories import upsert_document
 
         with session_scope(DSN) as db:
             _, is_new = upsert_document(
@@ -114,8 +114,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
 
     def test_reingesting_a_company_updates_rather_than_duplicating(self):
         from sqlalchemy import func, select
-        from evident_db import Company, session_scope
-        from evident_db.repositories import upsert_company
+        from parallx_db import Company, session_scope
+        from parallx_db.repositories import upsert_company
 
         with session_scope(DSN) as db:
             upsert_company(db, cik="1045810", name="NVIDIA Corporation",
@@ -134,8 +134,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         Now covers every kind through one path instead of being re-stated per
         table."""
         from sqlalchemy import select
-        from evident_db import Entity, session_scope
-        from evident_db.repositories import upsert_entity
+        from parallx_db import Entity, session_scope
+        from parallx_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
             for kind, label, when in (("strategy", "Blackwell", date(2024, 5, 1)),
@@ -164,8 +164,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         ingest order.
         """
         from sqlalchemy import select
-        from evident_db import Entity, session_scope
-        from evident_db.repositories import upsert_entity
+        from parallx_db import Entity, session_scope
+        from parallx_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
             upsert_entity(db, company_id=self.company_id, entity_type="product",
@@ -183,8 +183,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     def test_attributes_merge_rather_than_overwrite(self):
         """A later filing that omits a risk's category must not erase it."""
         from sqlalchemy import select
-        from evident_db import Entity, session_scope
-        from evident_db.repositories import upsert_entity
+        from parallx_db import Entity, session_scope
+        from parallx_db.repositories import upsert_entity
 
         with session_scope(DSN) as db:
             upsert_entity(db, company_id=self.company_id, entity_type="risk",
@@ -201,8 +201,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
 
     def test_mention_count_does_not_inflate_on_rerun(self):
         from sqlalchemy import select
-        from evident_db import Chunk, Entity, session_scope
-        from evident_db.repositories import add_entity_mention, upsert_entity
+        from parallx_db import Chunk, Entity, session_scope
+        from parallx_db.repositories import add_entity_mention, upsert_entity
 
         with session_scope(DSN) as db:
             entity = upsert_entity(db, company_id=self.company_id, entity_type="metric",
@@ -225,8 +225,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
 
     def test_dropped_risk_is_marked_not_deleted(self):
         from sqlalchemy import select
-        from evident_db import Entity, session_scope
-        from evident_db.repositories import mark_dropped_entities, upsert_entity
+        from parallx_db import Entity, session_scope
+        from parallx_db.repositories import mark_dropped_entities, upsert_entity
 
         with session_scope(DSN) as db:
             upsert_entity(db, company_id=self.company_id, entity_type="risk", slug="covid",
@@ -246,7 +246,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     # -------------------------------------------------------------- embedding
     def test_embedding_worker_writes_vectors_with_provenance(self):
         from sqlalchemy import select
-        from evident_db import Chunk, EMBEDDING_DIM, session_scope
+        from parallx_db import Chunk, EMBEDDING_DIM, session_scope
         from workers import embedding_worker
 
         result = embedding_worker.run(url=DSN, batch_size=2)
@@ -262,7 +262,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
 
     def test_worker_refuses_a_dimension_mismatch(self):
         """A width the column cannot hold is refused before anything is written."""
-        from evident_retrieval.embed import HashingEmbedder
+        from parallx_retrieval.embed import HashingEmbedder
         from workers import embedding_worker
         with self.assertRaises(ValueError) as ctx:
             embedding_worker.run(url=DSN, embedder=HashingEmbedder(dim=768))
@@ -276,7 +276,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         while it happens.
         """
         import os
-        from evident_retrieval.embed import EmbeddingError, default_provider
+        from parallx_retrieval.embed import EmbeddingError, default_provider
         old = os.environ.pop("EMBEDDING_PROVIDER", None)
         try:
             with self.assertRaises(EmbeddingError) as ctx:
@@ -315,7 +315,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         """
         import json
         from sqlalchemy import select
-        from evident_db import Chunk, Document, Entity, EntityMention, Relationship, session_scope
+        from parallx_db import Chunk, Document, Entity, EntityMention, Relationship, session_scope
         from workers.memory_builder import build_for_document
 
         class _Text:
@@ -345,7 +345,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
                 .order_by(Chunk.ordinal)).scalars().first()
             pid = (first.paragraph_ids or [""])[0]
             # quotes are checked against the paragraph, so they must be in it
-            from evident_parser.anchors import split_chunk
+            from parallx_parser.anchors import split_chunk
             parts = split_chunk(first.text, first.paragraph_ids, first.page_number)
             said = (parts[0].text if parts else first.text)[:40]
 
@@ -402,9 +402,9 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from unittest import mock
         from sqlalchemy import select
         import workers.memory_builder as mb
-        from evident_ai.extract import DropReport, Usage
-        from evident_ai.prompts import EXTRACT_ENTITIES
-        from evident_db import Document, session_scope
+        from parallx_ai.extract import DropReport, Usage
+        from parallx_ai.prompts import EXTRACT_ENTITIES
+        from parallx_db import Document, session_scope
 
         seen = {}
 
@@ -435,8 +435,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from unittest import mock
         from sqlalchemy import delete, select
         import workers.memory_builder as mb
-        from evident_ai.extract import DropReport, Usage
-        from evident_db import Document, Entity, session_scope
+        from parallx_ai.extract import DropReport, Usage
+        from parallx_db import Document, Entity, session_scope
 
         seen = {}
 
@@ -461,7 +461,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     def test_a_rejected_response_stores_nothing(self):
         """A truncated response must not leave half a document behind."""
         from sqlalchemy import func, select
-        from evident_db import Document, Entity, session_scope
+        from parallx_db import Document, Entity, session_scope
         from workers.memory_builder import build_for_document
 
         class _Resp:
@@ -496,7 +496,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         from datetime import datetime, timezone
         from decimal import Decimal
         from sqlalchemy import select
-        from evident_db import ExtractionCall, ExtractionRun, session_scope
+        from parallx_db import ExtractionCall, ExtractionRun, session_scope
 
         run_id = uuid.uuid4()
         with session_scope(DSN) as db:
@@ -532,7 +532,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
     def test_a_run_that_never_finished_is_distinguishable(self):
         """A null finished_at is the marker for a crash, not for 'not started'."""
         import uuid
-        from evident_db import ExtractionRun, session_scope
+        from parallx_db import ExtractionRun, session_scope
 
         run_id = uuid.uuid4()
         with session_scope(DSN) as db:
@@ -549,7 +549,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         """accepted + rejected can never exceed processed."""
         import uuid
         from sqlalchemy.exc import IntegrityError
-        from evident_db import ExtractionRun, session_scope
+        from parallx_db import ExtractionRun, session_scope
 
         with self.assertRaises(IntegrityError):
             with session_scope(DSN) as db:
@@ -566,8 +566,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertIn("ZZZZ", r.json()["detail"])
 
     async def test_entity_endpoint_returns_mentions_with_citations(self):
-        from evident_db import Chunk, session_scope
-        from evident_db.repositories import add_entity_mention, upsert_entity
+        from parallx_db import Chunk, session_scope
+        from parallx_db.repositories import add_entity_mention, upsert_entity
         from sqlalchemy import select
 
         with session_scope(DSN) as db:
@@ -596,8 +596,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(prov["document_id"])
 
     async def test_timeline_endpoint(self):
-        from evident_db import session_scope
-        from evident_db.repositories import add_timeline_event
+        from parallx_db import session_scope
+        from parallx_db.repositories import add_timeline_event
 
         with session_scope(DSN) as db:
             add_timeline_event(db, company_id=self.company_id, kind="filing",
@@ -634,9 +634,9 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         """A gateway whose classification route answers `answers` in order —
         a JSON intent, or an exception to stand for a provider failing."""
         import json as _json
-        from evident_ai.gateway import (Gateway, MemoryStore, internal_organization_id,
+        from parallx_ai.gateway import (Gateway, MemoryStore, internal_organization_id,
                                         set_gateway)
-        from evident_ai.gateway.config import from_dict
+        from parallx_ai.gateway.config import from_dict
         from test_ai_gateway import RAW, Script, ok
         outcomes = [a if isinstance(a, Exception) else ok(text=_json.dumps(a)) for a in answers]
         # each test truncates organizations, so forget any id cached by the last
@@ -677,7 +677,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
                          [("NVIDIA Corp", "NVDA")])
 
     async def test_a_company_on_record_is_found_by_rule_when_the_model_is_down(self):
-        from evident_ai.gateway.providers.base import ErrorKind, ProviderError
+        from parallx_ai.gateway.providers.base import ErrorKind, ProviderError
         from workers import embedding_worker
         embedding_worker.run(url=DSN)
         self._search_gateway(*[ProviderError(ErrorKind.SERVER, "down")] * 3)
@@ -692,7 +692,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self._search_gateway({"companies": [{"name": "Nvidia", "ticker": None}],
                               "topic": "data centre capacity"})
         from unittest import mock
-        from evident_retrieval.embed import HashingEmbedder
+        from parallx_retrieval.embed import HashingEmbedder
         embedded = []
 
         class Spy(HashingEmbedder):
@@ -700,7 +700,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
                 embedded.extend(texts)
                 return super().embed_query(texts)
 
-        with mock.patch("evident_retrieval.embed.default_provider", lambda: Spy()):
+        with mock.patch("parallx_retrieval.embed.default_provider", lambda: Spy()):
             body = await self._search("nvidia data centre capacity")
         self.assertEqual(embedded, ["data centre capacity"],
                          "the topic is searched; the company is the filter")

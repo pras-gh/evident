@@ -18,22 +18,22 @@ from typing import Any, Sequence
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from evident_ai.extract import extract_document
-from evident_ai.gateway import CacheSpec
-from evident_ai.prompts import EXTRACT_ENTITIES
+from parallx_ai.extract import extract_document
+from parallx_ai.gateway import CacheSpec
+from parallx_ai.prompts import EXTRACT_ENTITIES
 
 #: Known topics considered per filing; each request lists the relevant ones.
 KNOWN_TOPICS = 500
-from evident_db import Chunk, Document, Entity, session_scope
-from evident_db.repositories import (add_entity_mention, add_metric_observation,
+from parallx_db import Chunk, Document, Entity, session_scope
+from parallx_db.repositories import (add_entity_mention, add_metric_observation,
                                      add_timeline_event, mark_dropped_entities,
                                      upsert_entity, upsert_relationship)
-from evident_graph.normalize import display_label
-from evident_graph.taxonomy import slug as entity_slug
-from evident_parser.anchors import split_chunk
-from evident_parser.models import Block
+from parallx_graph.normalize import display_label
+from parallx_graph.taxonomy import slug as entity_slug
+from parallx_parser.anchors import split_chunk
+from parallx_parser.models import Block
 
-log = logging.getLogger("evident.memory_builder")
+log = logging.getLogger("parallx.memory_builder")
 
 
 @dataclass(slots=True)

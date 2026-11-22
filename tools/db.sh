@@ -14,13 +14,15 @@
 # with pgvector. On macOS: brew install postgresql@17 pgvector. The newest
 # Homebrew postgresql@N is used unless PG_BIN names a bin directory.
 #
-# Settings: EVIDENT_DB_PORT (5434), EVIDENT_DB_NAME (evident), PG_BIN.
+# Settings: PARALLX_DB_PORT (5434), PARALLX_DB_NAME (evident), PG_BIN. The
+# database keeps its old name, so existing data and DATABASE_URLs still work;
+# EVIDENT_DB_PORT and EVIDENT_DB_NAME are still read.
 set -e
 cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 DATA="$ROOT/.pgdata"
-PORT="${EVIDENT_DB_PORT:-5434}"
-NAME="${EVIDENT_DB_NAME:-evident}"
+PORT="${PARALLX_DB_PORT:-${EVIDENT_DB_PORT:-5434}}"
+NAME="${PARALLX_DB_NAME:-${EVIDENT_DB_NAME:-evident}}"
 USER_NAME="${USER:-$(id -un)}"
 URL="postgresql+psycopg://$USER_NAME@localhost:$PORT/$NAME"
 PY="${PYTHON:-$ROOT/.venv/bin/python}"
