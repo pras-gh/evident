@@ -19,13 +19,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Chunk, Company, Document
+from parallx_db import Chunk, Company, Document
 
 from ..deps import get_db, get_gateway
 from ..schemas import AskCitationOut, AskRequest, AskResponse, AskSourceOut
 
 router = APIRouter(tags=["ask"])
-log = logging.getLogger("evident.ask")
+log = logging.getLogger("parallx.ask")
 
 #: Passages a filings answer may draw on: enough to cover a topic, few enough
 #: that the prompt stays small.
@@ -44,7 +44,7 @@ def _web_refused() -> bool:
 
 
 async def _context():
-    from evident_ai.gateway import AIContext, internal_organization_id
+    from parallx_ai.gateway import AIContext, internal_organization_id
     org = await anyio.to_thread.run_sync(internal_organization_id)
     return AIContext(organization_id=org, source="api:/v1/ask")
 
@@ -54,7 +54,7 @@ def _month(d) -> str:
 
 
 async def _passages(db: AsyncSession, chunk_ids: list[int]):
-    from evident_ai.answer import Passage
+    from parallx_ai.answer import Passage
     rows = {c.id: (c, d, co) for c, d, co in (await db.execute(
         select(Chunk, Document, Company)
         .join(Document, Document.id == Chunk.document_id)
@@ -71,8 +71,8 @@ async def _passages(db: AsyncSession, chunk_ids: list[int]):
 async def ask(req: AskRequest, db: AsyncSession = Depends(get_db),
               gw=Depends(get_gateway)) -> AskResponse:
     global _web_refused_at
-    from evident_ai.answer import AnswerIncomplete, answer_from_filings, answer_from_web
-    from evident_ai.gateway import AllProvidersFailed
+    from parallx_ai.answer import AnswerIncomplete, answer_from_filings, answer_from_web
+    from parallx_ai.gateway import AllProvidersFailed
 
     ctx = await _context()
     notice: str | None = None

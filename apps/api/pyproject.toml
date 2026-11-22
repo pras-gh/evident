@@ -1,5 +1,5 @@
 [project]
-name = "evident-api"
+name = "parallx-api"
 version = "1.0.0"
 requires-python = ">=3.11"
 # Everything the API process imports, including the ingest worker behind
@@ -8,14 +8,14 @@ requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.115", "uvicorn[standard]>=0.32", "pydantic>=2.9",
   "sqlalchemy[asyncio]>=2.0", "psycopg[binary]>=3.2", "pgvector>=0.3",
-  "evident-db", "evident-parser", "evident-graph", "evident-memory",
-  "evident-ai", "evident-retrieval",
+  "parallx-db", "parallx-parser", "parallx-graph", "parallx-memory",
+  "parallx-ai", "parallx-retrieval",
 ]
 
 [tool.uv.sources]
-evident-db        = { path = "../../packages/db",        editable = true }
-evident-parser    = { path = "../../packages/parser",    editable = true }
-evident-graph     = { path = "../../packages/graph",     editable = true }
-evident-memory    = { path = "../../packages/memory",    editable = true }
-evident-ai        = { path = "../../packages/ai",        editable = true }
-evident-retrieval = { path = "../../packages/retrieval", editable = true }
+parallx-db        = { path = "../../packages/db",        editable = true }
+parallx-parser    = { path = "../../packages/parser",    editable = true }
+parallx-graph     = { path = "../../packages/graph",     editable = true }
+parallx-memory    = { path = "../../packages/memory",    editable = true }
+parallx-ai        = { path = "../../packages/ai",        editable = true }
+parallx-retrieval = { path = "../../packages/retrieval", editable = true }

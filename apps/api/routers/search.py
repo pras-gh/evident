@@ -4,10 +4,10 @@ Vector search alone ranks every passage on record by meaning, so it answers
 "Wesco International" with the nearest NVIDIA paragraph. Before ranking
 anything, search works out which companies the query names:
 
-* by rule, the companies Parallx holds filings for (`evident_retrieval.companies`);
+* by rule, the companies Parallx holds filings for (`parallx_retrieval.companies`);
 * by model, through the AI gateway, every company it names — including ones
   with no filings here — and the topic left once they are taken out
-  (`evident_ai.query`). When the model is unavailable, rules alone decide.
+  (`parallx_ai.query`). When the model is unavailable, rules alone decide.
 
 Then: named companies on record are searched, and only they; a query naming
 none searches the request's `ticker` filter, or everything. A named company
@@ -25,14 +25,14 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Chunk, Company, Document
+from parallx_db import Chunk, Company, Document
 
 from ..deps import get_db, get_gateway
 from ..schemas import (SearchCompanyOut, SearchHitOut, SearchRequest, SearchResponse,
                        SearchScopeOut)
 
 router = APIRouter(tags=["search"])
-log = logging.getLogger("evident.search")
+log = logging.getLogger("parallx.search")
 
 
 class SearchUnavailable(RuntimeError):
@@ -47,8 +47,8 @@ class SearchUnavailable(RuntimeError):
 async def _understand(query: str, gw):
     """(intent, "rules+provider:model"), or (None, "rules") when no model could
     read the query. Search must not fail because this step did."""
-    from evident_ai.gateway import AIContext, internal_organization_id
-    from evident_ai.query import understand
+    from parallx_ai.gateway import AIContext, internal_organization_id
+    from parallx_ai.query import understand
     try:
         org = await anyio.to_thread.run_sync(internal_organization_id)
         ctx = AIContext(organization_id=org, source="api:/v1/search")
@@ -65,7 +65,7 @@ async def _fetch_uncovered(db: AsyncSession, mentioned: list[SearchCompanyOut],
     """For each named company with no filings here: on record after all under
     another ticker (GOOG for GOOGL) — then covered; on EDGAR — then fetched, or
     joined to the fetch under way; otherwise marked for the page to explain."""
-    from evident_parser import edgar
+    from parallx_parser import edgar
     from .fetches import request_fetch
 
     todo = [m for m in mentioned if not m.covered]
@@ -99,7 +99,7 @@ async def _fetch_uncovered(db: AsyncSession, mentioned: list[SearchCompanyOut],
 def _mentions(query: str, on_record, intent) -> list[SearchCompanyOut]:
     """Companies the query names: those on record by rule, then whatever the
     model found, matched to the record by ticker or name. Each once."""
-    from evident_retrieval.companies import named, same_company, short_name
+    from parallx_retrieval.companies import named, same_company, short_name
     out: list[SearchCompanyOut] = []
     seen: set[str] = set()
 
@@ -130,9 +130,9 @@ async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
     its document, page and paragraph is not a usable result, and the response
     model makes that non-optional.
     """
-    from evident_retrieval.companies import OnRecord
-    from evident_retrieval.embed import EmbeddingError, default_provider
-    from evident_retrieval.rerank import rerank
+    from parallx_retrieval.companies import OnRecord
+    from parallx_retrieval.embed import EmbeddingError, default_provider
+    from parallx_retrieval.rerank import rerank
 
     started = time.perf_counter()
     on_record = [OnRecord(t, n, cik) for t, n, cik in (await db.execute(

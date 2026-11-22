@@ -38,9 +38,9 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
-from evident_graph.taxonomy import slug as slugify
-from evident_parser import sentences
-from evident_parser.models import Block
+from parallx_graph.taxonomy import slug as slugify
+from parallx_parser import sentences
+from parallx_parser.models import Block
 from pydantic import ValidationError
 
 from .prompts import EXTRACT_ENTITIES, MODEL

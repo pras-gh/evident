@@ -12,11 +12,11 @@ import unittest
 from pathlib import Path
 
 
-from evident_parser.chunker import chunk_document
-from evident_retrieval.embed import HashingEmbedder
-from evident_parser.models import Block, Table, content_id, normalise
-from evident_parser.html import parse_html
-from evident_parser.models import fiscal_period
+from parallx_parser.chunker import chunk_document
+from parallx_retrieval.embed import HashingEmbedder
+from parallx_parser.models import Block, Table, content_id, normalise
+from parallx_parser.html import parse_html
+from parallx_parser.models import fiscal_period
 
 ACC = "0000320193-25-000073"
 

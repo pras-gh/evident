@@ -24,7 +24,7 @@ export default async function AdminLogin({
         <h1 className="ev-title">AI usage</h1>
         <label htmlFor="key" className="adm-label">Platform admin API key</label>
         <input id="key" name="key" type="password" autoComplete="off" spellCheck={false}
-          placeholder="evk_…" className="adm-input" required />
+          placeholder="plx_…" className="adm-input" required />
         {error && ERRORS[error] && (
           <p className="adm-error" role="alert">{ERRORS[error]}</p>
         )}

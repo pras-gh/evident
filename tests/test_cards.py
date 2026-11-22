@@ -13,13 +13,13 @@ from datetime import date
 from pathlib import Path
 
 
-from evident_memory.cards import (CAPEX, DEFAULT_SOURCES, GUIDANCE,
+from parallx_memory.cards import (CAPEX, DEFAULT_SOURCES, GUIDANCE,
                                          LITIGATION, PRODUCTS, REVENUE, RISKS,
                                          CardFact, CardSource, build_cards,
                                          diff_facts, facts_for_guidance,
                                          facts_for_metric, facts_for_products,
                                          facts_for_risks, route)
-from evident_memory.entities import (Evidence, Metric, Observation,
+from parallx_memory.entities import (Evidence, Metric, Observation,
                                             Product, Promise, Risk)
 
 SQL_SEED = Path(__file__).resolve().parents[1] / "db" / "legacy-design" / "003_memory_cards.sql"

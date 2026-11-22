@@ -10,7 +10,7 @@ installed Chrome) at US Letter width, and:
 
 1. **finds the pages** the parser found, by the parser's own rule: a page
    starts at any visible element whose `style` or `class` says
-   `page-break-before/after: always` (`evident_parser.html`);
+   `page-break-before/after: always` (`parallx_parser.html`);
 2. **finds every stored paragraph** in the laid-out text — compared with all
    whitespace removed, so inline markup (`Export<b>controls</b>`) and entity
    spacing cannot break the match — and measures it with a DOM Range;
@@ -36,10 +36,10 @@ from typing import Any
 
 from sqlalchemy import select
 
-from evident_db import Chunk, Company, Document, DocumentPage, session_scope, store
-from evident_parser.anchors import split_chunk
+from parallx_db import Chunk, Company, Document, DocumentPage, session_scope, store
+from parallx_parser.anchors import split_chunk
 
-log = logging.getLogger("evident.render_worker")
+log = logging.getLogger("parallx.render_worker")
 
 #: US Letter at 96 CSS px per inch: 8.5 in × 11 in.
 PAGE_WIDTH_PX = 816
@@ -57,7 +57,7 @@ PRINT_CSS = """
 * { break-before: auto !important; break-after: auto !important;
     page-break-before: auto !important; page-break-after: auto !important;
     break-inside: auto !important; }
-[data-evident-break] { break-before: page !important; page-break-before: always !important; }
+[data-parallx-break] { break-before: page !important; page-break-before: always !important; }
 """
 
 #: For filings that bring no styling of their own (the test corpora are bare
@@ -69,7 +69,7 @@ body { margin: 0; padding: 0 84px; color: #111;
 p { margin: 0 0 10px; text-align: justify; hyphens: none; }
 """
 
-#: Runs in the page. Mirrors evident_parser.html's page-break rule exactly —
+#: Runs in the page. Mirrors parallx_parser.html's page-break rule exactly —
 #: if the two ever count pages differently, every page number is off by the
 #: difference, so the parity is tested (tests/test_render_worker.py).
 MEASURE_JS = r"""
@@ -106,11 +106,11 @@ MEASURE_JS = r"""
     return BREAK.test(marks) && !inlineHidden(el);
   });
   // so the PDF can break exactly here and nowhere else
-  for (const el of breaks) el.setAttribute("data-evident-break", "");
+  for (const el of breaks) el.setAttribute("data-parallx-break", "");
 
   const spacer = (h) => {
     const d = document.createElement("div");
-    d.setAttribute("data-evident-spacer", "");
+    d.setAttribute("data-parallx-spacer", "");
     d.style.cssText = `display:block;height:${h}px;margin:0;padding:0;border:0`;
     return d;
   };

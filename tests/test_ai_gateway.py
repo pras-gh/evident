@@ -17,14 +17,14 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from unittest import mock
 
-from evident_ai.gateway import (AIContext, AllProvidersFailed, CacheSpec, ConfigError,
+from parallx_ai.gateway import (AIContext, AllProvidersFailed, CacheSpec, ConfigError,
                                 Gateway, LLMRequest, MemoryStore, TaskType,
                                 UnknownOrganization, Usage, UsageLimitExceeded, load,
                                 missing_keys)
-from evident_ai.gateway import logs as gw_logs
-from evident_ai.gateway.config import Target, from_dict
-from evident_ai.gateway.providers.base import ErrorKind, ProviderError
-from evident_ai.gateway.types import Completion
+from parallx_ai.gateway import logs as gw_logs
+from parallx_ai.gateway.config import Target, from_dict
+from parallx_ai.gateway.providers.base import ErrorKind, ProviderError
+from parallx_ai.gateway.types import Completion
 
 ORG = uuid.uuid4()
 OTHER_ORG = uuid.uuid4()
@@ -325,7 +325,7 @@ class Routing(unittest.TestCase):
         self.assertEqual((clock.slept, r.provider), ([], "groq"))
 
     def test_system_work_is_background(self):
-        import evident_ai.gateway as gateway_module
+        import parallx_ai.gateway as gateway_module
         with mock.patch.object(gateway_module, "_internal_org", ORG):
             ctx = gateway_module.system_context("extraction")
         self.assertEqual((ctx.background, ctx.user_id, ctx.organization_id), (True, None, ORG))
@@ -516,7 +516,7 @@ def p_after(p):
 
 
 def row(tokens=0, cost="0", org=ORG):
-    from evident_ai.gateway.store import LogRow
+    from parallx_ai.gateway.store import LogRow
     return LogRow(organization_id=org, user_id=None, provider="gemini", model="flash",
                   task_type="filing_summarization", request_id=uuid.uuid4(), status="success",
                   created_at=NOW - timedelta(days=1), input_tokens=tokens,
@@ -638,7 +638,7 @@ class Security(unittest.TestCase):
         """A key in a format no pattern knows — a new provider, a rotated
         format — is still masked, because its value is in the environment."""
         import os
-        from evident_ai.gateway.redact import redact
+        from parallx_ai.gateway.redact import redact
         os.environ["NEWPROVIDER_API_KEY"] = "plain-looking-secret-value-42"
         try:
             self.assertEqual(redact("auth failed for plain-looking-secret-value-42"),
@@ -647,10 +647,10 @@ class Security(unittest.TestCase):
             del os.environ["NEWPROVIDER_API_KEY"]
 
     def test_redaction_covers_every_key_format(self):
-        from evident_ai.gateway.redact import redact
+        from parallx_ai.gateway.redact import redact
         for secret in ("sk-ant-api03-abcdefghijkl", "gsk_abcdefghijklmnop",
                        "AIzaSyAbcdefghijklmnopqrstuv", "AQ.Ab8RNabcdefghijklmnopqrstu",
-                       "evk_abcdefghijklmnop",
+                       "plx_abcdefghijklmnop", "evk_abcdefghijklmnop",
                        "Bearer abcdefghijklmnop"):
             with self.subTest(secret):
                 self.assertNotIn(secret.split()[-1], redact(f"failed with {secret} here"))

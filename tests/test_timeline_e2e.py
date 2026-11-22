@@ -48,7 +48,7 @@ EXPECTED = [
 
 def _ingest_and_extract(filings: int) -> None:
     from sqlalchemy import select
-    from evident_db import Company, Document, session_scope
+    from parallx_db import Company, Document, session_scope
     from seed_demo import KeywordClient
     from workers.ingest_worker import ingest_ticker
     from workers.memory_builder import build_for_document
@@ -220,7 +220,7 @@ class ExtractionMissesAYear(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     @classmethod
     def setUpClass(cls):
         from sqlalchemy import delete, select
-        from evident_db import Document, Entity, EntityMention, session_scope
+        from parallx_db import Document, Entity, EntityMention, session_scope
         _ingest_and_extract(filings=3)
         with session_scope(DSN) as db:
             fy26 = db.execute(select(Document.id).where(Document.accession == FY26)).scalar_one()

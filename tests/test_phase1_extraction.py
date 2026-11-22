@@ -10,17 +10,17 @@ from __future__ import annotations
 import json
 import unittest
 
-from evident_ai.extract import (DropReport, Extraction, ExtractionRejected,
+from parallx_ai.extract import (DropReport, Extraction, ExtractionRejected,
                                 cache_hit_rate, collect_batch, extract_document,
                                 extract_from_blocks, parse_response, render,
                                 request_params, validate_entities,
                                 validate_relationships)
-from evident_ai.prompts import EXTRACT_ENTITIES
-from evident_ai.schema import (EntityExtractionResponse, ExtractedEntity,
+from parallx_ai.prompts import EXTRACT_ENTITIES
+from parallx_ai.schema import (EntityExtractionResponse, ExtractedEntity,
                                wire_schema)
-from evident_graph.taxonomy import (ENTITY_TYPES, RELATIONSHIP_NAMES,
+from parallx_graph.taxonomy import (ENTITY_TYPES, RELATIONSHIP_NAMES,
                                     TYPE_NAMES, check_constraint, slug)
-from evident_parser.models import Block
+from parallx_parser.models import Block
 from pydantic import ValidationError
 
 VALID = {"7_1", "7_2"}
@@ -181,7 +181,7 @@ class PostValidation(unittest.TestCase):
         self.assertIn("not supplied", " ".join(report.reasons))
 
     def test_an_edge_to_something_that_is_not_an_entity_is_dropped(self):
-        from evident_ai.schema import ExtractedRelationship
+        from parallx_ai.schema import ExtractedRelationship
         entities = [ExtractedEntity(**ent())]           # only Blackwell
         report = DropReport()
         kept = validate_relationships(
@@ -191,7 +191,7 @@ class PostValidation(unittest.TestCase):
         self.assertIn("are not entities", " ".join(report.reasons))
 
     def test_an_edge_whose_endpoints_both_exist_survives(self):
-        from evident_ai.schema import ExtractedRelationship
+        from parallx_ai.schema import ExtractedRelationship
         entities = [ExtractedEntity(**ent()),
                     ExtractedEntity(**ent(name="AI Infrastructure",
                                           entity_type="strategy"))]
@@ -203,7 +203,7 @@ class PostValidation(unittest.TestCase):
     def test_endpoints_are_matched_on_slug_not_exact_string(self):
         # the model may say "Blackwell" in entities and "the Blackwell
         # platform" in an edge; both fold to the same node
-        from evident_ai.schema import ExtractedRelationship
+        from parallx_ai.schema import ExtractedRelationship
         entities = [ExtractedEntity(**ent()),
                     ExtractedEntity(**ent(name="Accelerated Computing",
                                           entity_type="strategy"))]
@@ -215,7 +215,7 @@ class PostValidation(unittest.TestCase):
                                        "ai_infrastructure and should match")
 
     def test_a_self_edge_is_dropped(self):
-        from evident_ai.schema import ExtractedRelationship
+        from parallx_ai.schema import ExtractedRelationship
         entities = [ExtractedEntity(**ent())]
         report = DropReport()
         kept = validate_relationships(

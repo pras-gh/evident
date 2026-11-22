@@ -3,7 +3,7 @@
     GET /v1/company/{ticker}/timeline
 
 Computed on read from `documents` and `entity_mentions` by
-`evident_graph.timeline` — no stored copy to drift, and a re-extracted filing
+`parallx_graph.timeline` — no stored copy to drift, and a re-extracted filing
 changes the timeline the moment it lands. Not to be confused with
 `/v1/companies/{ticker}/timeline`, the raw `timeline_events` log.
 
@@ -18,9 +18,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Chunk, Company, Document, Entity, EntityMention
-from evident_graph import timeline as engine
-from evident_parser.anchors import paragraph_page, split_chunk
+from parallx_db import Chunk, Company, Document, Entity, EntityMention
+from parallx_graph import timeline as engine
+from parallx_parser.anchors import paragraph_page, split_chunk
 
 from ..deps import get_company, get_db
 from ..schemas import (CompanyTimelineOut, TimelineEntryOut, TimelineEvidenceOut,

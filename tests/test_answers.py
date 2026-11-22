@@ -17,13 +17,13 @@ from decimal import Decimal
 
 import httpx
 
-from evident_ai.answer import (AnswerIncomplete, Passage, answer_from_filings,
+from parallx_ai.answer import (AnswerIncomplete, Passage, answer_from_filings,
                                answer_from_web, check_citations)
-from evident_ai.gateway import AIContext, AllProvidersFailed, Gateway, LLMRequest, MemoryStore, TaskType
-from evident_ai.gateway.config import from_dict
-from evident_ai.gateway.providers.base import ErrorKind, ProviderError
-from evident_ai.gateway.providers.gemini import GeminiProvider
-from evident_ai.gateway.types import Completion, Usage
+from parallx_ai.gateway import AIContext, AllProvidersFailed, Gateway, LLMRequest, MemoryStore, TaskType
+from parallx_ai.gateway.config import from_dict
+from parallx_ai.gateway.providers.base import ErrorKind, ProviderError
+from parallx_ai.gateway.providers.gemini import GeminiProvider
+from parallx_ai.gateway.types import Completion, Usage
 from test_ai_gateway import RAW, Script, ok
 
 ORG = uuid.uuid4()
@@ -94,7 +94,7 @@ class GatewayWebSearch(unittest.TestCase):
         self.assertEqual((r.provider, r.text), ("gemini", "plain"))
 
     def test_a_web_answer_is_never_cached(self):
-        from evident_ai.gateway import CacheSpec
+        from parallx_ai.gateway import CacheSpec
         gemini = WebScript("gemini", grounded(), grounded())
         g, store = gateway(gemini)
         spec = CacheSpec("x", "p@1", shared=True)
@@ -106,7 +106,7 @@ class GatewayWebSearch(unittest.TestCase):
     def test_a_web_request_is_never_served_a_cached_answer(self):
         """Even one stored by the same question asked without web search:
         yesterday's answer is the wrong one for "why is it down today"."""
-        from evident_ai.gateway import CacheSpec
+        from parallx_ai.gateway import CacheSpec
         spec = CacheSpec("x", "p@1", shared=True)
         gemini = WebScript("gemini", ok(text="from memory"), grounded())
         g, store = gateway(gemini)
@@ -215,9 +215,9 @@ class Endpoint(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     """POST /v1/ask, with chunks on record and a scripted Gemini."""
 
     def setUp(self):
-        from evident_db import session_scope
-        from evident_db.repositories import replace_chunks, upsert_company, upsert_document
-        from evident_parser.models import chunk_hash
+        from parallx_db import session_scope
+        from parallx_db.repositories import replace_chunks, upsert_company, upsert_document
+        from parallx_parser.models import chunk_hash
         import api.routers.ask as ask
         _reset_schema()
         ask._web_refused_at = None
@@ -243,12 +243,12 @@ class Endpoint(_ApiMixin, unittest.IsolatedAsyncioTestCase):
                      text=t, char_count=len(t), token_estimate=len(t) // 4)
                 for i, (page, t) in enumerate(texts)])
             db.flush()
-            from evident_db import Chunk
+            from parallx_db import Chunk
             from sqlalchemy import select
             self.chunk_ids = list(db.execute(select(Chunk.id).order_by(Chunk.ordinal)).scalars())
 
     def install(self, gemini):
-        from evident_ai.gateway import internal_organization_id, set_gateway
+        from parallx_ai.gateway import internal_organization_id, set_gateway
         raw = json.loads(json.dumps(RAW))
         raw["limits"]["max_output_tokens"] = 4000
         set_gateway(None)

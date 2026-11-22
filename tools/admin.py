@@ -5,7 +5,7 @@
     python tools/admin.py create-user acme analyst@acme.com --role org_admin
     python tools/admin.py create-key analyst@acme.com --name laptop     # shown once
     python tools/admin.py set-limits acme --daily-requests 100 --monthly-tokens 5000000
-    python tools/admin.py revoke-key evk_AbCdEfGh
+    python tools/admin.py revoke-key plx_AbCdEfGh
     python tools/admin.py bootstrap-admin you@example.com               # platform admin + key
     python tools/admin.py list
 
@@ -27,9 +27,9 @@ for pkg in ("db", "graph"):
 
 from sqlalchemy import select  # noqa: E402
 
-from evident_db import (INTERNAL_ORG_SLUG, ApiKey, Organization, User,  # noqa: E402
+from parallx_db import (INTERNAL_ORG_SLUG, ApiKey, Organization, User,  # noqa: E402
                         session_scope)
-from evident_db.keys import display_prefix, hash_key, new_key  # noqa: E402
+from parallx_db.keys import display_prefix, hash_key, new_key  # noqa: E402
 
 LIMIT_FLAGS = {"daily_requests": "daily_requests_per_user", "monthly_tokens": "monthly_tokens",
                "monthly_spend": "monthly_spend_usd", "max_input_tokens": "max_input_tokens",

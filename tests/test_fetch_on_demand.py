@@ -21,8 +21,8 @@ from datetime import date
 from pathlib import Path
 from unittest import mock
 
-import evident_parser.edgar as edgar
-from evident_parser.edgar import SecCompany
+import parallx_parser.edgar as edgar
+from parallx_parser.edgar import SecCompany
 
 from test_evidence_e2e import _ApiMixin, _reset_schema
 from test_ingest_e2e import DSN, fixture_origin
@@ -86,9 +86,9 @@ class OnDemand(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
     def understands(self, *intents):
         """The model that reads queries, answering `intents` in order."""
-        from evident_ai.gateway import (Gateway, MemoryStore, internal_organization_id,
+        from parallx_ai.gateway import (Gateway, MemoryStore, internal_organization_id,
                                         set_gateway)
-        from evident_ai.gateway.config import from_dict
+        from parallx_ai.gateway.config import from_dict
         from test_ai_gateway import RAW, Script, ok
         set_gateway(None)
         org = internal_organization_id(DSN)
@@ -205,7 +205,7 @@ class Worker(unittest.TestCase):
         os.environ.setdefault("EMBEDDING_PROVIDER", "hashing")
 
     def queue(self, cik, ticker, name, status="queued"):
-        from evident_db import CompanyFetch, session_scope
+        from parallx_db import CompanyFetch, session_scope
         with session_scope(DSN) as db:
             row = CompanyFetch(cik=cik, ticker=ticker, name=name, status=status)
             db.add(row)
@@ -218,7 +218,7 @@ class Worker(unittest.TestCase):
         self.assertEqual(fetch_worker.run(fid, url=DSN, render=False), "done")
 
     def test_a_failure_records_why(self):
-        from evident_db import CompanyFetch, session_scope
+        from parallx_db import CompanyFetch, session_scope
         from workers import fetch_worker
         with fixture_origin(EDGAR):
             fid = self.queue("0000320193", "AAPL", "Apple Inc.")

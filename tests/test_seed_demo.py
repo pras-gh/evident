@@ -49,8 +49,8 @@ class CitesFirstParagraph:
         self.calls = 0
 
     def complete(self, model, request, *, timeout, params):
-        from evident_ai.gateway import Usage
-        from evident_ai.gateway.types import Completion
+        from parallx_ai.gateway import Usage
+        from parallx_ai.gateway.types import Completion
         self.calls += 1
         pid, text = re.search(r"^\[([^\]]+)\] (.+)$", request.user, re.M).groups()
         answer = {"entities": [{"name": "Gateway Entity", "entity_type": "risk",
@@ -75,9 +75,9 @@ class Seed(unittest.TestCase):
         self.addCleanup(render.stop)
 
     def _gateway(self):
-        from evident_ai.gateway import (Gateway, MemoryStore, internal_organization_id,
+        from parallx_ai.gateway import (Gateway, MemoryStore, internal_organization_id,
                                         set_gateway)
-        from evident_ai.gateway.config import from_dict
+        from parallx_ai.gateway.config import from_dict
         from test_ai_gateway import RAW, Script
         raw = json.loads(json.dumps(RAW))
         raw["limits"].update(max_output_tokens=16_000, monthly_spend_usd=100)
@@ -91,7 +91,7 @@ class Seed(unittest.TestCase):
 
     def _names(self):
         from sqlalchemy import func, select
-        from evident_db import Entity, EntityMention, session_scope
+        from parallx_db import Entity, EntityMention, session_scope
         with session_scope(DSN) as db:
             return dict(db.execute(
                 select(Entity.name, func.count(EntityMention.id))

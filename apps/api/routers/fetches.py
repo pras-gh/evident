@@ -22,13 +22,13 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import FETCH_ACTIVE, CompanyFetch
+from parallx_db import FETCH_ACTIVE, CompanyFetch
 
 from ..deps import get_db
 from ..schemas import FetchOut
 
 router = APIRouter(tags=["fetches"])
-log = logging.getLogger("evident.fetches")
+log = logging.getLogger("parallx.fetches")
 
 ROOT = Path(__file__).resolve().parents[3]
 #: A fetch running longer than this has died with its process (an API reload

@@ -30,9 +30,9 @@ try:
 except Exception:  # no Playwright, no Chrome, no Chromium
     BROWSER = None
 
-from evident_db import Chunk, Document
-from evident_parser.chunker import chunk_document
-from evident_parser.html import parse_html
+from parallx_db import Chunk, Document
+from parallx_parser.chunker import chunk_document
+from parallx_parser.html import parse_html
 
 BREAK = '<div style="page-break-after:always"></div>'
 
@@ -57,7 +57,7 @@ def filing(pages: dict[int, list[str]], *, extra: str = "") -> str:
 
 def rows(html: str, accession: str) -> tuple[Document, list[Chunk], int]:
     """Parse and chunk as ingest does, into unsaved rows the worker can read."""
-    from evident_db import store
+    from parallx_db import store
     sections, blocks, tables, pages = parse_html(html, accession=accession)
     chunks = chunk_document(accession=accession, blocks=blocks, tables=tables,
                             sections=sections, target_tokens=40)
@@ -91,7 +91,7 @@ class Rendering(unittest.TestCase):
 
     def image(self, relative: str):
         from PIL import Image
-        from evident_db import store
+        from parallx_db import store
         return Image.open(store.resolve(relative)).convert("L")
 
     # ------------------------------------------------------------ page parity
@@ -162,7 +162,7 @@ class Rendering(unittest.TestCase):
     # -------------------------------------------------------------------- PDF
     def test_pdf_page_n_is_filing_page_n(self):
         from pypdf import PdfReader
-        from evident_db import store
+        from parallx_db import store
         _, _, pages, result, made = self.render(filing({1: PARAS[1], 3: PARAS[3]}))
         reader = PdfReader(store.resolve(made["pdf"]))
         self.assertEqual((result.pdf_pages, len(reader.pages)), (pages, 3))
@@ -178,7 +178,7 @@ class Rendering(unittest.TestCase):
         Chrome's own print would put it at the bottom of page 1; the PDF must
         agree with the parser, the images and the boxes instead."""
         from pypdf import PdfReader
-        from evident_db import store
+        from parallx_db import store
         html = ("<html><body><p>Page one text.</p>"
                 '<p style="page-break-after:always">Carried the break to page two.</p>'
                 "<p>Also page two.</p></body></html>")
@@ -194,7 +194,7 @@ class Rendering(unittest.TestCase):
 
 class Store(unittest.TestCase):
     def test_paths_cannot_leave_the_store(self):
-        from evident_db import store
+        from parallx_db import store
         with tempfile.TemporaryDirectory() as d:
             os.environ["FILING_STORE"] = d
             try:

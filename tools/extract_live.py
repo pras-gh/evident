@@ -52,7 +52,7 @@ OK, BAD, MEH = "PASS", "FAIL", "  ? "
 def require_route_keys(die) -> tuple[str, str]:
     """(provider, model) of the extraction route's primary, after checking
     some provider on the route has a key — otherwise every call would fail."""
-    from evident_ai.gateway import TaskType, load, missing_keys
+    from parallx_ai.gateway import TaskType, load, missing_keys
     config = load()
     if why := missing_keys(TaskType.FINANCIAL_EXTRACTION, config):
         die(why)
@@ -81,7 +81,7 @@ def _fixture_origin(directory: Path):
             "SEC_ARCHIVES_URL": f"{base}/Archives/edgar/data",
             "SEC_USER_AGENT": "Parallx live-run",
         })
-        import evident_parser.edgar as edgar
+        import parallx_parser.edgar as edgar
         edgar._TICKER_MAP = None
         edgar.BASE = edgar.WWW = base
         edgar.ARCHIVES = f"{base}/Archives/edgar/data"
@@ -114,10 +114,10 @@ def main() -> int:
 
     from sqlalchemy import func, select
 
-    from evident_ai.extract import request_params
-    from evident_db import (AIResponseCache, AIUsageLog, Chunk, Company, Document,
+    from parallx_ai.extract import request_params
+    from parallx_db import (AIResponseCache, AIUsageLog, Chunk, Company, Document,
                             Entity, EntityMention, Relationship, session_scope)
-    from evident_parser.models import Block
+    from parallx_parser.models import Block
 
     dsn = os.environ.get("DATABASE_URL")
     if not dsn:
@@ -173,7 +173,7 @@ def main() -> int:
                           ordinal=c.ordinal, text=c.text, page_number=c.page_number)
             params = request_params([block])
             schema = json.dumps(params["output_config"]["format"]["schema"])
-            from evident_ai.gateway import TaskType, load
+            from parallx_ai.gateway import TaskType, load
             route = load().route(TaskType.FINANCIAL_EXTRACTION)
             print(f"\n  route:      {' → '.join(t.key for t in route)}  (config/ai.toml)")
             print(f"  max_tokens: {params['max_tokens']}")

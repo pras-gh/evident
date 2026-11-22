@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Company, async_session_factory
+from parallx_db import Company, async_session_factory
 
 _factory = None
 
@@ -42,5 +42,5 @@ async def get_company(ticker: str, db: AsyncSession = Depends(get_db)) -> Compan
 
 def get_gateway():
     """The AI gateway. A dependency, so tests can substitute their own."""
-    from evident_ai.gateway import gateway
+    from parallx_ai.gateway import gateway
     return gateway()

@@ -14,12 +14,12 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 
 
-from evident_memory.entities import (CompanyMemory, DocumentRef, Evidence,
+from parallx_memory.entities import (CompanyMemory, DocumentRef, Evidence,
                                             Person, Product, Promise, Risk, Role,
                                             Topic, normalise_metric,
                                             normalise_person, slugify)
-from evident_ai.extract import DropReport, drop_uncited
-from evident_memory.resolve import (ResolutionSignal, build_timeline,
+from parallx_ai.extract import DropReport, drop_uncited
+from parallx_memory.resolve import (ResolutionSignal, build_timeline,
                                            merge_metrics, merge_people,
                                            merge_products, merge_risks,
                                            merge_topics, resolve_promises)

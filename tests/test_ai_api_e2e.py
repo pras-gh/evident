@@ -55,9 +55,9 @@ class FakeGemini:
 
 def _people():
     """Two customers, roles in each, and a platform admin; returns keys by name."""
-    from evident_db import ApiKey, Organization, User, session_scope
-    from evident_db.keys import display_prefix, hash_key, new_key
-    from evident_ai.gateway import internal_organization_id, set_gateway
+    from parallx_db import ApiKey, Organization, User, session_scope
+    from parallx_db.keys import display_prefix, hash_key, new_key
+    from parallx_ai.gateway import internal_organization_id, set_gateway
     set_gateway(None)                          # forget any cached internal org id
     keys, ids = {}, {}
     internal = internal_organization_id(DSN)
@@ -84,11 +84,11 @@ def _people():
 
 
 def _gateway(fake: FakeGemini, groq_status: int = 503):
-    from evident_ai.gateway import Gateway, SqlStore, set_gateway
-    from evident_ai.gateway.config import from_dict
-    from evident_ai.gateway.providers.gemini import GeminiProvider
-    from evident_ai.gateway.providers.groq import GroqProvider
-    from evident_ai.gateway.providers.anthropic import AnthropicProvider
+    from parallx_ai.gateway import Gateway, SqlStore, set_gateway
+    from parallx_ai.gateway.config import from_dict
+    from parallx_ai.gateway.providers.gemini import GeminiProvider
+    from parallx_ai.gateway.providers.groq import GroqProvider
+    from parallx_ai.gateway.providers.anthropic import AnthropicProvider
     from test_ai_gateway import RAW
     raw = json.loads(json.dumps(RAW))
     raw["limits"].update(max_input_tokens=200_000, max_output_tokens=16_000)
@@ -110,13 +110,13 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
         _ingest_and_extract(filings=3)
         cls.keys, cls.ids = _people()
         from sqlalchemy import select
-        from evident_db import Document, session_scope
+        from parallx_db import Document, session_scope
         with session_scope(DSN) as db:
             docs = db.execute(select(Document).order_by(Document.filed_at.desc())).scalars().all()
             cls.doc_ids = [d.id for d in docs]
 
     def setUp(self):
-        from evident_db import AIResponseCache, AIUsageLog, session_scope
+        from parallx_db import AIResponseCache, AIUsageLog, session_scope
         with session_scope(DSN) as db:          # each test starts with no usage
             db.query(AIUsageLog).delete()
             db.query(AIResponseCache).delete()
@@ -124,7 +124,7 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
         self.gw = _gateway(self.fake)
 
     def tearDown(self):
-        from evident_ai.gateway import set_gateway
+        from parallx_ai.gateway import set_gateway
         set_gateway(None)
 
     async def call(self, method, path, who=None, **kw):
@@ -136,7 +136,7 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
     def rows(self):
         from sqlalchemy import select
-        from evident_db import AIUsageLog, session_scope
+        from parallx_db import AIUsageLog, session_scope
         with session_scope(DSN) as db:
             return [(r.status, r.organization_id, r.user_id, r.task_type, r.provider,
                      r.input_tokens, r.output_tokens, r.estimated_cost_usd)
@@ -148,7 +148,7 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
                              ("/v1/ai-usage/summary", "GET"), ("/v1/me", "GET")):
             with self.subTest(path):
                 self.assertEqual((await self.call(method, path)).status_code, 401)
-                r = await self.call(method, path, headers={"Authorization": "Bearer evk_nope"})
+                r = await self.call(method, path, headers={"Authorization": "Bearer plx_nope"})
                 self.assertEqual(r.status_code, 401)
         self.assertEqual(self.fake.calls, 0)
 
@@ -161,7 +161,7 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
 
     async def test_keys_are_stored_only_as_hashes(self):
         from sqlalchemy import text
-        from evident_db import session_scope
+        from parallx_db import session_scope
         with session_scope(DSN) as db:
             dump = " ".join(str(r) for r in db.execute(text("select * from api_keys")).all())
         for key in self.keys.values():
@@ -197,7 +197,7 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
                           ("cached", self.ids["beta"])])
 
     async def test_a_usage_limit_is_a_clear_429_and_nothing_is_called(self):
-        from evident_db import Organization, session_scope
+        from parallx_db import Organization, session_scope
         with session_scope(DSN) as db:
             db.get(Organization, self.ids["acme"]).daily_requests_per_user = 1
         try:
@@ -267,7 +267,7 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
     # ----------------------------------------------------------- numbers
     async def test_the_dashboard_numbers_add_up(self):
         """Rows with known values for one customer; every total checked."""
-        from evident_db import AIUsageLog, session_scope
+        from parallx_db import AIUsageLog, session_scope
         org, user = self.ids["acme"], self.ids["acme_member"]
         today = datetime.now(timezone.utc).replace(hour=12, minute=0, second=0, microsecond=0)
         a, b, c, d, e = (uuid.uuid4() for _ in range(5))

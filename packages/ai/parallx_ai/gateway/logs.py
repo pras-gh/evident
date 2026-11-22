@@ -5,7 +5,7 @@ model, tokens, cost, status — never the prompt or the filing text. With
 `log_prompts` on (config or AI_LOG_PROMPTS=1) a request's first 500 characters
 are added, for debugging only.
 
-    from evident_ai.gateway.logs import configure_logging
+    from parallx_ai.gateway.logs import configure_logging
     configure_logging()          # the API and workers call this at startup
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any
 
 from .redact import redact
 
-log = logging.getLogger("evident.ai")
+log = logging.getLogger("parallx.ai")
 
 #: LogRecord attributes that are not event fields
 _STANDARD = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {"message", "asctime"}
@@ -50,12 +50,12 @@ class RedactingFilter(logging.Filter):
 
 def configure_logging(level: int = logging.INFO) -> None:
     """JSON lines on stderr for the gateway's logger. Idempotent."""
-    if any(getattr(h, "_evident_json", False) for h in log.handlers):
+    if any(getattr(h, "_parallx_json", False) for h in log.handlers):
         return
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     handler.addFilter(RedactingFilter())
-    handler._evident_json = True  # type: ignore[attr-defined]
+    handler._parallx_json = True  # type: ignore[attr-defined]
     log.addHandler(handler)
     log.setLevel(level)
     log.propagate = False

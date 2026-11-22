@@ -2,7 +2,7 @@
  *  with the admin's key from an httpOnly cookie. Never imported by client code,
  *  so the key never reaches the browser. */
 
-export const ADMIN_COOKIE = "evident_admin";
+export const ADMIN_COOKIE = "parallx_admin";
 
 const BASE = process.env.API_URL ?? "http://localhost:8000/v1";
 

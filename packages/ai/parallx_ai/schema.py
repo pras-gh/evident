@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from evident_graph.taxonomy import RELATIONSHIP_NAMES, TYPE_NAMES
+from parallx_graph.taxonomy import RELATIONSHIP_NAMES, TYPE_NAMES
 from pydantic import BaseModel, ConfigDict, Field
 
 # Subscripting Literal with a tuple is equivalent to listing the members, which

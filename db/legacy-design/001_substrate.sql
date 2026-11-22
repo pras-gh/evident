@@ -1,4 +1,4 @@
--- evident-ingest — structured entities for SEC filings.
+-- parallx-ingest — structured entities for SEC filings.
 --
 -- The shape here is driven by one requirement: every retrieved chunk must be
 -- able to name the document, the section, the page and the paragraphs it came

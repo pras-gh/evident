@@ -17,15 +17,15 @@ from __future__ import annotations
 import json
 import unittest
 
-from evident_ai.extract import (KNOWN_HEADER, KNOWN_PER_REQUEST, MAX_NAME_WORDS,
+from parallx_ai.extract import (KNOWN_HEADER, KNOWN_PER_REQUEST, MAX_NAME_WORDS,
                                 MAX_QUOTE_CHARS, DropReport, anchor,
                                 extract_from_blocks, find, locate, relevant_known,
                                 render, request_params, validate_entities,
                                 validate_relationships)
-from evident_ai.prompts import EXTRACT_ENTITIES
-from evident_ai.schema import ExtractedEntity, ExtractedRelationship
-from evident_parser import sentences
-from evident_parser.models import Block
+from parallx_ai.prompts import EXTRACT_ENTITIES
+from parallx_ai.schema import ExtractedEntity, ExtractedRelationship
+from parallx_parser import sentences
+from parallx_parser.models import Block
 
 PARAGRAPH = ("In April 2025, the U.S. government informed us that a license is "
              "required for exports of our H20 integrated circuits to China. "

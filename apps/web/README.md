@@ -1,4 +1,4 @@
-# @evident/web
+# @parallx/web
 
 Next.js frontend for Company Memory.
 

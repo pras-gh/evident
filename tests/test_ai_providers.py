@@ -16,11 +16,11 @@ import unittest
 
 import httpx
 
-from evident_ai.gateway.providers.anthropic import AnthropicProvider
-from evident_ai.gateway.providers.base import ErrorKind, ProviderError
-from evident_ai.gateway.providers.gemini import GeminiProvider
-from evident_ai.gateway.providers.groq import GroqProvider
-from evident_ai.gateway.types import LLMRequest, TaskType
+from parallx_ai.gateway.providers.anthropic import AnthropicProvider
+from parallx_ai.gateway.providers.base import ErrorKind, ProviderError
+from parallx_ai.gateway.providers.gemini import GeminiProvider
+from parallx_ai.gateway.providers.groq import GroqProvider
+from parallx_ai.gateway.types import LLMRequest, TaskType
 
 SCHEMA = {"type": "object", "properties": {"summary": {"type": "string"}}}
 REQ = LLMRequest(task=TaskType.FILING_SUMMARIZATION, system="Be precise.", user="Summarise.",

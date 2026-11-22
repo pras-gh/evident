@@ -10,7 +10,7 @@
   var hasViewTL   = !!supports && CSS.supports('animation-timeline', 'view()');
 
   /* ---- motion toggle ---------------------------------------------------- */
-  var KEY = 'evident:motion';
+  var KEY = 'parallx:motion';
   var toggle = document.querySelector('[data-motion-toggle]');
   var stored = null;
   try { stored = localStorage.getItem(KEY); } catch (e) {}

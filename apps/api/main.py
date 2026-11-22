@@ -13,8 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from evident_ai.gateway import AllProvidersFailed, UnknownOrganization, UsageLimitExceeded
-from evident_ai.gateway.logs import configure_logging
+from parallx_ai.gateway import AllProvidersFailed, UnknownOrganization, UsageLimitExceeded
+from parallx_ai.gateway.logs import configure_logging
 
 from .routers import (ai_usage, analysis, ask, cards, documents, evidence, fetches,
                       graph, ingest, memory, search, timeline)

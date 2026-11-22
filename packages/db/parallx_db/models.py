@@ -29,7 +29,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from evident_graph.taxonomy import check_constraint
+from parallx_graph.taxonomy import check_constraint
 
 from .base import Base, created_at, str16, str64, str255, updated_at
 
@@ -270,7 +270,7 @@ class Entity(Base):
     attributes: Mapped[dict] = mapped_column(JSONB, default=dict,
                                              server_default="{}")
     #: `#rrggbb` its citations are highlighted in; null means the type's
-    #: colour (evident_graph.taxonomy.HIGHLIGHT_COLORS)
+    #: colour (parallx_graph.taxonomy.HIGHLIGHT_COLORS)
     highlight_color: Mapped[Optional[str]] = mapped_column(String(7))
     status: Mapped[str16] = mapped_column(default="active",
                                           server_default="active")

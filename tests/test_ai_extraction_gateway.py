@@ -13,12 +13,12 @@ import unittest
 import uuid
 from datetime import date, datetime, timezone
 
-from evident_ai.extract import ExtractionRejected, extract_document, extract_from_blocks
-from evident_ai.gateway import (AIContext, CacheSpec, Gateway, MemoryStore,
+from parallx_ai.extract import ExtractionRejected, extract_document, extract_from_blocks
+from parallx_ai.gateway import (AIContext, CacheSpec, Gateway, MemoryStore,
                                 UsageLimitExceeded, set_gateway)
-from evident_ai.gateway.config import from_dict
-from evident_ai.gateway.providers.base import ErrorKind, ProviderError
-from evident_parser.models import Block
+from parallx_ai.gateway.config import from_dict
+from parallx_ai.gateway.providers.base import ErrorKind, ProviderError
+from parallx_parser.models import Block
 from test_ai_gateway import RAW, Script, ok
 
 ORG = uuid.uuid4()

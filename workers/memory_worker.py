@@ -15,15 +15,15 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Sequence
 
-from evident_ai.extract import ExtractionRejected, extract_from_blocks
-from evident_memory.entities import (CompanyMemory, DocumentRef, Evidence,
+from parallx_ai.extract import ExtractionRejected, extract_from_blocks
+from parallx_memory.entities import (CompanyMemory, DocumentRef, Evidence,
                                      Person, Product, Risk, Topic)
-from evident_memory.resolve import (build_timeline, merge_metrics, merge_people,
+from parallx_memory.resolve import (build_timeline, merge_metrics, merge_people,
                                     merge_products, merge_risks, merge_topics,
                                     resolve_promises)
-from evident_parser.models import Block
+from parallx_parser.models import Block
 
-log = logging.getLogger("evident.memory_worker")
+log = logging.getLogger("parallx.memory_worker")
 
 
 @dataclass(slots=True)

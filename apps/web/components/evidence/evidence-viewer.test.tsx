@@ -143,13 +143,13 @@ describe("the divider", () => {
     expect(sep.getAttribute("aria-valuenow")).toBe(String(SPLIT.initial + 4));
     expect((container.firstChild as HTMLElement).style.gridTemplateColumns)
       .toBe(`${SPLIT.initial + 4}% 10px minmax(0, 1fr)`);
-    expect(window.localStorage.getItem("evident.evidence.split")).toBe(String(SPLIT.initial + 4));
+    expect(window.localStorage.getItem("parallx.evidence.split")).toBe(String(SPLIT.initial + 4));
     fireEvent.keyDown(sep, { key: "End" });
     expect(sep.getAttribute("aria-valuenow")).toBe(String(SPLIT.max));
   });
 
   it("comes back where the reader left it", () => {
-    window.localStorage.setItem("evident.evidence.split", "50");
+    window.localStorage.setItem("parallx.evidence.split", "50");
     viewer();
     expect(screen.getByRole("separator").getAttribute("aria-valuenow")).toBe("50");
   });

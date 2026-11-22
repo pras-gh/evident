@@ -16,9 +16,9 @@ from pathlib import Path
 
 from pdfgen import write_pdf
 
-from evident_parser.anchors import paragraph_page
-from evident_parser.chunker import chunk_document
-from evident_parser.pdf import parse_pdf
+from parallx_parser.anchors import paragraph_page
+from parallx_parser.chunker import chunk_document
+from parallx_parser.pdf import parse_pdf
 
 PARAS = [
     "Export controls restrict shipments of our data center products to China. " * 3,

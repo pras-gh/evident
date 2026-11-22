@@ -16,17 +16,17 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 
-from evident_db import DocumentPage, session_scope
-from evident_db import store
-from evident_db.repositories import (replace_chunks, upsert_company,
+from parallx_db import DocumentPage, session_scope
+from parallx_db import store
+from parallx_db.repositories import (replace_chunks, upsert_company,
                                      upsert_document)
-from evident_parser import edgar
-from evident_parser.chunker import chunk_document
-from evident_parser.html import parse_html
-from evident_parser.models import (Block, chunk_hash, content_id,
+from parallx_parser import edgar
+from parallx_parser.chunker import chunk_document
+from parallx_parser.html import parse_html
+from parallx_parser.models import (Block, chunk_hash, content_id,
                                    fiscal_period)
 
-log = logging.getLogger("evident.ingest_worker")
+log = logging.getLogger("parallx.ingest_worker")
 
 
 @dataclass(slots=True)
@@ -161,7 +161,7 @@ def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
 def _parse(raw: bytes, is_pdf: bool, accession: str):
     if not is_pdf:
         return parse_html(raw.decode("utf-8", errors="replace"), accession=accession)
-    from evident_parser.pdf import parse_pdf
+    from parallx_parser.pdf import parse_pdf
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as fh:
         fh.write(raw)
         path = fh.name
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     import json
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    ap = argparse.ArgumentParser(prog="evident-ingest")
+    ap = argparse.ArgumentParser(prog="parallx-ingest")
     ap.add_argument("--ticker", required=True)
     ap.add_argument("--forms", nargs="*", default=None)
     ap.add_argument("--limit", type=int, default=1)

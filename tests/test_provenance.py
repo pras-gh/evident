@@ -11,10 +11,10 @@ from __future__ import annotations
 
 import unittest
 
-from evident_memory.entities import Evidence
-from evident_parser.chunker import chunk_document
-from evident_parser.html import parse_html
-from evident_parser.models import chunk_hash, positional_paragraph_id
+from parallx_memory.entities import Evidence
+from parallx_parser.chunker import chunk_document
+from parallx_parser.html import parse_html
+from parallx_parser.models import chunk_hash, positional_paragraph_id
 
 CO, ACC = "0001045810", "0001045810-25-000023"
 

@@ -30,9 +30,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import Chunk, Company, Document, Entity, EntityMention
-from evident_graph.taxonomy import DEFAULT_HIGHLIGHT, highlight_color
-from evident_parser.anchors import paragraph_page
+from parallx_db import Chunk, Company, Document, Entity, EntityMention
+from parallx_graph.taxonomy import DEFAULT_HIGHLIGHT, highlight_color
+from parallx_parser.anchors import paragraph_page
 
 from ..deps import get_db
 from ..schemas import (CitationIn, EvidenceEntityOut, EvidenceOut, HighlightOut,

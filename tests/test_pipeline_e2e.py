@@ -95,7 +95,7 @@ class _Client:
 class Pipeline(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         from sqlalchemy import text
-        from evident_db import Base, make_engine
+        from parallx_db import Base, make_engine
         engine = make_engine(DSN)
         Base.metadata.drop_all(engine)
         with engine.begin() as c:
@@ -113,7 +113,7 @@ class Pipeline(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_filing_becomes_readable_memory(self):
         from sqlalchemy import select
-        from evident_db import (Chunk, Company, Document, Entity, EntityMention,
+        from parallx_db import (Chunk, Company, Document, Entity, EntityMention,
                                 Relationship, session_scope)
         from workers.ingest_worker import ingest_ticker
         from workers.memory_builder import build_for_document
@@ -200,7 +200,7 @@ class Pipeline(unittest.IsolatedAsyncioTestCase):
         the API boundary rather than in the repository layer.
         """
         from sqlalchemy import select
-        from evident_db import Company, Document, session_scope
+        from parallx_db import Company, Document, session_scope
         from workers.ingest_worker import ingest_ticker
         from workers.memory_builder import build_for_document
 

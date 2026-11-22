@@ -32,7 +32,7 @@ import re
 import time
 from typing import Any, Callable, Sequence
 
-log = logging.getLogger("evident.embed")
+log = logging.getLogger("parallx.embed")
 
 #: The one width every supported provider can emit. `voyage-finance-2` is
 #: 1024-only, OpenAI can shorten to anything, Voyage's general models offer

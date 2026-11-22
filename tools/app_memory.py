@@ -327,7 +327,7 @@ def build():
 <div class="shell">
   <nav class="side" aria-label="Primary">
     <a class="brand" href="../index.html">
-      <span class="brand-mark"></span> evident
+      <span class="brand-mark"></span> parallx
     </a>
     <div class="nav">{nav}</div>
     <div class="promo">

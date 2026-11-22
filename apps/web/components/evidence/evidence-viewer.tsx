@@ -16,7 +16,7 @@ import { EvidenceToolbar } from "./evidence-toolbar";
 import { PageThumbnailRail } from "./page-thumbnail";
 import { type PaneHighlight, type PaneTarget, PdfPane } from "./pdf-pane";
 
-const SPLIT_KEY = "evident.evidence.split";
+const SPLIT_KEY = "parallx.evidence.split";
 export const SPLIT = { min: 26, max: 60, initial: 36 } as const;
 
 /** "Item 1A. Risk Factors" → "Item 1A" */

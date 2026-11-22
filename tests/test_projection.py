@@ -9,8 +9,8 @@ from __future__ import annotations
 import unittest
 from datetime import date
 
-from evident_memory.cards import CAPEX, GUIDANCE, LITIGATION, PRODUCTS, REVENUE, RISKS
-from evident_memory.projection import Cited, CitedEvidence, Filing, project_cards
+from parallx_memory.cards import CAPEX, GUIDANCE, LITIGATION, PRODUCTS, REVENUE, RISKS
+from parallx_memory.projection import Cited, CitedEvidence, Filing, project_cards
 
 ITEM_1A = "Item 1A. Risk Factors"
 K24 = Filing(1, "0001045810-24-000029", "10-K", date(2024, 2, 21), "FY2024")

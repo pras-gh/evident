@@ -1,6 +1,6 @@
 """Who is calling: API keys in, a principal out.
 
-    Authorization: Bearer evk_…
+    Authorization: Bearer plx_…
 
 Only endpoints that spend money or show usage require a key; the read-only
 data API stays public as before. Roles decide what usage a caller can see:
@@ -22,8 +22,8 @@ from fastapi import Depends, Header, HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from evident_db import ApiKey, Organization, User
-from evident_db.keys import hash_key
+from parallx_db import ApiKey, Organization, User
+from parallx_db.keys import hash_key
 
 from .deps import get_db
 
@@ -50,7 +50,7 @@ def _unauthorized(detail: str) -> HTTPException:
 async def get_principal(authorization: str | None = Header(None),
                         db: AsyncSession = Depends(get_db)) -> Principal:
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise _unauthorized("an API key is required: Authorization: Bearer evk_…")
+        raise _unauthorized("an API key is required: Authorization: Bearer plx_…")
     key = authorization[7:].strip()
     row = (await db.execute(
         select(ApiKey, User, Organization)

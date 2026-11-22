@@ -16,13 +16,13 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Sequence
 
-from evident_memory.cards import (CAPEX, GUIDANCE, PRODUCTS, REVENUE, RISKS,
+from parallx_memory.cards import (CAPEX, GUIDANCE, PRODUCTS, REVENUE, RISKS,
                                   CardFact, MemoryCard, build_cards,
                                   facts_for_guidance, facts_for_metric,
                                   facts_for_products, facts_for_risks, route)
-from evident_memory.entities import CompanyMemory
+from parallx_memory.entities import CompanyMemory
 
-log = logging.getLogger("evident.diff_worker")
+log = logging.getLogger("parallx.diff_worker")
 
 
 @dataclass(slots=True)
