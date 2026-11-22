@@ -1,4 +1,4 @@
-# Evident — product requirements
+# Parallx — product requirements
 
 ## The problem
 
@@ -18,7 +18,7 @@ has to hold the history in their head.
 being wrong has financial consequences, an unverifiable summary is worse than no
 summary — it is confidently shaped like an answer.
 
-## What Evident is
+## What Parallx is
 
 A durable, evidence-backed **memory** for every public company, built
 incrementally from every document it has ever filed.

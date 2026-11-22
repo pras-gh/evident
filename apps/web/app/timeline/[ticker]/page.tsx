@@ -10,7 +10,7 @@ type Search = Promise<{ category?: string | string[] }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { ticker } = await params;
-  return { title: `Timeline · ${ticker.toUpperCase()} — Evident` };
+  return { title: `Timeline · ${ticker.toUpperCase()} — Parallx` };
 }
 
 /** What changed between a company's filings, each change linked to the

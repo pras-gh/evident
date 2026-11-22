@@ -11,7 +11,7 @@ export default async function Home() {
   } catch {
     return (
       <main className="tl2-shell">
-        <h1 className="ev-title">Evident</h1>
+        <h1 className="ev-title">Parallx</h1>
         <p className="tl2-coverage">
           The API is not reachable. Start it with <code>tools/dev.sh api</code>.
         </p>
@@ -23,7 +23,7 @@ export default async function Home() {
 
   return (
     <main className="tl2-shell">
-      <p className="ev-kicker">Evident</p>
+      <p className="ev-kicker">Parallx</p>
       <h1 className="ev-title">Companies</h1>
       {withTicker.length === 0 ? (
         <p className="tl2-coverage">

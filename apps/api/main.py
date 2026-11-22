@@ -1,4 +1,4 @@
-"""Evident Memory Engine API.
+"""Parallx Memory Engine API.
 
 Read-only over the memory schema. Every endpoint that returns a claim also
 returns the citation behind it.
@@ -23,7 +23,7 @@ from .routers.search import SearchUnavailable
 API_VERSION = "1.0.0"
 
 app = FastAPI(
-    title="Evident Memory Engine",
+    title="Parallx Memory Engine",
     version=API_VERSION,
     summary="Structured company intelligence from SEC filings.",
     description=(

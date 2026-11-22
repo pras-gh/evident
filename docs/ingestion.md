@@ -181,7 +181,7 @@ real provider before this serves anything.
 ```bash
 pip install -r requirements.txt
 psql "$DATABASE_URL" -f sql/001_schema.sql      # needs pgvector on the server
-export SEC_USER_AGENT="Evident ingest (you@example.com)"   # SEC refuses anonymous traffic
+export SEC_USER_AGENT="Parallx ingest (you@example.com)"   # SEC refuses anonymous traffic
 
 python -m evident_ingest.cli ingest --cik 320193 --accession 0000320193-25-000073
 ```

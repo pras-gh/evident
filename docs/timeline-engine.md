@@ -18,7 +18,7 @@ It does — every mention carries the date of its filing, and every entity has a
 *"Export Controls first appears, Feb 2025."* The previous timeline builder did
 exactly that.
 
-It is false. `first_seen` is the first filing **Evident ingested** that mentions
+It is false. `first_seen` is the first filing **Parallx ingested** that mentions
 the entity, not the first filing the company wrote about it. NVIDIA has disclosed
 export controls since 2022; with one filing loaded, every entity in it would
 "first appear" on the same day, and the timeline would be a list of confident

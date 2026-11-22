@@ -51,7 +51,7 @@ def main() -> int:
 
     problems = []
     if int(version) < 150000:
-        problems.append(f"PostgreSQL {int(version) // 10000} is too old; Evident needs 15+ "
+        problems.append(f"PostgreSQL {int(version) // 10000} is too old; Parallx needs 15+ "
                         "(migration 0009 uses NULLS NOT DISTINCT).")
     if not vector:
         problems.append("the pgvector extension is not enabled "

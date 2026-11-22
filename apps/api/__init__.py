@@ -1,1 +1,1 @@
-"""Evident Memory Engine API."""
+"""Parallx Memory Engine API."""

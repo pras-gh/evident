@@ -11,7 +11,7 @@ import {
   type UsageSummary,
 } from "@/lib/admin";
 
-export const metadata: Metadata = { title: "AI usage — Evident admin" };
+export const metadata: Metadata = { title: "AI usage — Parallx admin" };
 export const dynamic = "force-dynamic";
 
 export default async function AiUsagePage({

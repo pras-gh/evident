@@ -390,7 +390,7 @@ export interface SearchHit {
   citation: string;
 }
 
-/** A company a search names; `covered` when Evident holds its filings. */
+/** A company a search names; `covered` when Parallx holds its filings. */
 export interface SearchCompany {
   name: string;
   ticker: string | null;
@@ -429,7 +429,7 @@ export interface SearchResponse {
   scope: { tickers: string[] | null; reason: "named" | "filter" | "all" } | null;
   /** what the query asks once the companies are taken out */
   topic: string | null;
-  /** every company Evident holds filings for */
+  /** every company Parallx holds filings for */
   on_record: SearchCompany[];
   /** "rules", or "rules+provider:model" when a model also read the query */
   understood_by: string;

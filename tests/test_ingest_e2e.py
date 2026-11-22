@@ -44,7 +44,7 @@ def fixture_origin(root: Path = FIXTURES):
         os.environ.update({
             "SEC_WWW_URL": base, "SEC_DATA_URL": base,
             "SEC_ARCHIVES_URL": f"{base}/Archives/edgar/data",
-            "SEC_USER_AGENT": "Evident test",
+            "SEC_USER_AGENT": "Parallx test",
         })
         # the ticker map is cached for the process lifetime
         import evident_parser.edgar as edgar

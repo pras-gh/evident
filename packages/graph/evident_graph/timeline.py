@@ -2,7 +2,7 @@
 
 Events come from comparing each filing with the previous filing **of the same
 form** — never from dates alone. An entity's `first_seen` is the first filing
-Evident *ingested* that names it, not the first filing the company wrote about
+Parallx *ingested* that names it, not the first filing the company wrote about
 it; a timeline built from it would announce everything in the oldest loaded
 filing as new. See docs/timeline-engine.md.
 

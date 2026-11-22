@@ -834,4 +834,9 @@ CREATE INDEX ix_company_fetches_cik_requested_at ON company_fetches (cik, reques
 
 UPDATE alembic_version SET version_num='0013' WHERE alembic_version.version_num = '0012';
 
+
+UPDATE organizations SET name = 'Parallx (internal)' WHERE slug = 'evident-internal' AND name = 'Evident (internal)';
+
+UPDATE alembic_version SET version_num='0014' WHERE alembic_version.version_num = '0013';
+
 COMMIT;

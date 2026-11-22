@@ -60,7 +60,7 @@ def internal_organization_id(url: str | None = None) -> uuid.UUID:
         org = db.execute(select(Organization).where(
             Organization.slug == INTERNAL_ORG_SLUG)).scalar_one_or_none()
         if org is None:
-            org = Organization(slug=INTERNAL_ORG_SLUG, name="Evident (internal)", is_internal=True)
+            org = Organization(slug=INTERNAL_ORG_SLUG, name="Parallx (internal)", is_internal=True)
             db.add(org)
             db.flush()
         _internal_org = org.id

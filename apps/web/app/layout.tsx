@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Company Memory — Evident",
+  title: "Company Memory — Parallx",
   description: "Structured company intelligence from SEC filings.",
 };
 

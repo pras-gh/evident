@@ -17,7 +17,7 @@ import type {
  * that can be shared, reloaded and linked to from the landing page.
  *
  * Search is scoped to the companies the query names, and the page says which
- * it searched and why — so "Wesco International" says Evident has no Wesco
+ * it searched and why — so "Wesco International" says Parallx has no Wesco
  * filings rather than showing NVIDIA's. A query about one company we cover
  * also gets a card: what its latest filing changed, and where to read more.
  */
@@ -140,12 +140,12 @@ export function Scope({ result }: { result: SearchResponse }) {
       {offEdgar.length > 0 && (
         <p className="srch-note" role="status">
           <b>{names(offEdgar)} {offEdgar.length === 1 ? "doesn’t" : "don’t"} file with the
-          SEC</b>, so Evident has no filings to search. Evident has filings for {onRecord}.
+          SEC</b>, so Parallx has no filings to search. Parallx has filings for {onRecord}.
         </p>
       )}
       {missing.length > 0 && (
         <p className="srch-note" role="status">
-          <b>No filings for {names(missing)} yet.</b> Evident has filings for {onRecord}.
+          <b>No filings for {names(missing)} yet.</b> Parallx has filings for {onRecord}.
           {unconfigured && <> Fetching them needs <code>SEC_USER_AGENT</code> set, with a
           contact the SEC accepts.</>}
         </p>
