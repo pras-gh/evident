@@ -574,6 +574,25 @@ a.tl2-evidence:hover{color:var(--ink);border-color:rgba(52,211,153,.45)}
 .srch-changes a{color:var(--ink-2);text-decoration:underline;text-decoration-color:var(--line-2);
   text-underline-offset:3px}
 .srch-changes a:hover{color:var(--ink)}
+.srch-more{margin-top:6px}
+.srch-more>summary{cursor:pointer;margin-bottom:10px;font-size:12.5px;color:var(--ink-2)}
+
+/* the answer above the passages */
+.ans{margin:0 0 16px;padding:16px 18px;border:1px solid rgba(52,211,153,.28);border-radius:var(--r);
+  background:color-mix(in srgb,var(--emerald) 5%,var(--surface));box-shadow:var(--shadow)}
+.ans-kicker{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--emerald)}
+.ans-body{margin-top:8px;font-size:14px;line-height:1.65;color:var(--ink)}
+.ans-body p+p,.ans-body p+ul,.ans-body ul+p{margin-top:8px}
+.ans-body ul{display:grid;gap:5px;padding-left:18px}
+.ans-body strong{font-weight:600}
+.ans-cite{margin-left:1px;font-size:11px;vertical-align:super;color:var(--emerald);text-decoration:none}
+.ans-cite:hover{text-decoration:underline}
+.ans-sources{display:grid;gap:3px;margin-top:12px;padding-left:22px;font-size:12px;color:var(--muted)}
+.ans-sources a{color:var(--ink-2);text-decoration:underline;text-decoration-color:var(--line-2);
+  text-underline-offset:3px;overflow-wrap:anywhere}
+.ans-suggest{display:block;width:100%;height:64px;margin-top:10px;border:0;border-radius:10px;background:#fff}
+.ans-foot{margin-top:10px;font-size:11px;color:var(--faint)}
+.ans-pending .ans-wait{margin-top:6px;font-size:13px;color:var(--muted)}
 
 @media (max-width:640px){
   /* stacked: flex:1 would size the input's height, not its width, to zero */

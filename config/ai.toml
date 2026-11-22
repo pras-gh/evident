@@ -71,13 +71,18 @@ api_key_env = "ANTHROPIC_API_KEY"
 # USD per 1M tokens. cached_input: prompt-cache reads. cache_write: Anthropic's
 # 5-minute cache writes. `from` / `until` bound an entry (inclusive dates).
 # `above_input_tokens` with the `long_*` prices: a request whose prompt exceeds
-# the threshold pays the long-context rates.
+# the threshold pays the long-context rates. `per_search`: USD per web search a
+# grounded answer runs — Gemini's Google Search grounding is $14 per 1,000 after
+# 5,000 free a month, on paid keys only (aistudio.google.com/docs/pricing, read
+# 2026-11-22). The free allowance is not modelled, so caps over-count rather
+# than under-count.
 
 [[prices]]
 model = "gemini:gemini-3.5-flash-lite"
 input = 0.30
 output = 2.50
 cached_input = 0.03
+per_search = 0.014
 
 [[prices]]
 model = "gemini:gemini-3.6-flash"
@@ -85,6 +90,7 @@ until = "2026-12-31"
 input = 0.75
 output = 3.75
 cached_input = 0.075
+per_search = 0.014
 
 [[prices]]
 model = "gemini:gemini-3.6-flash"
@@ -92,6 +98,7 @@ from = "2027-01-01"
 input = 1.50
 output = 7.50
 cached_input = 0.15
+per_search = 0.014
 
 [[prices]]
 model = "gemini:gemini-3.8-flash"

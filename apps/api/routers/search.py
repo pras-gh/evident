@@ -154,6 +154,8 @@ async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
     topic = (intent.topic.strip() or None) if intent else None
     about = dict(query=req.query, companies=mentioned, scope=scope, topic=topic,
                  understood_by=understood_by,
+                 kind=intent.kind if intent else None,
+                 wants_filings=bool(intent and intent.wants_filings),
                  on_record=[SearchCompanyOut(name=c.name, ticker=c.ticker, covered=True)
                             for c in on_record])
 

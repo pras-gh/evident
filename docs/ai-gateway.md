@@ -164,6 +164,29 @@ measures nothing.
 
 Entries expire after `cache_ttl_days` (90).
 
+## Web search
+
+A request with `web_search=True` is answered from a live web search: Gemini's
+Google Search grounding. Used for market questions ("why is Nvidia down"),
+which nothing else can answer truthfully.
+
+- **Only providers that can search are asked.** Gemini can; the Groq and
+  Anthropic adapters can't, and are skipped.
+- **Never cached:** neither looked up nor stored. Google's terms forbid
+  caching grounded results, and yesterday's answer is wrong for "today".
+- **Priced per search.** `per_search` in `[[prices]]` is $14 per 1,000, after
+  5,000 free a month on paid keys. The free allowance isn't modelled, so caps
+  over-count rather than under-count. A request is checked against the worst
+  case of `MAX_SEARCHES` (5) searches.
+- **Its own circuit:** `provider:model+web`. A key that may not search can't
+  stop the same model answering everything else.
+- **Free keys are refused.** Gemini's free tier doesn't offer it. Seen live: a
+  429 asking to "check your plan and billing", with no retry time and no
+  quota detail. The adapter classifies that as quota exhaustion, not a rate
+  limit, so it isn't retried.
+- **The response** carries `sources` (title, uri) and `search_suggestions`
+  (HTML that Google's terms require shown with the answer).
+
 ## Reliability
 
 - **Timeouts:** `timeout_s` per attempt (90).

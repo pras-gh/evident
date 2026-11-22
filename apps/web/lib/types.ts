@@ -433,6 +433,33 @@ export interface SearchResponse {
   on_record: SearchCompany[];
   /** "rules", or "rules+provider:model" when a model also read the query */
   understood_by: string;
+  /** what answering needs: live information, a company's filings, or neither */
+  kind?: "market" | "filings" | "general" | null;
+  /** the query asked to see filings or documents */
+  wants_filings?: boolean;
+}
+
+/** POST /v1/ask: an answer from the live web or from the filings, never both. */
+export interface AskResponse {
+  mode: "web" | "filings" | "none";
+  answer: string | null;
+  /** web: the pages it drew on */
+  sources: { title: string; uri: string }[];
+  /** web: Google's Search Suggestions, as HTML, shown with the answer */
+  search_suggestions: string | null;
+  /** filings: the passages it cites, by the number it cites them with */
+  citations: {
+    n: number;
+    chunk_id: number;
+    paragraph_id: string | null;
+    company: string;
+    form_type: string;
+    filed_at: string;
+    citation: string;
+  }[];
+  notice: string | null;
+  model: string | null;
+  cost_usd: number | string | null;
 }
 
 /** A search either answers, or says why it could not: the API's 503 `error`

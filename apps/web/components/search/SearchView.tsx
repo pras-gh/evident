@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { evidenceUrl } from "@/lib/cite";
 import { FetchWatcher } from "./FetchWatcher";
 import type {
@@ -25,12 +26,15 @@ export function SearchView({
   ticker,
   outcome,
   company,
+  answer,
 }: {
   query: string;
   ticker?: string | null;
   outcome: SearchOutcome | null;
   /** the timeline of the one company the query names, for its card */
   company?: CompanyTimeline | null;
+  /** the answer, streamed in by the page above the passages */
+  answer?: ReactNode;
 }) {
   // the page's company filter, unless the query named companies of its own
   const filtered = !!ticker && !(outcome?.ok && outcome.result.scope?.reason === "named");
@@ -63,6 +67,7 @@ export function SearchView({
         <>
           <Scope result={outcome.result} />
           {company && <CompanyCard timeline={company} />}
+          {answer}
           <Results result={outcome.result} />
         </>
       )}
@@ -75,6 +80,20 @@ function Results({ result }: { result: SearchResponse }) {
   if (result.scope?.tickers?.length === 0) return null;
   if (result.hits.length === 0)
     return <p className="tl2-empty">No passages found for “{result.query}”.</p>;
+  // A market question is answered above; the filings are there for whoever
+  // wants them, unless the query asked for them outright.
+  if (result.kind === "market" && !result.wants_filings) {
+    return (
+      <details className="srch-more">
+        <summary>SEC filing passages ({result.hits.length})</summary>
+        <Passages result={result} />
+      </details>
+    );
+  }
+  return <Passages result={result} />;
+}
+
+function Passages({ result }: { result: SearchResponse }) {
   return (
     <>
       <p className="srch-count" aria-live="polite">

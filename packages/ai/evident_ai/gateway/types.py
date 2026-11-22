@@ -67,6 +67,10 @@ class LLMRequest:
     json_schema: dict[str, Any] | None = None
     temperature: float | None = 0.0
     cache: CacheSpec | None = None
+    #: answer from a live web search (Gemini's Google Search grounding). Sent
+    #: only to providers that support it; never cached — Google's terms forbid
+    #: caching grounded results; billed per search the model runs.
+    web_search: bool = False
 
 
 @dataclass(slots=True)
@@ -81,11 +85,14 @@ class Usage:
     output_tokens: int = 0
     cached_tokens: int = 0
     cache_write_tokens: int = 0
+    #: web searches the model ran for a grounded answer; each is billed
+    search_queries: int = 0
 
     def to_json(self) -> dict[str, int]:
         return {"input_tokens": self.input_tokens, "output_tokens": self.output_tokens,
                 "cached_tokens": self.cached_tokens,
-                "cache_write_tokens": self.cache_write_tokens}
+                "cache_write_tokens": self.cache_write_tokens,
+                "search_queries": self.search_queries}
 
 
 @dataclass(slots=True)
@@ -97,6 +104,11 @@ class Completion:
     #: the provider's own stop/finish value, for diagnosis
     raw_stop: str | None = None
     provider_request_id: str | None = None
+    #: for a web-search answer: the pages it drew on ({"title", "uri"})
+    sources: list[dict[str, str]] = field(default_factory=list)
+    #: for a web-search answer: Google's Search Suggestions, as HTML. Its terms
+    #: require showing them with the answer.
+    search_suggestions: str | None = None
 
 
 @dataclass(slots=True)
@@ -123,6 +135,8 @@ class LLMResponse:
     #: answered by a provider after the primary failed — never silently
     fallback: bool = False
     attempts: list[Attempt] = field(default_factory=list)
+    sources: list[dict[str, str]] = field(default_factory=list)
+    search_suggestions: str | None = None
 
 
 class GatewayError(RuntimeError):
