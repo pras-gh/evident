@@ -1,6 +1,7 @@
 "use client";
 
 import { ParallxMark } from "@/components/brand/ParallxMark";
+import { ParallxWordmark } from "@/components/brand/ParallxWordmark";
 import { useState } from "react";
 import { MemoryCardTile } from "@/components/MemoryCardTile";
 import { RevisionDrawer } from "@/components/RevisionDrawer";
@@ -34,7 +35,7 @@ export function MemoryDashboard({
       <aside className="side" aria-label="Navigation">
         <a className="brand" href="/" aria-label="Parallx">
           <ParallxMark className="brand-mark" size={18} />
-          <span className="brand-word">PARALLX</span>
+          <ParallxWordmark height={10} className="brand-word" />
         </a>
         <nav className="nav">
           <a className="nav-item is-on" href={`/memory/${t}`} aria-current="page">

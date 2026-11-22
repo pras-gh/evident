@@ -51,9 +51,41 @@ a{color:inherit;text-decoration:none}
   padding:18px 12px;border-right:1px solid var(--line);background:var(--surface)}
 .brand{display:flex;align-items:center;gap:9px;padding:6px 10px 20px;
   font-size:15px;font-weight:600;letter-spacing:-.02em}
+/* ============================================================ brand
+   One mark, one wordmark (components/brand), in the text colour. Sized by
+   cap height so the wordmark lines up with the mark's optical centre. */
 .brand-mark{flex:none;color:var(--ink)}
-/* the logo's wordmark: thin, wide-tracked capitals */
-.brand-word{font-size:12.5px;font-weight:500;letter-spacing:.32em}
+.brand-word{flex:none;color:var(--ink)}
+.brand:focus-visible,.apphead-brand:focus-visible,.evv-brand:focus-visible{
+  outline:2px solid var(--emerald);outline-offset:3px}
+
+.apphead{position:sticky;top:0;z-index:20;border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--bg) 84%,transparent);
+  backdrop-filter:blur(12px) saturate(140%);-webkit-backdrop-filter:blur(12px) saturate(140%)}
+.apphead-in{display:flex;align-items:center;gap:20px;max-width:980px;height:54px;
+  margin:0 auto;padding:0 24px}
+.apphead-brand{display:inline-flex;align-items:center;gap:11px;margin-left:-6px;padding:6px;
+  border-radius:9px;color:var(--ink);transition:opacity .18s}
+.apphead-brand:hover{opacity:.82}
+.apphead-nav{display:flex;gap:2px;margin-left:auto}
+.apphead-nav a{padding:6px 11px;border-radius:8px;font-size:13px;color:var(--ink-2);
+  transition:background .18s,color .18s}
+.apphead-nav a:hover{color:var(--ink);background:var(--surface-2)}
+.apphead-nav a[aria-current="page"]{color:var(--ink);background:var(--surface-2)}
+
+.evv-brand{display:inline-flex;align-items:center;gap:9px;margin:-4px 0 18px -4px;padding:4px;
+  border-radius:8px;color:var(--ink-2);transition:color .18s}
+.evv-brand:hover{color:var(--ink)}
+
+.adm-mark{display:block;margin-bottom:14px;color:var(--ink)}
+.adm-kicker{display:inline-flex;align-items:center;gap:8px}
+
+@media (max-width:640px){
+  .apphead-in{height:50px;padding:0 16px;gap:12px}
+}
+@media (max-width:380px){
+  .apphead-word{display:none}
+}
 .nav{display:grid;gap:1px}
 .nav-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;
   font-size:13.5px;color:var(--ink-2);transition:background .18s,color .18s}

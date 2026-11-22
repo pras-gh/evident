@@ -1,3 +1,4 @@
+import { AppHeader } from "@/components/brand/AppHeader";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CompanyTimelineView } from "@/components/timeline/CompanyTimeline";
@@ -32,5 +33,10 @@ export default async function TimelinePage({
   } catch {
     notFound();
   }
-  return <CompanyTimelineView timeline={timeline} category={category} />;
+  return (
+    <>
+      <AppHeader ticker={ticker} active="timeline" />
+      <CompanyTimelineView timeline={timeline} category={category} />
+    </>
+  );
 }

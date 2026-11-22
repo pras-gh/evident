@@ -1,3 +1,4 @@
+import { AppHeader } from "@/components/brand/AppHeader";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AnswerCard, AnswerPending } from "@/components/search/Answer";
@@ -41,6 +42,14 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
     </Suspense>
   ) : null;
 
-  return <SearchView query={query} ticker={ticker} outcome={outcome} company={company}
-                     answer={answer} />;
+  // the company in view, for the header's sections: the one the query named,
+  // else the page's filter — unless the query named other companies
+  const inView = one ?? (scope?.reason === "named" ? null : ticker);
+  return (
+    <>
+      <AppHeader ticker={inView} active="search" />
+      <SearchView query={query} ticker={ticker} outcome={outcome} company={company}
+                  answer={answer} />
+    </>
+  );
 }

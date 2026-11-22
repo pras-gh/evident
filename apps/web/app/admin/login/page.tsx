@@ -1,3 +1,4 @@
+import { ParallxMark } from "@/components/brand/ParallxMark";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Admin sign in — Parallx" };
@@ -18,6 +19,7 @@ export default async function AdminLogin({
   return (
     <main className="adm-login">
       <form method="post" action="/admin/session" className="adm-login-card">
+        <ParallxMark size={28} className="adm-mark" />
         <p className="ev-kicker">Parallx · Internal</p>
         <h1 className="ev-title">AI usage</h1>
         <label htmlFor="key" className="adm-label">Platform admin API key</label>
