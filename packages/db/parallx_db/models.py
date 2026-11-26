@@ -57,6 +57,10 @@ class Company(Base):
     sic: Mapped[Optional[str16]]
     created_at: Mapped[created_at]
     updated_at: Mapped[updated_at]
+    #: when its filing list was last read from EDGAR (`filings`)
+    filings_indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    #: when its financial statements were last read from EDGAR (`financial_facts`)
+    facts_loaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     documents: Mapped[list["Document"]] = relationship(
         back_populates="company", cascade="all, delete-orphan")

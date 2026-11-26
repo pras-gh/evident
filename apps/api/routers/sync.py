@@ -22,5 +22,7 @@ router = APIRouter(tags=["sync"])
 async def sync_status(db: AsyncSession = Depends(get_db)) -> SyncStatusOut:
     from parallx_db.sync import status
     from parallx_parser.universe import load
+    from .sec import filing_out
     ciks = [t.cik for t in load()]
-    return SyncStatusOut(**await db.run_sync(lambda s: status(s, ciks)))
+    raw = await db.run_sync(lambda s: status(s, ciks))
+    return SyncStatusOut(**{**raw, "latest_filings": [filing_out(f) for f in raw["latest_filings"]]})

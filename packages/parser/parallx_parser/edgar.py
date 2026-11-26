@@ -174,6 +174,56 @@ def fetch_submission(cik: str) -> dict[str, Any]:
     return json.loads(_get(f"{BASE}/submissions/CIK{cik.zfill(10)}.json"))
 
 
+def fetch_submission_page(name: str) -> dict[str, Any]:
+    """One of a submission's older pages (`filings.files[].name`, such as
+    CIK0000320193-submissions-001.json): filings before the ~1,000 in
+    `filings.recent`. Same columns as `recent`, at the top level."""
+    return json.loads(_get(f"{BASE}/submissions/{name}"))
+
+
+def fetch_company_facts(cik: str) -> dict[str, Any]:
+    """Every XBRL fact a company has filed (the Company Facts API): each value
+    with its period, unit, form, filing date and accession. A few MB for a
+    large filer."""
+    return json.loads(_get(f"{BASE}/api/xbrl/companyfacts/CIK{cik.zfill(10)}.json"))
+
+
+#: The nightly bulk files: every company's submissions and Company Facts, one
+#: JSON per CIK inside each ZIP. For loading history (backtesting) without a
+#: request per company.
+BULK_FILES = {
+    "submissions": "/Archives/edgar/daily-index/bulkdata/submissions.zip",
+    "companyfacts": "/Archives/edgar/daily-index/xbrl/companyfacts.zip",
+}
+
+
+def bulk_url(kind: str) -> str:
+    return f"{WWW}{BULK_FILES[kind]}"
+
+
+def filing_rows(columns: dict[str, list]) -> list[dict[str, Any]]:
+    """EDGAR's column-oriented filing list (`filings.recent`, or an older
+    page) as one dict per filing, newest first, with the acceptance time."""
+    out = []
+    for i, acc in enumerate(columns.get("accessionNumber", [])):
+        def col(name, default=None):
+            values = columns.get(name) or []
+            return values[i] if i < len(values) else default
+        out.append({
+            "accession": acc,
+            "form_type": col("form"),
+            "filed_date": date.fromisoformat(col("filingDate")),
+            "published_at": _acceptance(columns, i),
+            "report_date": col("reportDate") or None,
+            "primary_document": col("primaryDocument") or None,
+            "description": col("primaryDocDescription") or None,
+            "items": col("items") or None,
+            "size": col("size"),
+            "is_xbrl": bool(col("isXBRL", 0)),
+        })
+    return out
+
+
 def find_filing(submission: dict[str, Any], accession: str) -> dict[str, Any]:
     """Pull one filing's metadata out of EDGAR's column-oriented payload."""
     dashed, _ = normalise_accession(accession)
@@ -250,6 +300,19 @@ def parse_latest(feed: bytes, *, form_type: str | None = None) -> list[LatestFil
         out.append(LatestFiling(cik=m["cik"], accession=acc[1], form_type=form,
                                 company=m["name"].strip(), accepted_at=accepted))
     return out
+
+
+#: Links shown to people go to sec.gov itself, whatever origin the fetch
+#: layer reads from.
+PUBLIC_ARCHIVES = "https://www.sec.gov/Archives/edgar/data"
+
+
+def public_url(cik: str, accession: str, primary_document: str | None = None) -> str:
+    """A filing on sec.gov: its document, or its index page without one."""
+    _, bare = normalise_accession(accession)
+    if primary_document:
+        return f"{PUBLIC_ARCHIVES}/{int(cik)}/{bare}/{primary_document}"
+    return f"{PUBLIC_ARCHIVES}/{int(cik)}/{bare}/{normalise_accession(accession)[0]}-index.htm"
 
 
 def document_url(cik: str, accession: str, primary_document: str) -> str:

@@ -514,28 +514,82 @@ class SyncRunOut(BaseModel):
     error: str | None = None
 
 
-class SyncFilingOut(BaseModel):
+class FilingOut(BaseModel):
+    """A filing in the index: what EDGAR lists, whether or not its text is
+    loaded. `url` is the filing's document on EDGAR."""
     ticker: str | None
-    name: str
-    form_type: str | None
-    accession: str | None
-    accepted_at: datetime | None
-    fetched_at: datetime | None
-    minutes_after_filing: float | None
+    company: str
+    cik: str
+    accession: str
+    form_type: str
+    filed_date: date
+    accepted_at: datetime
+    report_date: date | None = None
+    #: an 8-K's items, "2.02,9.01"
+    items: str | None = None
+    #: the same, in words: "results of operations"
+    about: str | None = None
+    description: str | None = None
+    url: str
+    #: found as news by a poll, with how many minutes after acceptance
+    alerted: bool
+    minutes_after_filing: float | None = None
+    #: its text is in Parallx: searchable, and citable to a paragraph
+    loaded: bool
 
 
 class SyncStatusOut(BaseModel):
     """The S&P 500 as Parallx holds it."""
     tracked: int
-    with_annual_report: int
-    #: every filing on record embedded
+    #: filing lists read (Submissions API)
+    indexed: int
+    #: financial statements loaded (Company Facts API)
+    with_financials: int
+    #: some filing's text downloaded (on demand)
+    loaded: int
+    #: every downloaded filing embedded
     searchable: int
     #: chunks parsed and waiting for a vector, all companies
     pending_chunks: int
-    backfill_failures_last_day: int
     last_poll: SyncRunOut | None = None
     last_sweep: SyncRunOut | None = None
-    latest_filings: list[SyncFilingOut] = []
+    latest_filings: list[FilingOut] = []
+
+
+class FinancialCellOut(BaseModel):
+    value: float
+    #: the XBRL concept it was filed under, "us-gaap:Revenues"
+    concept: str
+    accession: str
+    form: str
+    filed: date
+    #: a fiscal Q4: the year less its first three quarters
+    derived: bool = False
+    #: the filing on EDGAR
+    url: str
+
+
+class FinancialColumnOut(BaseModel):
+    label: str
+    period_start: date | None = None
+    period_end: date
+
+
+class FinancialRowOut(BaseModel):
+    key: str
+    label: str
+    unit: str
+    cells: list[FinancialCellOut | None]
+
+
+class FinancialsOut(BaseModel):
+    """A company's financial statements, from its XBRL (Company Facts)."""
+    ticker: str | None
+    period: Literal["annual", "quarterly"]
+    columns: list[FinancialColumnOut]
+    #: lines with at least one value, in statement order
+    rows: list[FinancialRowOut]
+    loaded_at: datetime | None = None
 
 
 class CompanySummaryOut(BaseModel):
