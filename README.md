@@ -74,12 +74,20 @@ database before starting and says what is wrong if it cannot serve from it.
 
 Optional, per feature: `SEC_USER_AGENT` to ingest from EDGAR,
 `GEMINI_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` for AI features (routed by
-`config/ai.toml`; see `docs/ai-gateway.md`), and `EMBEDDING_PROVIDER` for search:
-`gemini` uses the same `GEMINI_API_KEY`, or `voyage` / `openai` with their own
-keys. There is deliberately no default embedding provider: `hashing` is for
-tests only and has no semantics — it would make retrieval look like it works.
-Search needs the chunks indexed once, and again after each ingest:
-`python workers/embedding_worker.py` (the three demo 10-Ks are one request).
+`config/ai.toml`; see `docs/ai-gateway.md`), and `EMBEDDING_PROVIDER` for search.
+Choose one of these:
+
+- `voyage`, with `EMBEDDING_MODEL=voyage-4-large` and `VOYAGE_API_KEY`;
+- `gemini`, with the same `GEMINI_API_KEY`;
+- `openai`.
+
+There is deliberately no default embedding provider. `hashing` is for tests
+only: it has no semantics, so it would make retrieval look like it works.
+
+Search needs the chunks embedded once, and again after each ingest. The run is
+resumable and prints tokens and estimated cost:
+`python tools/generate_embeddings.py --dry-run`, then without `--dry-run`. See
+`docs/embedding-providers.md`.
 
 ```bash
 # tests — the database suites run when TEST_DATABASE_URL points at an empty,
