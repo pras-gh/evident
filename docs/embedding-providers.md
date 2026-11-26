@@ -182,9 +182,22 @@ shelved:
 There is no `live/` and `legacy/` split because there is no longer a legacy
 half to separate.
 
-## Not proven
+## Observed
 
-No embedding API has been called. There are no Voyage or OpenAI credentials
-here, so both providers are driven by fake clients. What is asserted is the
-shape of the request and the handling of the response; what has not been
-observed is a real vector.
+On 2026-11-26, `voyage-4-large` embedded all 907 chunks in the database:
+
+- Apple's, Microsoft's and Amazon's latest 10-Ks, in full;
+- NVIDIA's three 10-K excerpts.
+
+It used about 265K tokens as Voyage counts them (about $0.03 at list price),
+over three resumed runs on an account with no payment method (3 requests and
+10K tokens a minute). Two runs stopped part-way, one from a dropped
+connection and one I stopped; a rerun finished each. No chunk failed.
+PostgreSQL holds 907 vectors, all 1024 dimensions with norm 1.0000.
+
+Retrieval, against keyword search on five research questions, is in
+`docs/benchmarks/retrieval-voyage-4-large.md`.
+
+Under those trial limits, more than about three searches a minute fail: each
+query is one embedding request. Search answers 503 with Voyage's reason. A
+payment method on the Voyage account lifts the limit.

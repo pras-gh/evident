@@ -686,7 +686,7 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["scope"], {"tickers": ["NVDA"], "reason": "named"})
         self.assertTrue(body["hits"])
 
-    async def test_the_topic_is_searched_within_the_named_company(self):
+    async def test_the_question_is_searched_within_the_named_company(self):
         from workers import embedding_worker
         embedding_worker.run(url=DSN)
         self._search_gateway({"companies": [{"name": "Nvidia", "ticker": None}],
@@ -702,8 +702,8 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
 
         with mock.patch("parallx_retrieval.embed.default_provider", lambda: Spy()):
             body = await self._search("nvidia data centre capacity")
-        self.assertEqual(embedded, ["data centre capacity"],
-                         "the topic is searched; the company is the filter")
+        self.assertEqual(embedded, ["nvidia data centre capacity"],
+                         "the question as asked is embedded; the company is the filter")
         self.assertEqual(body["topic"], "data centre capacity")
         self.assertEqual([(c["name"], c["ticker"], c["covered"]) for c in body["companies"]],
                          [("NVIDIA Corp", "NVDA", True)])

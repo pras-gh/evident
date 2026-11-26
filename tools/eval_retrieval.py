@@ -99,13 +99,18 @@ def main() -> int:
     ap.add_argument("--api", default="http://localhost:8000/v1")
     ap.add_argument("-k", type=int, default=5)
     ap.add_argument("--out", type=pathlib.Path)
+    ap.add_argument("--pause", type=float, default=0.0,
+                    help="seconds between queries: an account on trial limits embeds 3 a minute")
     args = ap.parse_args()
 
     from parallx_db import session_scope
     lines = ["# Retrieval: semantic (Voyage) against keyword (full-text)", ""]
     summary = []
     with session_scope(os.environ.get("DATABASE_URL")) as db:
-        for q in QUERIES:
+        for n, q in enumerate(QUERIES):
+            if n and args.pause:
+                import time
+                time.sleep(args.pause)
             body = _post(f"{args.api}/search", {"query": q, "k": args.k})
             hits = body["hits"][:args.k]
             tickers = (body.get("scope") or {}).get("tickers")

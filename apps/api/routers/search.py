@@ -201,8 +201,13 @@ async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
             "Run `python workers/embedding_worker.py` to index them.")
 
     try:
-        # the topic, not "what is going on with" — the company is the filter
-        vector = embedder.embed_query([topic or req.query])[0]
+        # The question as asked, not the topic the model took from it: query
+        # embeddings are trained on questions, and the company is already the
+        # filter. Measured on Apple's 10-K with voyage-4-large: "What has Apple
+        # said about capital allocation?" ranks its share repurchases first
+        # (0.41); the topic "capital allocation" finds nothing on them in the
+        # top five (best 0.21).
+        vector = embedder.embed_query([req.query])[0]
     except EmbeddingError as exc:
         raise SearchUnavailable("search_unavailable", str(exc)) from exc
 
