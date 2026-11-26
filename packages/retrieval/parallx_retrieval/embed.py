@@ -190,6 +190,12 @@ class _Limiter:
                 return
             self.sleep(max(0.05, 60 - (now - self.sent[0][0])))
 
+    def settle(self, tokens: int) -> None:
+        """The last request's real token count, once the provider said it:
+        the estimate (characters / 4) runs well over Voyage's count on filings."""
+        if self.sent and tokens:
+            self.sent[-1] = (self.sent[-1][0], tokens)
+
 
 class VoyageEmbedder(EmbeddingProvider):
     """Voyage AI, on `voyage-4-large` at the shared 1024 dimensions, as floats.
@@ -230,17 +236,25 @@ class VoyageEmbedder(EmbeddingProvider):
                  dim: int = EMBEDDING_DIM, *, api_key: str | None = None,
                  client: object | None = None, rpm: int | None = None,
                  tpm: int | None = None,
-                 sleep: Callable[[float], None] = time.sleep) -> None:
+                 sleep: Callable[[float], None] = time.sleep,
+                 clock: Callable[[], float] = time.monotonic) -> None:
         self.model, self.dim = model, dim
         self._api_key = api_key or os.environ.get("VOYAGE_API_KEY")
         self._client = client
         self._sleep = sleep
         env = lambda k: int(os.environ[k]) if os.environ.get(k) else None  # noqa: E731
         self._limiter = _Limiter(rpm or env("VOYAGE_RPM"), tpm or env("VOYAGE_TPM"),
-                                 sleep=sleep)
+                                 clock=clock, sleep=sleep)
         self.tokens = 0          # as the API reported them
         self.requests = 0
         self.retries = 0
+
+    @property
+    def request_budget(self) -> int:
+        """Tokens one request may carry: the API's cap, or the account's whole
+        minute when that is smaller (3 requests and 10K tokens without a
+        payment method) — a bigger request would never be let through."""
+        return min(self.max_request_tokens, self._limiter.tpm or self.max_request_tokens)
 
     def _get_client(self):
         if self._client is not None:
@@ -313,8 +327,10 @@ class VoyageEmbedder(EmbeddingProvider):
                             detail, wait, attempt + 1, attempts)
                 self._sleep(wait)
                 continue
+            used = int(getattr(response, "total_tokens", 0) or 0)
             self.requests += 1
-            self.tokens += int(getattr(response, "total_tokens", 0) or 0)
+            self.tokens += used
+            self._limiter.settle(used)
             return response.embeddings
         raise AssertionError("unreachable")  # pragma: no cover
 

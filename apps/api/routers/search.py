@@ -180,6 +180,14 @@ async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
         embedder = default_provider()
     except EmbeddingError as exc:
         raise SearchUnavailable("search_not_configured", str(exc)) from exc
+    from parallx_db import EMBEDDING_DIM
+    if embedder.dim != EMBEDDING_DIM:
+        # a query vector of another width cannot be compared with the column's
+        raise SearchUnavailable(
+            "search_not_configured",
+            f"{embedder.name}/{embedder.model} is configured for {embedder.dim} dimensions; "
+            f"chunks.embedding holds {EMBEDDING_DIM}. Unset EMBEDDING_DIM, or migrate the "
+            "column and re-embed.")
 
     # Checked before embedding the query, so an empty index costs no API call
     # and says what to run instead of returning no hits as if none matched.

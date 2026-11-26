@@ -166,6 +166,18 @@ class Provider(unittest.TestCase):
         lim.acquire(950)                         # over the token budget: waits again
         self.assertEqual(len(waits), 2)
 
+    def test_the_limiter_counts_what_the_provider_reported(self):
+        now = [0.0]
+        lim = _Limiter(rpm=None, tpm=1000, clock=lambda: now[0], sleep=lambda s: None)
+        lim.acquire(900)          # estimated
+        lim.settle(600)           # what the API counted
+        self.assertEqual(sum(t for _, t in lim.sent), 600)
+
+    def test_a_request_never_carries_more_than_the_minute_allows(self):
+        e, _ = voyage(FakeVoyage(), tpm=10_000)
+        self.assertEqual(e.request_budget, 10_000)
+        self.assertEqual(voyage(FakeVoyage())[0].request_budget, 120_000)
+
     def test_cost_is_estimated_from_list_price(self):
         self.assertEqual(price_per_mtok("voyage-4-large"), 0.12)
         self.assertIsNone(price_per_mtok("voyage-unknown"))
@@ -309,6 +321,21 @@ class Backfill(unittest.TestCase):
         self.assertEqual((forced.already, forced.embedded), (7, 7))
         self.assertEqual(chunk_count(), 7)
 
+    def test_batches_fit_the_accounts_token_budget(self):
+        from workers import embedding_worker
+        corpus({"NVDA": ["word " * 400] * 6})        # ~500 estimated tokens each
+        c = FakeVoyage()
+        now = [0.0]
+
+        def sleep(s):
+            now[0] += s
+        embedder = VoyageEmbedder("voyage-4-large", client=c, api_key="k", tpm=2000,
+                                  sleep=sleep, clock=lambda: now[0])
+        embedding_worker.run(url=DSN, embedder=embedder, batch_size=128)
+        # 2,000 a minute, packed to 60%: two chunks a request, paced a minute apart
+        self.assertEqual([len(call["texts"]) for call in c.calls], [2, 2, 2])
+        self.assertGreaterEqual(now[0], 60.0)
+
     def test_a_ticker_scopes_the_run_and_a_dry_run_sends_nothing(self):
         corpus({"NVDA": RISKS, "MSFT": ["azure capacity", "ai infrastructure capex"]})
         c = FakeVoyage()
@@ -410,6 +437,21 @@ class Search(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["hits"][0]["chunk_id"], ids[("NVDA", 7)])
         self.assertTrue(all(h["accession"] and h["citation"] and h["paragraph_ids"]
                             for h in body["hits"]))
+
+
+    async def test_a_query_model_of_another_width_is_refused_not_compared(self):
+        from test_evidence_e2e import _ApiMixin, _reset_schema
+        _reset_schema()
+        corpus({"NVDA": RISKS})
+        c = FakeVoyage(dim=2048)
+        wide = VoyageEmbedder("voyage-4-large", dim=2048, client=c, api_key="k")
+        with mock.patch("parallx_retrieval.embed.default_provider", lambda: wide), \
+                mock.patch.dict(os.environ, {"SEC_USER_AGENT": ""}):
+            async with await _ApiMixin()._client() as client:
+                r = await client.post("/v1/search", json={"query": "export controls"})
+        self.assertEqual(r.status_code, 503, r.text)
+        self.assertIn("2048", r.json()["message"])
+        self.assertEqual(c.calls, [], "refused before any API call")
 
 
 if __name__ == "__main__":

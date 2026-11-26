@@ -12,15 +12,66 @@ class EmbeddingProvider:
 
 | implementation | model | when |
 |---|---|---|
-| `VoyageEmbedder` | `voyage-finance-2` | default. Finance-tuned retrieval. |
+| `VoyageEmbedder` | `voyage-4-large` | default: 1024 dimensions, float. `voyage-finance-2` by `EMBEDDING_MODEL`. |
+| `GeminiEmbedder` | `gemini-embedding-2` | with the AI gateway's Gemini key. |
 | `OpenAIEmbedder` | `text-embedding-3-large` | fallback. |
 | `HashingEmbedder` | `hashing-v1` | **tests only.** No semantics. |
 
-Switching is one environment variable:
+Switching is one environment variable, and a re-embed:
 
 ```bash
-EMBEDDING_PROVIDER=voyage     # or: openai, hashing
+EMBEDDING_PROVIDER=voyage          # or: gemini, openai
+EMBEDDING_MODEL=voyage-4-large
+VOYAGE_API_KEY=…                   # server-side only, in .env; never sent to the web app
+python tools/generate_embeddings.py --dry-run
+python tools/generate_embeddings.py --limit 100      # a sample first
+python tools/generate_embeddings.py                  # then the rest
 ```
+
+## Voyage, and the backfill
+
+`VoyageEmbedder` sends `output_dimension=1024` and `output_dtype="float"`, the
+column's width and the only element type a pgvector `vector` holds.
+`truncation` is off. Voyage would otherwise embed the first 32K tokens of an
+over-long text and return a vector for only part of it. Now that is an error
+the backfill records. Documents go as `input_type="document"`, queries as
+`"query"`.
+
+**Failures say what to do next.**
+
+| failure | what happens |
+| --- | --- |
+| credentials refused (401/403) | not retried; the run stops |
+| rate limited (429), server error (5xx), connection dropped | retried with exponential backoff and jitter, honouring `Retry-After`; 7 tries for documents, 2 for a waiting search |
+| a text or request the API rejects (400) | not retried; the backfill halves the batch down to the chunk at fault, records it, and goes on |
+| a vector that is non-finite or all zeros | refused before it reaches the table, and isolated like a rejected text |
+
+**Pacing.** `VOYAGE_RPM` and `VOYAGE_TPM` keep requests under an account's
+limits: a sliding minute, counted in the tokens Voyage reports. An account
+with no payment method gets 3 requests and 10K tokens a minute. Requests are
+packed to fit that minute; a bigger one could never be let through.
+
+**`tools/generate_embeddings.py`** runs the code that the sync worker and
+on-demand fetches embed with (`workers/embedding_worker.py`). It takes
+`--provider --model --batch-size --limit --ticker --force --dry-run` and
+prints:
+
+- eligible, already-embedded and remaining chunks;
+- chunks embedded and failed;
+- tokens, as Voyage reported them;
+- API errors;
+- the cost at list price (`EMBEDDING_PRICE_PER_MTOK` overrides it);
+- the run's duration.
+
+It then checks PostgreSQL itself for the row count, vector widths and norms,
+rather than trusting its own tally.
+
+**Resumable.** Each batch commits as it lands. Every run recomputes what is
+left from the table: chunks with text not already embedded by this provider
+and model. A stopped run loses nothing, and a rerun does only the rest. Rows
+are only updated, never inserted. Empty chunks are never sent. Another model's
+vector is replaced, because the column holds one vector and search reads only
+the configured model's. `--force` re-embeds this model's vectors too.
 
 ## Why voyage-finance-2
 

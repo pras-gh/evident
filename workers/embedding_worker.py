@@ -108,7 +108,8 @@ def run(*, url: str | None = None, embedder: EmbeddingProvider | None = None,
         company_id: int | None = None, ticker: str | None = None,
         force: bool = False, dry_run: bool = False,
         progress: Callable[[EmbedResult], None] | None = None) -> EmbedResult:
-    started = time.monotonic()
+    # wall time: a run that spans a laptop's sleep took that long to whoever waited
+    started = time.time()
     embedder = embedder or default_provider()
     if embedder.dim != EMBEDDING_DIM:
         raise ValueError(
@@ -127,11 +128,12 @@ def run(*, url: str | None = None, embedder: EmbeddingProvider | None = None,
     todo = todo[:max_chunks] if max_chunks is not None else todo
     result.planned = len(todo)
     if dry_run or not todo:
-        result.seconds = round(time.monotonic() - started, 2)
+        result.seconds = round(time.time() - started, 2)
         return result
 
     size = max(1, min(batch_size, getattr(embedder, "MAX_BATCH", batch_size)))
-    limit = getattr(embedder, "max_request_tokens", None)
+    limit = getattr(embedder, "request_budget", None) or getattr(
+        embedder, "max_request_tokens", None)
     budget = [int(limit * TOKEN_HEADROOM) if limit else None]
     tokens_before = getattr(embedder, "tokens", None)
 
@@ -142,6 +144,9 @@ def run(*, url: str | None = None, embedder: EmbeddingProvider | None = None,
         result.batches += 1
         if tokens_before is None:
             result.tokens += sum(c.token_estimate or 0 for c in chunks)
+        else:
+            result.tokens = getattr(embedder, "tokens", 0) - tokens_before
+            result.tokens_reported = True
 
     def attempt(db, chunks) -> None:
         """Embed and write `chunks`; on rejection, halve and retry, down to the
@@ -192,7 +197,7 @@ def run(*, url: str | None = None, embedder: EmbeddingProvider | None = None,
         if tokens_before is not None:
             result.tokens = getattr(embedder, "tokens", 0) - tokens_before
             result.tokens_reported = True
-        result.seconds = round(time.monotonic() - started, 2)
+        result.seconds = round(time.time() - started, 2)
     if result.stopped:
         raise EmbeddingStopped(result.stopped, result)
     return result
