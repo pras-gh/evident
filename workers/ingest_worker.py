@@ -16,7 +16,9 @@ import tempfile
 from dataclasses import dataclass, field
 from datetime import date
 
-from parallx_db import DocumentPage, session_scope
+from sqlalchemy import select
+
+from parallx_db import Chunk, DocumentPage, session_scope
 from parallx_db import store
 from parallx_db.repositories import (replace_chunks, upsert_company,
                                      upsert_document)
@@ -132,10 +134,13 @@ def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
     rel = store.source_path(filing["accession"], filing["primary_document"])
     if document.source_path != rel or not store.resolve(rel).exists():
         document.source_path = store.write(rel, raw)
-    if not is_new:
+    if not is_new and db.execute(select(Chunk.id).where(
+            Chunk.document_id == document.id).limit(1)).first() is not None:
         out.skipped = True
         log.info("%s unchanged — skipped", filing["accession"])
         return out
+    # unchanged bytes but no chunks: it was never read — a parser that could
+    # not, or a run that died between the two — so read it now
 
     # New bytes: pages and boxes rendered from the old ones no longer apply.
     db.query(DocumentPage).filter(DocumentPage.document_id == document.id).delete(

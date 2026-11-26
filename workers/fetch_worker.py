@@ -81,6 +81,10 @@ def run(fetch_id: int, *, url: str | None = None, render: bool = True,
         if filing.error:
             raise FetchFailed(f"{filing.form_type or 'filing'} {filing.accession}: "
                               f"{filing.error}")
+        if not filing.skipped and not filing.chunks:
+            # "done" would tell the search page there is something to search
+            raise FetchFailed(f"{filing.form_type} {filing.accession}: no text could be "
+                              "read from it")
 
         if embed:
             with session_scope(url) as db:

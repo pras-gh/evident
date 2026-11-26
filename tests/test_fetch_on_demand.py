@@ -217,6 +217,23 @@ class Worker(unittest.TestCase):
         fid = self.queue("0001045810", "NVDA", "NVIDIA CORP", status="done")
         self.assertEqual(fetch_worker.run(fid, url=DSN, render=False), "done")
 
+    def test_a_filing_with_no_readable_text_fails_and_is_read_once_it_can_be(self):
+        """Real 10-Ks once parsed to nothing and the fetch said "done"; and
+        a fetch after the parser was fixed skipped them as unchanged."""
+        from parallx_db import Chunk, CompanyFetch, session_scope
+        from workers import fetch_worker
+        with fixture_origin(EDGAR):
+            fid = self.queue("0001045810", "NVDA", "NVIDIA CORP")
+            with mock.patch("workers.ingest_worker._parse", lambda raw, pdf, acc: ([], [], [], 1)):
+                self.assertEqual(fetch_worker.run(fid, url=DSN, render=False), "failed")
+            with session_scope(DSN) as db:
+                self.assertIn("no text could be read", db.get(CompanyFetch, fid).error)
+            again = self.queue("0001045810", "NVDA", "NVIDIA CORP")
+            self.assertEqual(fetch_worker.run(again, url=DSN, render=False), "done")
+        with session_scope(DSN) as db:
+            self.assertGreater(db.get(CompanyFetch, again).chunks, 0)
+            self.assertGreater(db.query(Chunk).count(), 0, "same bytes, read this time")
+
     def test_a_failure_records_why(self):
         from parallx_db import CompanyFetch, session_scope
         from workers import fetch_worker

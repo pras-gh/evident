@@ -135,8 +135,14 @@ class _FilingParser(HTMLParser):
         return False
 
     def handle_startendtag(self, tag, attrs):
-        # `<br/>` and friends: start and end in one token, so depth is untouched.
+        # `<br/>`, `<td/>`, `<link:schemaRef/>`: opened and closed in one token.
+        # A non-void one must close as well as open — counted as an opening
+        # alone, it left the depth one too deep, so the `display:none` block
+        # around a real 10-K's inline-XBRL header never closed and the whole
+        # filing parsed as hidden: no paragraphs at all.
         self.handle_starttag(tag, attrs)
+        if tag not in _VOID_TAGS:
+            self.handle_endtag(tag)
 
     def handle_starttag(self, tag, attrs):
         if tag not in _VOID_TAGS:
