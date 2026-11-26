@@ -1,4 +1,4 @@
-import { asset } from "@/lib/api";
+import { asset } from "@/lib/client-api";
 import type { DocumentDetail } from "@/lib/types";
 
 export const ZOOMS = [0.75, 1, 1.25, 1.5] as const;

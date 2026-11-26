@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect } from "react";
-import { asset } from "@/lib/api";
+import { asset } from "@/lib/client-api";
 import type { BoundingBox, DocumentDetail, DocumentView } from "@/lib/types";
 import { HighlightOverlay } from "./highlight-overlay";
 

@@ -471,6 +471,8 @@ export interface SearchCompany {
   name: string;
   ticker: string | null;
   covered: boolean;
+  /** researching it: a credit spent now, held already, or an upgrade needed */
+  access?: "granted" | "existing" | "upgrade_required" | null;
   /** for a company not covered: its fetch from EDGAR, or why there is none */
   fetch?: "queued" | "running" | "failed" | "not_on_edgar" | "not_configured" | null;
   fetch_id?: number | null;
@@ -497,6 +499,8 @@ export interface SearchResponse {
   query: string;
   hits: SearchHit[];
   took_ms: number;
+  /** a named company needs an upgrade to research */
+  paywall?: Paywall | null;
   /** null when nothing was searched (only uncovered companies named) */
   embedder: string | null;
   /** every company the query names, covered or not */
@@ -517,6 +521,8 @@ export interface SearchResponse {
 
 /** POST /v1/ask: an answer from the live web or from the filings, never both. */
 export interface AskResponse {
+  /** the plan's AI research queries are used up */
+  limit_reached?: boolean;
   mode: "web" | "filings" | "none";
   answer: string | null;
   /** web: the pages it drew on */
@@ -545,3 +551,98 @@ export type SearchOutcome =
   | { ok: true; result: SearchResponse }
   | { ok: false; error: "search_not_configured" | "search_not_indexed" | "search_unavailable"
         | "too_short" | "unreachable" | "failed"; message: string };
+
+// ------------------------------------------------------------ accounts, billing
+
+/** GET /v1/me */
+export interface Me {
+  user_id: string;
+  email: string | null;
+  phone: string | null;
+  name: string | null;
+  role: string;
+  auth_provider: "google" | "password" | "phone" | null;
+  via: "session" | "api_key";
+  organization: { id: string; slug: string; name: string; is_internal: boolean };
+}
+
+export interface ResearchedCompany {
+  ticker: string | null;
+  name: string;
+  first_researched_at: string;
+  last_accessed_at: string;
+  status: "pending" | "active";
+  access_source: string;
+}
+
+/** GET /v1/me/usage */
+export interface Usage {
+  plan_id: "free" | "investor" | "analyst" | "staff";
+  plan_name: string;
+  source: "free" | "subscription" | "grace" | "staff";
+  companies_used: number;
+  companies_limit: number | null;
+  companies_left: number | null;
+  free_credits_used: number;
+  free_credits_total: number;
+  ai_queries_used: number;
+  ai_queries_limit: number | null;
+  ai_queries_left: number | null;
+  period_end: string | null;
+  companies: ResearchedCompany[];
+}
+
+/** GET /v1/me/subscription */
+export interface Subscription {
+  plan_id: string;
+  plan_name: string;
+  source: Usage["source"];
+  status: string | null;
+  billing_interval: "month" | "year" | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  grace_until: string | null;
+  requires_action: boolean;
+  features: Record<string, unknown>;
+  has_billing_account: boolean;
+}
+
+/** GET /v1/plans */
+export interface Plan {
+  id: "free" | "investor" | "analyst";
+  name: string;
+  audience: string;
+  description: string;
+  /** USD cents */
+  monthly_price: number;
+  annual_price: number;
+  currency: string;
+  max_companies: number;
+  monthly_ai_queries: number;
+  recommended: boolean;
+  features: { label: string; available: boolean }[];
+  entitlements: Record<string, unknown>;
+  purchasable: boolean;
+}
+
+export interface ResearchAccess {
+  outcome: "existing" | "granted";
+  status: "pending" | "active";
+  ticker: string | null;
+  name: string;
+  fetch_id: number | null;
+  usage: Usage;
+}
+
+/** The 402 a company the plan has no room for comes back with. */
+export interface Paywall {
+  reason: "free_credits_used" | "company_limit" | string;
+  message: string;
+  usage: Usage | null;
+  companies: string[];
+}
+
+export interface CheckoutResult {
+  mode: "checkout" | "updated";
+  url: string | null;
+}

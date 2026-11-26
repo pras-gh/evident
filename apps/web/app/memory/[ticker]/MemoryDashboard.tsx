@@ -8,7 +8,7 @@ import { RevisionDrawer } from "@/components/RevisionDrawer";
 import { TimelineRail } from "@/components/TimelineRail";
 import { FilingsRail } from "@/components/company/FilingsRail";
 import { FinancialsPanel } from "@/components/company/FinancialsPanel";
-import { getCard } from "@/lib/api";
+import { getCard } from "@/lib/client-api";
 import type { CardDetail, Filing, Financials, MemoryCard, MemorySummary,
               TimelineEvent } from "@/lib/types";
 

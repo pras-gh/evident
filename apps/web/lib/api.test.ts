@@ -1,4 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+// the API module reads the session cookie and the page's path (server-only):
+// a signed-in reader on /search
+vi.mock("next/headers", () => ({
+  cookies: async () => ({ get: (n: string) => (n === "parallx_session" ? { value: "pxs_t" } : undefined) }),
+  headers: async () => new Headers({ "x-parallx-path": "/search?q=x" }),
+}));
+vi.mock("next/navigation", () => ({
+  redirect: (to: string) => { throw new Error(`redirect ${to}`); },
+}));
+
 import { RESOLVE_BATCH, resolveCitations, searchFilings } from "./api";
 import type { CitationRef, ResolvedCitation } from "./types";
 
