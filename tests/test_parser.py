@@ -173,5 +173,41 @@ class Misc(unittest.TestCase):
         self.assertEqual(fiscal_period("10-Q", "2026-03-28"), "Q1 2026")
         self.assertIsNone(fiscal_period("8-K", None))
 
+
+class InlineXbrl(unittest.TestCase):
+    """A real 10-K is inline XBRL: XHTML whose header of machine-readable
+    contexts sits in a `display:none` div, and whose markup closes elements
+    in one token (`<link:schemaRef .../>`, `<td/>`). Those self-closing
+    elements once opened without closing, the hidden div never ended, and
+    Apple's, Microsoft's and Amazon's 10-Ks each parsed to no paragraphs."""
+
+    FILING = """<?xml version='1.0' encoding='ASCII'?>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:ix="http://www.xbrl.org/2013/inlineXBRL">
+<body>
+<div style="display:none"><ix:header><ix:references>
+<link:schemaRef xlink:href="aapl-20260926.xsd" xlink:type="simple"/>
+</ix:references><ix:resources><xbrli:context id="c-1"><xbrli:entity>
+<xbrli:identifier scheme="http://www.sec.gov/CIK">0000320193</xbrli:identifier>
+</xbrli:entity></xbrli:context></ix:resources></ix:header></div>
+<div><span>UNITED STATES SECURITIES AND EXCHANGE COMMISSION</span></div>
+<div><span>Item 1A. Risk Factors</span></div>
+<div><span>The Company&#8217;s operations and performance depend significantly on global
+and regional economic conditions.</span></div>
+<table><tr><td>Net sales</td><td/><td>$ 416,161</td></tr></table>
+</body></html>"""
+
+    def test_the_text_after_a_hidden_header_is_read(self):
+        sections, blocks, tables, _ = parse_html(self.FILING, accession=ACC)
+        texts = [b.text for b in blocks]
+        self.assertIn("UNITED STATES SECURITIES AND EXCHANGE COMMISSION", texts)
+        self.assertTrue(any(t.startswith("The Company’s operations") for t in texts))
+        self.assertNotIn("0000320193", " ".join(texts), "the hidden header stays hidden")
+        self.assertEqual([s.title for s in sections], ["Item 1A. Risk Factors"])
+
+    def test_a_self_closed_cell_keeps_the_columns_in_place(self):
+        _, _, tables, _ = parse_html(self.FILING, accession=ACC)
+        self.assertEqual(tables[0].cells, [["Net sales", "", "$ 416,161"]])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

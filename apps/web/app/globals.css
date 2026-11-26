@@ -313,6 +313,8 @@ body:has(input[name="open"]:checked:not(#open-none)) .scrim{opacity:1;pointer-ev
   .shell{grid-template-columns:64px 1fr}
   .side{padding:16px 8px}
   .brand span:last-child,.nav-item{font-size:0}
+  /* the wordmark is an SVG now, which font-size does not hide */
+  .brand .brand-word{display:none}
   .nav-item{justify-content:center;padding:10px}
   .nav-dot{width:7px;height:7px}
   .promo{display:none}
@@ -738,4 +740,141 @@ a.bars-row:hover{background:var(--surface-2)}
   .adm-hero{grid-column:1 / -1;grid-row:auto}
   .adm-hero-value{font-size:44px}
   .adm-presets{flex-wrap:wrap}
+}
+
+/* ============================================================ directory
+   The home page: every company on record, by GICS sector, with a filter.
+   Quiet rows, ticker first and monospaced so the column reads down; the one
+   colour is the pulse on a company whose filings are still being indexed. */
+.dir-head{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;
+  gap:6px 24px;margin-bottom:18px}
+.dir-head .ev-title{margin-bottom:0}
+.dir-status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;font-size:12.5px;
+  color:var(--muted);font-variant-numeric:tabular-nums}
+.dir-status b{color:var(--ink);font-weight:600}
+.dir-status-k{padding:2px 7px;border-radius:6px;border:1px solid var(--line-2);
+  font-size:11px;font-weight:500;letter-spacing:.02em;color:var(--ink-2)}
+
+.dir-filter{position:sticky;top:57px;z-index:5;display:flex;align-items:center;gap:10px;
+  height:44px;padding:0 14px;margin:0 -1px 26px;border-radius:12px;border:1px solid var(--line-2);
+  background:color-mix(in srgb,var(--surface) 92%,transparent);color:var(--muted);
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  transition:border-color .18s var(--ease),box-shadow .18s var(--ease)}
+.dir-filter:focus-within{border-color:rgba(255,255,255,.24);
+  box-shadow:0 0 0 4px rgba(255,255,255,.04)}
+.dir-filter svg{flex:none}
+.dir-filter input{flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;
+  color:var(--ink);font:inherit;font-size:14px}
+.dir-filter input::placeholder{color:var(--faint)}
+.dir-filter input::-webkit-search-cancel-button{filter:invert(.6)}
+.dir-filter-count{flex:none;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+
+.dir-group{margin-bottom:30px}
+.dir-sector{display:flex;align-items:baseline;gap:8px;margin-bottom:8px;padding-bottom:8px;
+  border-bottom:1px solid var(--line);font-size:12px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;color:var(--ink-2)}
+.dir-n{font-weight:400;letter-spacing:0;color:var(--faint);font-variant-numeric:tabular-nums}
+.dir-grid{list-style:none;padding:0;display:grid;gap:2px 10px;
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.dir-co{display:flex;align-items:center;gap:10px;min-width:0;height:34px;padding:0 10px;
+  margin:0 -10px;border-radius:8px;color:var(--ink-2);transition:background .14s,color .14s}
+.dir-co:hover{background:var(--surface-2);color:var(--ink)}
+.dir-co:focus-visible{outline:2px solid rgba(255,255,255,.35);outline-offset:-2px}
+.dir-tk{flex:none;width:52px;font:500 11.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.02em;color:var(--ink)}
+.dir-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:13px}
+.dir-indexing{flex:none;width:6px;height:6px;border-radius:50%;background:var(--amber);
+  box-shadow:0 0 0 0 color-mix(in srgb,var(--amber) 50%,transparent);
+  animation:dir-pulse 1.8s var(--ease) infinite}
+@keyframes dir-pulse{70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
+@media (prefers-reduced-motion:reduce){.dir-indexing{animation:none}}
+.dir-empty{padding:28px 0;font-size:13.5px;color:var(--muted)}
+.dir-empty a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;
+  text-decoration-color:var(--line-2)}
+
+@media (max-width:640px){
+  .dir-filter{top:53px;margin-bottom:20px}
+  .dir-grid{grid-template-columns:1fr}
+}
+
+/* ============================================================ company: EDGAR
+   Statements from XBRL, the filing index, and the on-demand note. Figures
+   are tabular and right-aligned so a column reads as a column; every one is
+   a link to the filing that reported it. */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+  clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.panels{display:grid;gap:22px;min-width:0}
+/* one rail card (no timeline before filings are loaded): the full width */
+.rails>.rail-card:only-child{grid-column:1/-1}
+
+.fin{padding:16px 16px 12px;border:1px solid var(--line);border-radius:var(--r-lg);
+  background:var(--surface)}
+.fin .panel-head{align-items:center}
+.fin-toggle{display:flex;gap:2px;margin-left:auto;padding:3px;border-radius:10px;
+  border:1px solid var(--line);background:var(--bg)}
+.fin-toggle a{padding:4px 10px;border-radius:7px;font-size:12px;color:var(--muted);
+  transition:color .15s,background .15s}
+.fin-toggle a:hover{color:var(--ink)}
+.fin-toggle a[aria-current="page"]{color:var(--ink);background:var(--surface-2)}
+.fin-scroll{overflow-x:auto;margin:0 -16px;padding:0 16px;
+  -webkit-overflow-scrolling:touch;scrollbar-width:thin}
+.fin-table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;
+  font-size:13px;white-space:nowrap}
+.fin-table th,.fin-table td{padding:7px 0 7px 18px;text-align:right;
+  border-bottom:1px solid var(--line)}
+.fin-table thead th{padding-top:0;font-size:11px;font-weight:500;letter-spacing:.02em;
+  color:var(--muted)}
+.fin-table thead th:nth-child(2){color:var(--ink-2)}
+.fin-table tbody th{padding-left:0;text-align:left;font-weight:400;color:var(--ink-2);
+  position:sticky;left:0;background:var(--surface)}
+.fin-table tbody tr:last-child th,.fin-table tbody tr:last-child td{border-bottom:0}
+.fin-table td a{color:var(--ink);border-radius:4px;padding:1px 2px;margin:-1px -2px;
+  transition:background .14s}
+.fin-table td a:hover{background:var(--surface-2)}
+.fin-table td a:focus-visible{outline:2px solid rgba(255,255,255,.35)}
+.fin-table td:nth-child(2) a{font-weight:600}
+.fin-table td a.is-derived{color:var(--ink-2)}
+.fin-table sup{margin-left:1px;font-size:9px;color:var(--faint)}
+.fin-none{color:var(--faint)}
+.fin-empty,.fin-note{font-size:12.5px;color:var(--muted)}
+.fin-note{margin-top:10px;font-size:11.5px;color:var(--faint)}
+
+.ondemand{padding:18px;border:1px dashed var(--line-2);border-radius:var(--r-lg)}
+.ondemand h2{font-size:15px;font-weight:600;letter-spacing:-.02em;margin-bottom:6px}
+.ondemand p{max-width:68ch;font-size:13px;line-height:1.6;color:var(--ink-2);margin-bottom:14px}
+.ondemand .btn{display:inline-block}
+
+.fl{list-style:none;padding:0;display:grid;gap:1px}
+.fl-link{display:flex;align-items:flex-start;gap:10px;padding:7px 8px;margin:0 -8px;
+  border-radius:8px;transition:background .14s}
+.fl-link:hover{background:var(--surface-2)}
+.fl-form{flex:none;min-width:40px;padding:2px 0;font:500 11px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:var(--ink)}
+.fl-body{display:grid;gap:1px;min-width:0}
+.fl-date{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums}
+.fl-loaded{padding:0 5px;border-radius:5px;font-size:10px;color:var(--emerald);
+  border:1px solid color-mix(in srgb,var(--emerald) 35%,transparent)}
+.fl-about{font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+
+/* home: just filed */
+.jf{margin-bottom:30px}
+.jf-list{list-style:none;padding:0;display:grid}
+.jf-row{display:grid;grid-template-columns:84px 52px 44px minmax(0,1fr);align-items:center;
+  gap:10px;height:34px;padding:0 10px;margin:0 -10px;border-radius:8px;color:var(--ink-2);
+  transition:background .14s,color .14s}
+.jf-row:hover{background:var(--surface-2);color:var(--ink)}
+.jf-when{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.jf-form{font:500 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2)}
+.jf-about{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.jf-row .dir-tk{width:auto}
+
+@media (max-width:640px){
+  .fin .panel-head{flex-wrap:wrap}
+  .jf-row{grid-template-columns:64px 48px minmax(0,1fr);height:auto;min-height:34px;padding:6px 10px}
+  .jf-form{display:none}
+  .fin{padding:14px 14px 10px}
+  .fin-scroll{margin:0 -14px;padding:0 14px}
 }

@@ -74,12 +74,20 @@ database before starting and says what is wrong if it cannot serve from it.
 
 Optional, per feature: `SEC_USER_AGENT` to ingest from EDGAR,
 `GEMINI_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` for AI features (routed by
-`config/ai.toml`; see `docs/ai-gateway.md`), and `EMBEDDING_PROVIDER` for search:
-`gemini` uses the same `GEMINI_API_KEY`, or `voyage` / `openai` with their own
-keys. There is deliberately no default embedding provider: `hashing` is for
-tests only and has no semantics — it would make retrieval look like it works.
-Search needs the chunks indexed once, and again after each ingest:
-`python workers/embedding_worker.py` (the three demo 10-Ks are one request).
+`config/ai.toml`; see `docs/ai-gateway.md`), and `EMBEDDING_PROVIDER` for search.
+Choose one of these:
+
+- `voyage`, with `EMBEDDING_MODEL=voyage-4-large` and `VOYAGE_API_KEY`;
+- `gemini`, with the same `GEMINI_API_KEY`;
+- `openai`.
+
+There is deliberately no default embedding provider. `hashing` is for tests
+only: it has no semantics, so it would make retrieval look like it works.
+
+Search needs the chunks embedded once, and again after each ingest. The run is
+resumable and prints tokens and estimated cost:
+`python tools/generate_embeddings.py --dry-run`, then without `--dry-run`. See
+`docs/embedding-providers.md`.
 
 ```bash
 # tests — the database suites run when TEST_DATABASE_URL points at an empty,
@@ -91,11 +99,25 @@ cd apps/web && npm test
 
 | Page | What it shows | Backed by |
 | --- | --- | --- |
-| `/` | companies with memory | `GET /v1/companies` |
-| `/memory/{ticker}` | memory cards and recent changes | `GET /v1/companies/{t}`, `/cards`, `/cards/{kind}`, `/v1/company/{t}/timeline` |
+| `/` | every company on record, by sector, with S&P 500 coverage | `GET /v1/companies`, `GET /v1/sync` |
+| `/memory/{ticker}` | financial statements, filings, memory cards, recent changes | `GET /v1/companies/{t}`, `/financials`, `/filings`, `/cards`, `/cards/{kind}`, `/v1/company/{t}/timeline` |
 | `/timeline/{ticker}` | what changed between filings | `GET /v1/company/{t}/timeline` |
 | `/admin/ai-usage` | AI spend, failures and limits — platform admins | `GET /v1/ai-usage/summary` |
 | `/evidence/{chunkId}` | the filing's pages, at the cited paragraph | `GET /v1/evidence/{id}`, `POST /v1/evidence/resolve`, `GET /v1/document/{id}` + page images |
+
+## S&P 500 sync
+
+`tools/dev.sh sync` keeps the S&P 500 current from EDGAR's own interfaces:
+
+- **Filing lists** come from the Submissions API.
+- **Financial statements** come from Company Facts.
+- **New filings** are found by polling the latest-filings feed every 10
+  minutes, which also sends alerts.
+- **A filing's text** is downloaded on demand.
+- **Whole histories** come from the bulk ZIPs (`tools/sec_bulk.py`).
+
+`python -m workers.sync_worker status` and `GET /v1/sync` report coverage and
+freshness. See `docs/sync.md`.
 
 ## Layers
 

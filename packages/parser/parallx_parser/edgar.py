@@ -1,10 +1,10 @@
 """Minimal EDGAR client.
 
 Only what ingestion needs: resolve an accession to its primary document and its
-*acceptance* timestamp. The acceptance datetime is the one that matters — it is
-when the filing became public, which is what a reader means by "when did they
-say this". `filed_date` is a date only, and fetch time is not evidence of
-anything.
+*acceptance* timestamp, and list what was filed lately. The acceptance
+datetime is the one that matters — it is when the filing became public, which
+is what a reader means by "when did they say this". `filed_date` is a date
+only, and fetch time is not evidence of anything.
 
 SEC requires a descriptive User-Agent with contact details; requests without
 one are throttled or refused.
@@ -174,6 +174,56 @@ def fetch_submission(cik: str) -> dict[str, Any]:
     return json.loads(_get(f"{BASE}/submissions/CIK{cik.zfill(10)}.json"))
 
 
+def fetch_submission_page(name: str) -> dict[str, Any]:
+    """One of a submission's older pages (`filings.files[].name`, such as
+    CIK0000320193-submissions-001.json): filings before the ~1,000 in
+    `filings.recent`. Same columns as `recent`, at the top level."""
+    return json.loads(_get(f"{BASE}/submissions/{name}"))
+
+
+def fetch_company_facts(cik: str) -> dict[str, Any]:
+    """Every XBRL fact a company has filed (the Company Facts API): each value
+    with its period, unit, form, filing date and accession. A few MB for a
+    large filer."""
+    return json.loads(_get(f"{BASE}/api/xbrl/companyfacts/CIK{cik.zfill(10)}.json"))
+
+
+#: The nightly bulk files: every company's submissions and Company Facts, one
+#: JSON per CIK inside each ZIP. For loading history (backtesting) without a
+#: request per company.
+BULK_FILES = {
+    "submissions": "/Archives/edgar/daily-index/bulkdata/submissions.zip",
+    "companyfacts": "/Archives/edgar/daily-index/xbrl/companyfacts.zip",
+}
+
+
+def bulk_url(kind: str) -> str:
+    return f"{WWW}{BULK_FILES[kind]}"
+
+
+def filing_rows(columns: dict[str, list]) -> list[dict[str, Any]]:
+    """EDGAR's column-oriented filing list (`filings.recent`, or an older
+    page) as one dict per filing, newest first, with the acceptance time."""
+    out = []
+    for i, acc in enumerate(columns.get("accessionNumber", [])):
+        def col(name, default=None):
+            values = columns.get(name) or []
+            return values[i] if i < len(values) else default
+        out.append({
+            "accession": acc,
+            "form_type": col("form"),
+            "filed_date": date.fromisoformat(col("filingDate")),
+            "published_at": _acceptance(columns, i),
+            "report_date": col("reportDate") or None,
+            "primary_document": col("primaryDocument") or None,
+            "description": col("primaryDocDescription") or None,
+            "items": col("items") or None,
+            "size": col("size"),
+            "is_xbrl": bool(col("isXBRL", 0)),
+        })
+    return out
+
+
 def find_filing(submission: dict[str, Any], accession: str) -> dict[str, Any]:
     """Pull one filing's metadata out of EDGAR's column-oriented payload."""
     dashed, _ = normalise_accession(accession)
@@ -198,6 +248,71 @@ def _acceptance(recent: dict[str, Any], i: int) -> datetime:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     # Fall back to midnight on the filing date rather than inventing a time.
     return datetime.fromisoformat(recent["filingDate"][i] + "T00:00:00+00:00")
+
+
+@dataclass(frozen=True, slots=True)
+class LatestFiling:
+    """One entry of EDGAR's latest-filings feed."""
+    cik: str
+    accession: str
+    form_type: str
+    company: str
+    #: when EDGAR accepted it, as the feed reports it
+    accepted_at: datetime | None
+
+
+_FEED_NS = {"a": "http://www.w3.org/2005/Atom"}
+_FEED_TITLE = re.compile(r"^(?P<form>\S+) - (?P<name>.*) \((?P<cik>\d{10})\)")
+_FEED_ACCESSION = re.compile(r"accession-number=(\d{10}-\d{2}-\d{6})")
+
+
+def latest_filings(form_type: str, *, count: int = 100, start: int = 0) -> list[LatestFiling]:
+    """The newest filings of one form across every filer, newest first, from
+    EDGAR's latest-filings feed — the same list as sec.gov's "Latest Filings"
+    page, updated as EDGAR accepts filings. One request answers "what's new
+    since I last looked" for every company at once."""
+    from urllib.parse import quote
+    url = (f"{WWW}/cgi-bin/browse-edgar?action=getcurrent&type={quote(form_type)}"
+           f"&company=&dateb=&owner=include&start={start}&count={count}&output=atom")
+    return parse_latest(_get(url), form_type=form_type)
+
+
+def parse_latest(feed: bytes, *, form_type: str | None = None) -> list[LatestFiling]:
+    """The feed's entries for `form_type` exactly. EDGAR's `type` filter is a
+    prefix (10-K also returns 10-K/A and 10-KT); amendments are left out."""
+    import xml.etree.ElementTree as ET
+    out: list[LatestFiling] = []
+    for entry in ET.fromstring(feed).findall("a:entry", _FEED_NS):
+        title = (entry.findtext("a:title", "", _FEED_NS) or "").strip()
+        m = _FEED_TITLE.match(title)
+        acc = _FEED_ACCESSION.search(entry.findtext("a:id", "", _FEED_NS) or "")
+        if not m or not acc:
+            continue
+        cat = entry.find("a:category", _FEED_NS)
+        form = (cat.get("term") if cat is not None else None) or m["form"]
+        if form_type and form != form_type:
+            continue
+        updated = entry.findtext("a:updated", "", _FEED_NS)
+        try:
+            accepted = datetime.fromisoformat(updated) if updated else None
+        except ValueError:
+            accepted = None
+        out.append(LatestFiling(cik=m["cik"], accession=acc[1], form_type=form,
+                                company=m["name"].strip(), accepted_at=accepted))
+    return out
+
+
+#: Links shown to people go to sec.gov itself, whatever origin the fetch
+#: layer reads from.
+PUBLIC_ARCHIVES = "https://www.sec.gov/Archives/edgar/data"
+
+
+def public_url(cik: str, accession: str, primary_document: str | None = None) -> str:
+    """A filing on sec.gov: its document, or its index page without one."""
+    _, bare = normalise_accession(accession)
+    if primary_document:
+        return f"{PUBLIC_ARCHIVES}/{int(cik)}/{bare}/{primary_document}"
+    return f"{PUBLIC_ARCHIVES}/{int(cik)}/{bare}/{normalise_accession(accession)[0]}-index.htm"
 
 
 def document_url(cik: str, accession: str, primary_document: str) -> str:

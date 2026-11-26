@@ -17,3 +17,5 @@ venv/
 
 # filing sources, page images and PDFs (FILING_STORE)
 data/filings/
+data/bulk/
+data/fetch-logs/
