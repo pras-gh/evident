@@ -15,6 +15,7 @@ import type {
   AskResponse,
   SearchOutcome,
   SearchResponse,
+  SyncStatus,
 } from "./types";
 
 const BASE = process.env.API_URL ?? "http://localhost:8000/v1";
@@ -26,6 +27,7 @@ async function get<T>(path: string, revalidate = 60): Promise<T> {
 }
 
 export const getCompanies = () => get<CompanyListItem[]>(`/companies`);
+export const getSyncStatus = () => get<SyncStatus>(`/sync`, 30);
 export const getCompany   = (t: string) => get<MemorySummary>(`/companies/${t}`);
 export const getCards     = (t: string) => get<MemoryCard[]>(`/companies/${t}/cards`);
 export const getCard      = (t: string, kind: string) =>

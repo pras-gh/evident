@@ -24,14 +24,24 @@ _SUFFIXES = frozenset({
 })
 
 #: Tickers that are also ordinary words. Matched only when written as a ticker
-#: — in capitals, or with a `$` — so "is it on" does not name IT and ON.
+#: — in capitals, or with a `$` — so "is it on" does not name IT and ON, and
+#: "cost of revenue" does not name Costco. (Two-letter tickers are matched
+#: only that way anyway.) The S&P 500's, and the short words people type.
 _WORDLIKE = frozenset({
     "a", "all", "am", "an", "and", "are", "as", "at", "be", "big", "by", "can",
     "car", "cat", "do", "for", "fun", "go", "has", "he", "hi", "how", "if", "in",
     "is", "it", "key", "low", "me", "new", "now", "of", "on", "one", "or", "out",
     "run", "see", "so", "some", "the", "to", "two", "up", "us", "very", "was",
     "we", "well", "what", "who", "why", "win", "you",
+    "amp", "app", "ball", "coin", "cop", "cost", "dash", "day", "deck",
+    "dis", "doc", "dow", "echo", "fang", "fast", "fix", "flex", "fox", "gen",
+    "hood", "hum", "ice", "lite", "mar", "met", "peak", "peg", "pep",
+    "pool", "reg", "tap", "tech", "tel",
 })
+
+#: Tickers whose capitals usually mean something else: "the DOW" is the
+#: index, "FANG stocks" a basket. Only `$DOW` and `$FANG` name the companies.
+_ACRONYMS = frozenset({"dow", "fang"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,21 +73,48 @@ def _says(text_words: str, phrase: str) -> bool:
     return bool(phrase) and f" {phrase} " in text_words
 
 
-def _ticker_in(query: str, ticker: str) -> bool:
+def _shouting(query: str) -> bool:
+    """Written all in capitals, where capitals say nothing about tickers."""
+    words = re.findall(r"[A-Za-z]+", query)
+    return len(words) >= 3 and not any(c.islower() for c in query)
+
+
+def _ticker_in(query: str, ticker: str, *, explicit_only: bool = False) -> bool:
+    """Whether `query` writes `ticker`. With `$` it always does. Otherwise a
+    one-letter ticker never does — "A big drop", the t of "don't" — and the
+    rest do when written in capitals ("IT spending", "GE"), or, unless
+    `explicit_only`, in any case when three letters or more and not a word
+    ("nvda", but not "cost" or "fast")."""
+    caps_mean_ticker = not _shouting(query)
     for m in re.finditer(rf"(?<![\w$])(\$?){re.escape(ticker)}(?![\w])", query, re.I):
-        written = m.group(0)
-        if (m.group(1) or written == ticker.upper()
-                or ticker.lower() not in _WORDLIKE):
+        if m.group(1):
+            return True
+        if len(ticker) == 1:
+            continue
+        if (caps_mean_ticker and m.group(0) == ticker.upper()
+                and ticker.lower() not in _ACRONYMS):
+            return True
+        if (not explicit_only and len(ticker) >= 3
+                and ticker.lower() not in _WORDLIKE):
             return True
     return False
 
 
-def named(query: str, on_record: list[OnRecord]) -> list[OnRecord]:
+def named(query: str, on_record: list[OnRecord], *,
+          explicit_only: bool = False) -> list[OnRecord]:
     """The companies on record that `query` names, by ticker ("nvda", "$NVDA")
-    or by name ("Nvidia", "NVIDIA Corp's"), in the order given."""
+    or by name ("Nvidia", "NVIDIA Corp's"), in the order given.
+
+    `explicit_only` keeps only what cannot be an ordinary word: a `$TICKER`,
+    or a ticker in capitals. Search asks for that when a model has read the
+    query and named its companies. With the S&P 500 on record, plain words
+    are names — Target, News Corp, Block, Ball, Costco's COST — and "the
+    latest news on tesla" is not about News Corp.
+    """
     words = f" {' '.join(_WORD.findall(query.lower()))} "
     return [c for c in on_record
-            if _ticker_in(query, c.ticker) or _says(words, c.short_name)]
+            if _ticker_in(query, c.ticker, explicit_only=explicit_only)
+            or (not explicit_only and _says(words, c.short_name))]
 
 
 def same_company(name: str, ticker: str | None, c: OnRecord) -> bool:

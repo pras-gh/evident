@@ -1,10 +1,43 @@
 import { AppHeader } from "@/components/brand/AppHeader";
+import { CompanyDirectory } from "@/components/home/CompanyDirectory";
 import { redirect } from "next/navigation";
-import { getCompanies } from "@/lib/api";
+import { getCompanies, getSyncStatus } from "@/lib/api";
+import type { SyncStatus } from "@/lib/types";
 
 export const revalidate = 60;
 
-/** Every company with memory. With exactly one, go straight to it. */
+function ago(iso: string, now = Date.now()): string {
+  const min = Math.round((now - Date.parse(iso)) / 60000);
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
+}
+
+/** How much of the S&P 500 is here, and how current. Nothing, before a sync. */
+function Coverage({ sync }: { sync: SyncStatus | null }) {
+  if (!sync || (!sync.with_annual_report && !sync.last_poll)) return null;
+  const poll = sync.last_poll;
+  return (
+    <p className="dir-status">
+      <span className="dir-status-k">S&amp;P 500</span>
+      <span>
+        <b>{sync.searchable}</b> of {sync.tracked} searchable
+      </span>
+      {sync.with_annual_report > sync.searchable && (
+        <span>{sync.with_annual_report - sync.searchable} indexing</span>
+      )}
+      {poll && (
+        <span title={new Date(poll.started_at).toUTCString()}>
+          {poll.error ? "EDGAR unreachable " : "EDGAR checked "}
+          <time dateTime={poll.started_at}>{ago(poll.started_at)}</time>
+        </span>
+      )}
+    </p>
+  );
+}
+
+/** Every company on record. With exactly one, go straight to it. */
 export default async function Home() {
   let companies;
   try {
@@ -24,30 +57,25 @@ export default async function Home() {
   }
   const withTicker = companies.filter((c) => c.ticker);
   if (withTicker.length === 1) redirect(`/memory/${withTicker[0].ticker!.toLowerCase()}`);
+  const sync = await getSyncStatus().catch(() => null);
 
   return (
     <>
-    <AppHeader />
-    <main className="tl2-shell">
-      <h1 className="ev-title">Companies</h1>
-      {withTicker.length === 0 ? (
-        <p className="tl2-coverage">
-          No companies yet. Load the demo with <code>tools/db.sh seed</code>, or ingest one
-          with <code>POST /v1/ingest</code>.
-        </p>
-      ) : (
-        <ul className="tl2-filters" aria-label="Companies">
-          {withTicker.map((c) => (
-            <li key={c.cik}>
-              <a className="tl2-filter" href={`/memory/${c.ticker!.toLowerCase()}`}>
-                {c.ticker} · {c.name}{" "}
-                <span className="tl2-count">{c.document_count} filings</span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      )}
-    </main>
+      <AppHeader />
+      <main className="tl2-shell">
+        <header className="dir-head">
+          <h1 className="ev-title">Companies</h1>
+          <Coverage sync={sync} />
+        </header>
+        {withTicker.length === 0 ? (
+          <p className="tl2-coverage">
+            No companies yet. Start the sync with{" "}
+            <code>python -m workers.sync_worker watch</code>, or search for one by name.
+          </p>
+        ) : (
+          <CompanyDirectory companies={withTicker} />
+        )}
+      </main>
     </>
   );
 }

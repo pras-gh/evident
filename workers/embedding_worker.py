@@ -65,7 +65,9 @@ def run(*, url: str | None = None, embedder: EmbeddingProvider | None = None,
                 db, zip((c.id for c in pending), vectors),
                 provider=embedder.name, model=embedder.model)
             batches += 1
-            db.flush()
+            # Kept batch by batch: a rate limit on batch 40 must not take the
+            # 39 before it down with it.
+            db.commit()
             log.info("embedded batch %d (%d chunks) via %s/%s",
                      batches, len(pending), embedder.name, embedder.model)
 

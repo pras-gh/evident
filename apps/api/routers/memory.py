@@ -20,12 +20,22 @@ router = APIRouter(prefix="/companies", tags=["memory"])
 
 @router.get("", response_model=list[CompanyListItem], summary="Companies with memory")
 async def list_companies(db: AsyncSession = Depends(get_db)) -> list[CompanyListItem]:
+    from parallx_parser.universe import load
+    tracked = {t.cik: t for t in load()}
+    searchable = set((await db.execute(
+        select(Document.company_id).where(
+            select(Chunk.id).where(Chunk.document_id == Document.id,
+                                   Chunk.embedding.is_not(None)).exists())
+        .distinct())).scalars())
     rows = (await db.execute(
         select(Company, func.count(Document.id), func.max(Document.filed_at))
         .outerjoin(Document, Document.company_id == Company.id)
         .group_by(Company.id).order_by(Company.ticker))).all()
     return [CompanyListItem(ticker=c.ticker, name=c.name, cik=c.cik,
-                            document_count=n, latest_filing=latest)
+                            document_count=n, latest_filing=latest,
+                            sector=tracked[c.cik].sector or None if c.cik in tracked else None,
+                            display_name=tracked[c.cik].name if c.cik in tracked else c.name,
+                            searchable=c.id in searchable)
             for c, n, latest in rows]
 
 

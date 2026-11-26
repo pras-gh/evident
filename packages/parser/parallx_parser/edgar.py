@@ -1,10 +1,10 @@
 """Minimal EDGAR client.
 
 Only what ingestion needs: resolve an accession to its primary document and its
-*acceptance* timestamp. The acceptance datetime is the one that matters — it is
-when the filing became public, which is what a reader means by "when did they
-say this". `filed_date` is a date only, and fetch time is not evidence of
-anything.
+*acceptance* timestamp, and list what was filed lately. The acceptance
+datetime is the one that matters — it is when the filing became public, which
+is what a reader means by "when did they say this". `filed_date` is a date
+only, and fetch time is not evidence of anything.
 
 SEC requires a descriptive User-Agent with contact details; requests without
 one are throttled or refused.
@@ -198,6 +198,58 @@ def _acceptance(recent: dict[str, Any], i: int) -> datetime:
         return datetime.fromisoformat(raw.replace("Z", "+00:00"))
     # Fall back to midnight on the filing date rather than inventing a time.
     return datetime.fromisoformat(recent["filingDate"][i] + "T00:00:00+00:00")
+
+
+@dataclass(frozen=True, slots=True)
+class LatestFiling:
+    """One entry of EDGAR's latest-filings feed."""
+    cik: str
+    accession: str
+    form_type: str
+    company: str
+    #: when EDGAR accepted it, as the feed reports it
+    accepted_at: datetime | None
+
+
+_FEED_NS = {"a": "http://www.w3.org/2005/Atom"}
+_FEED_TITLE = re.compile(r"^(?P<form>\S+) - (?P<name>.*) \((?P<cik>\d{10})\)")
+_FEED_ACCESSION = re.compile(r"accession-number=(\d{10}-\d{2}-\d{6})")
+
+
+def latest_filings(form_type: str, *, count: int = 100, start: int = 0) -> list[LatestFiling]:
+    """The newest filings of one form across every filer, newest first, from
+    EDGAR's latest-filings feed — the same list as sec.gov's "Latest Filings"
+    page, updated as EDGAR accepts filings. One request answers "what's new
+    since I last looked" for every company at once."""
+    from urllib.parse import quote
+    url = (f"{WWW}/cgi-bin/browse-edgar?action=getcurrent&type={quote(form_type)}"
+           f"&company=&dateb=&owner=include&start={start}&count={count}&output=atom")
+    return parse_latest(_get(url), form_type=form_type)
+
+
+def parse_latest(feed: bytes, *, form_type: str | None = None) -> list[LatestFiling]:
+    """The feed's entries for `form_type` exactly. EDGAR's `type` filter is a
+    prefix (10-K also returns 10-K/A and 10-KT); amendments are left out."""
+    import xml.etree.ElementTree as ET
+    out: list[LatestFiling] = []
+    for entry in ET.fromstring(feed).findall("a:entry", _FEED_NS):
+        title = (entry.findtext("a:title", "", _FEED_NS) or "").strip()
+        m = _FEED_TITLE.match(title)
+        acc = _FEED_ACCESSION.search(entry.findtext("a:id", "", _FEED_NS) or "")
+        if not m or not acc:
+            continue
+        cat = entry.find("a:category", _FEED_NS)
+        form = (cat.get("term") if cat is not None else None) or m["form"]
+        if form_type and form != form_type:
+            continue
+        updated = entry.findtext("a:updated", "", _FEED_NS)
+        try:
+            accepted = datetime.fromisoformat(updated) if updated else None
+        except ValueError:
+            accepted = None
+        out.append(LatestFiling(cik=m["cik"], accession=acc[1], form_type=form,
+                                company=m["name"].strip(), accepted_at=accepted))
+    return out
 
 
 def document_url(cik: str, accession: str, primary_document: str) -> str:

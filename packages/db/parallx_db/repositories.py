@@ -93,9 +93,16 @@ def replace_chunks(db: Session, *, document_id: int,
 
 def chunks_without_embeddings(db: Session, *, limit: int = 500,
                               company_id: int | None = None) -> list[Chunk]:
-    stmt = select(Chunk).where(Chunk.embedding.is_(None)).order_by(Chunk.id).limit(limit)
+    """Chunks still without a vector, the newest filing's first. A 10-Q filed
+    ten minutes ago is embedded before the backlog of annual reports a
+    backfill leaves, so it is searchable without waiting for the backlog to
+    clear. Within a filing, in reading order."""
+    stmt = (select(Chunk).join(Document, Document.id == Chunk.document_id)
+            .where(Chunk.embedding.is_(None))
+            .order_by(Document.published_at.desc().nulls_last(), Document.id, Chunk.ordinal)
+            .limit(limit))
     if company_id is not None:
-        stmt = stmt.join(Document).where(Document.company_id == company_id)
+        stmt = stmt.where(Document.company_id == company_id)
     return list(db.execute(stmt).scalars())
 
 

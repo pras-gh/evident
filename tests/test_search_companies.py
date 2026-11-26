@@ -42,6 +42,32 @@ class Rules(unittest.TestCase):
         self.assertEqual(named("IT spending outlook", ON_RECORD), [IT])
         self.assertEqual(named("$it margins", ON_RECORD), [IT])
 
+    def test_a_one_letter_ticker_needs_a_dollar_sign(self):
+        att, agilent = OnRecord("T", "AT&T Inc."), OnRecord("A", "Agilent Technologies")
+        for q in ("don't buy", "A big drop in margins", "T-Mobile growth"):
+            self.assertEqual(named(q, [att, agilent]), [], q)
+        self.assertEqual(named("$T dividend", [att, agilent]), [att])
+
+    def test_a_two_letter_ticker_counts_in_capitals(self):
+        ge = OnRecord("GE", "GE Aerospace")
+        self.assertEqual(named("ge outlook", [ge]), [])
+        self.assertEqual(named("GE outlook", [ge]), [ge])
+
+    def test_with_the_sp500_on_record_ordinary_words_are_not_companies(self):
+        """What a model reads: only tickers written as tickers count, since
+        "target", "news" and "cost" are each an S&P 500 company."""
+        cost, tgt = OnRecord("COST", "Costco Wholesale Corp"), OnRecord("TGT", "Target Corp")
+        nws, dow = OnRecord("NWSA", "News Corp"), OnRecord("DOW", "Dow Inc.")
+        sp = [cost, tgt, nws, dow, NVDA]
+        for q in ("latest news on tesla", "nvidia's price target", "cost of revenue",
+                  "why is the DOW falling", "WHAT IS THE COST OF REVENUE", "nvidia"):
+            self.assertEqual(named(q, sp, explicit_only=True), [], q)
+        self.assertEqual(named("$COST margins", sp, explicit_only=True), [cost])
+        self.assertEqual(named("COST vs TGT", sp, explicit_only=True), [cost, tgt])
+        self.assertEqual(named("$dow chemicals", sp, explicit_only=True), [dow])
+        # with no model, names still count: Target said is Target
+        self.assertEqual(named("target corp margins", sp), [tgt])
+
     def test_part_of_a_word_is_not_a_name(self):
         self.assertEqual(named("nvdax and wescott", ON_RECORD), [])
 

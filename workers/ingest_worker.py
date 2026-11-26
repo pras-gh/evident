@@ -33,7 +33,7 @@ log = logging.getLogger("parallx.ingest_worker")
 class FilingResult:
     accession: str
     form_type: str
-    filed_at: date
+    filed_at: date | None
     skipped: bool = False
     pages: int = 0
     sections: int = 0
@@ -59,20 +59,46 @@ class IngestResult:
 def ingest_ticker(ticker: str, *, form_types: list[str] | None = None,
                   limit: int = 1, url: str | None = None,
                   target_tokens: int = 350) -> IngestResult:
-    cik = edgar.cik_for_ticker(ticker)
-    submission = edgar.fetch_submission(cik)
-    filings = edgar.recent_filings(submission, form_types=form_types, limit=limit)
+    return ingest_company(edgar.cik_for_ticker(ticker), ticker=ticker,
+                          form_types=form_types, limit=limit, url=url,
+                          target_tokens=target_tokens)
 
-    result = IngestResult(ticker=ticker.upper(), cik=cik,
-                          company=submission.get("name", ticker.upper()))
+
+def ingest_company(cik: str, *, ticker: str | None = None,
+                   form_types: list[str] | None = None, limit: int = 1,
+                   accessions: list[str] | None = None, url: str | None = None,
+                   target_tokens: int = 350) -> IngestResult:
+    """A company's filings, by CIK: the `limit` most recent of `form_types`,
+    or exactly `accessions` when given. An accession EDGAR's filing list does
+    not show yet (the latest-filings feed can be a minute ahead of it) is
+    reported as an error, and is picked up again next time."""
+    submission = edgar.fetch_submission(cik)
+    if accessions:
+        filings = []
+        for acc in accessions:
+            try:
+                filings.append(edgar.find_filing(submission, acc))
+            except LookupError as exc:
+                filings.append({"accession": acc, "missing": str(exc)})
+    else:
+        filings = edgar.recent_filings(submission, form_types=form_types, limit=limit)
+
+    listed = submission.get("tickers") or ([ticker] if ticker else [])
+    shown = (listed[0] if listed else None) or ticker
+    result = IngestResult(ticker=(shown or cik).upper(), cik=cik,
+                          company=submission.get("name", shown or cik))
 
     with session_scope(url) as db:
-        company = upsert_company(db, cik=cik, name=result.company,
-                                 ticker=(submission.get("tickers") or [ticker])[0],
+        company = upsert_company(db, cik=cik, name=result.company, ticker=shown,
                                  sic=submission.get("sic"))
         db.flush()
 
         for filing in filings:
+            if "missing" in filing:
+                result.filings.append(FilingResult(
+                    accession=filing["accession"], form_type="", filed_at=None,
+                    error=filing["missing"]))
+                continue
             try:
                 result.filings.append(
                     _ingest_one(db, company_id=company.id, cik=cik, filing=filing,

@@ -30,9 +30,12 @@ class Companies(_ApiMixin, unittest.IsolatedAsyncioTestCase):
         return r.json()
 
     async def test_the_home_page_lists_companies(self):
+        # sector: NVIDIA is in the S&P 500 list; searchable: nothing embedded here
         self.assertEqual(await self._get("/v1/companies"), [{
             "ticker": "NVDA", "name": "NVIDIA CORP", "cik": "0001045810",
-            "document_count": 3, "latest_filing": "2026-02-25"}])
+            "document_count": 3, "latest_filing": "2026-02-25",
+            "sector": "Information Technology", "display_name": "Nvidia",
+            "searchable": False}])
 
     async def test_company_summary(self):
         s = await self._get("/v1/companies/nvda")

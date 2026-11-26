@@ -109,7 +109,10 @@ def _mentions(query: str, on_record, intent) -> list[SearchCompanyOut]:
             seen.add(key)
             out.append(SearchCompanyOut(name=name, ticker=ticker, covered=covered))
 
-    for c in named(query, on_record):
+    # When a model read the query, it says which companies it names; rules
+    # add only tickers written as tickers. Plain words are company names
+    # once there are hundreds on record (Target, Block, News Corp).
+    for c in named(query, on_record, explicit_only=intent is not None):
         add(c.name, c.ticker, True)
     for nc in (intent.companies if intent else []):
         match = next((c for c in on_record if same_company(nc.name, nc.ticker, c)), None)
@@ -135,10 +138,16 @@ async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
     from parallx_retrieval.rerank import rerank
 
     started = time.perf_counter()
+    # On record = searchable: some of its chunks embedded. A company whose
+    # filings are parsed but still queued for embedding (an S&P 500 backfill
+    # outrunning its quota) is not, so naming it fetches it — which embeds
+    # it now — instead of searching it and finding nothing.
+    embedded = (select(Chunk.id).where(Chunk.document_id == Document.id,
+                                       Chunk.embedding.is_not(None)).exists())
     on_record = [OnRecord(t, n, cik) for t, n, cik in (await db.execute(
         select(Company.ticker, Company.name, Company.cik)
         .join(Document, Document.company_id == Company.id)
-        .where(Company.ticker.is_not(None)).distinct()
+        .where(Company.ticker.is_not(None), embedded).distinct()
         .order_by(Company.ticker))).all()]
 
     intent, understood_by = await _understand(req.query, gw)

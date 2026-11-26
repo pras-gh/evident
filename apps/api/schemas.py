@@ -495,6 +495,47 @@ class CompanyListItem(BaseModel):
     cik: str
     document_count: int
     latest_filing: date | None = None
+    #: its GICS sector, for an S&P 500 company
+    sector: str | None = None
+    #: the name as people write it ("Nvidia"), where the S&P 500 list has
+    #: one; else EDGAR's ("NVIDIA CORP")
+    display_name: str
+    #: whether search can find its filings yet (some chunks embedded)
+    searchable: bool = False
+
+
+class SyncRunOut(BaseModel):
+    started_at: datetime
+    finished_at: datetime | None = None
+    seen: int
+    new: int
+    fetched: int
+    failed: int
+    error: str | None = None
+
+
+class SyncFilingOut(BaseModel):
+    ticker: str | None
+    name: str
+    form_type: str | None
+    accession: str | None
+    accepted_at: datetime | None
+    fetched_at: datetime | None
+    minutes_after_filing: float | None
+
+
+class SyncStatusOut(BaseModel):
+    """The S&P 500 as Parallx holds it."""
+    tracked: int
+    with_annual_report: int
+    #: every filing on record embedded
+    searchable: int
+    #: chunks parsed and waiting for a vector, all companies
+    pending_chunks: int
+    backfill_failures_last_day: int
+    last_poll: SyncRunOut | None = None
+    last_sweep: SyncRunOut | None = None
+    latest_filings: list[SyncFilingOut] = []
 
 
 class CompanySummaryOut(BaseModel):

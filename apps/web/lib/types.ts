@@ -90,10 +90,47 @@ export interface MemorySummary {
 /** GET /v1/companies */
 export interface CompanyListItem {
   ticker: string | null;
+  /** EDGAR's name ("NVIDIA CORP") */
   name: string;
+  /** as people write it ("Nvidia"), from the S&P 500 list where it has one */
+  display_name: string;
   cik: string;
   document_count: number;
   latest_filing: string | null;
+  /** GICS sector, for an S&P 500 company */
+  sector: string | null;
+  /** search can find its filings yet */
+  searchable: boolean;
+}
+
+export interface SyncRun {
+  started_at: string;
+  finished_at: string | null;
+  seen: number;
+  new: number;
+  fetched: number;
+  failed: number;
+  error: string | null;
+}
+
+/** GET /v1/sync — the S&P 500 as Parallx holds it. */
+export interface SyncStatus {
+  tracked: number;
+  with_annual_report: number;
+  searchable: number;
+  pending_chunks: number;
+  backfill_failures_last_day: number;
+  last_poll: SyncRun | null;
+  last_sweep: SyncRun | null;
+  latest_filings: {
+    ticker: string | null;
+    name: string;
+    form_type: string | null;
+    accession: string | null;
+    accepted_at: string | null;
+    fetched_at: string | null;
+    minutes_after_filing: number | null;
+  }[];
 }
 
 // ------------------------------------------------------------ evidence viewer

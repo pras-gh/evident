@@ -17,7 +17,7 @@ from parallx_ai.gateway import AllProvidersFailed, UnknownOrganization, UsageLim
 from parallx_ai.gateway.logs import configure_logging
 
 from .routers import (ai_usage, analysis, ask, cards, documents, evidence, fetches,
-                      graph, ingest, memory, search, timeline)
+                      graph, ingest, memory, search, sync, timeline)
 from .routers.search import SearchUnavailable
 
 API_VERSION = "1.0.0"
@@ -50,6 +50,7 @@ app.include_router(graph.router, prefix="/v1")
 app.include_router(ingest.router, prefix="/v1")
 app.include_router(memory.router, prefix="/v1")
 app.include_router(search.router, prefix="/v1")
+app.include_router(sync.router, prefix="/v1")
 app.include_router(timeline.router, prefix="/v1")
 
 
