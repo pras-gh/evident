@@ -175,7 +175,7 @@ class Provider(unittest.TestCase):
 
     def test_a_request_never_carries_more_than_the_minute_allows(self):
         e, _ = voyage(FakeVoyage(), tpm=10_000)
-        self.assertEqual(e.request_budget, 10_000)
+        self.assertEqual(e.request_budget, 5_000, "half: a table can count double")
         self.assertEqual(voyage(FakeVoyage())[0].request_budget, 120_000)
 
     def test_cost_is_estimated_from_list_price(self):
@@ -329,10 +329,11 @@ class Backfill(unittest.TestCase):
 
         def sleep(s):
             now[0] += s
-        embedder = VoyageEmbedder("voyage-4-large", client=c, api_key="k", tpm=2000,
+        embedder = VoyageEmbedder("voyage-4-large", client=c, api_key="k", tpm=4000, rpm=2,
                                   sleep=sleep, clock=lambda: now[0])
         embedding_worker.run(url=DSN, embedder=embedder, batch_size=128)
-        # 2,000 a minute, packed to 60%: two chunks a request, paced a minute apart
+        # 4,000 a minute: requests of half that, packed to 60% — two chunks each;
+        # two requests a minute, so the third waits
         self.assertEqual([len(call["texts"]) for call in c.calls], [2, 2, 2])
         self.assertGreaterEqual(now[0], 60.0)
 

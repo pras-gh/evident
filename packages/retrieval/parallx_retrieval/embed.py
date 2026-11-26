@@ -251,10 +251,15 @@ class VoyageEmbedder(EmbeddingProvider):
 
     @property
     def request_budget(self) -> int:
-        """Tokens one request may carry: the API's cap, or the account's whole
+        """Tokens one request may carry: the API's cap, or half the account's
         minute when that is smaller (3 requests and 10K tokens without a
-        payment method) — a bigger request would never be let through."""
-        return min(self.max_request_tokens, self._limiter.tpm or self.max_request_tokens)
+        payment method). Half, because a request over the minute is refused
+        however long it waits, and the batch estimate (characters / 4) runs
+        under Voyage's count on figure-dense tables — about double on a
+        10-K's financial statements, against 0.7 of it on prose."""
+        if not self._limiter.tpm:
+            return self.max_request_tokens
+        return min(self.max_request_tokens, self._limiter.tpm // 2)
 
     def _get_client(self):
         if self._client is not None:
