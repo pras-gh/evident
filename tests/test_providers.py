@@ -137,7 +137,7 @@ class Voyage(unittest.TestCase):
     def test_finance_model_is_not_sent_an_output_dimension(self):
         # voyage-finance-2 is 1024-only and rejects the parameter
         c = _FakeVoyage()
-        VoyageEmbedder(client=c, api_key="k").embed(["a"])
+        VoyageEmbedder("voyage-finance-2", client=c, api_key="k").embed(["a"])
         self.assertEqual(c.calls[0]["model"], "voyage-finance-2")
         self.assertNotIn("output_dimension", c.calls[0])
 
@@ -145,6 +145,12 @@ class Voyage(unittest.TestCase):
         c = _FakeVoyage()
         VoyageEmbedder("voyage-4-large", client=c, api_key="k").embed(["a"])
         self.assertEqual(c.calls[0]["output_dimension"], EMBEDDING_DIM)
+
+    def test_the_default_is_voyage_4_large(self):
+        c = _FakeVoyage()
+        VoyageEmbedder(client=c, api_key="k").embed(["a"])
+        self.assertEqual((c.calls[0]["model"], c.calls[0]["output_dtype"]),
+                         ("voyage-4-large", "float"))
 
     def test_batches_respect_the_thousand_text_limit(self):
         c = _FakeVoyage()

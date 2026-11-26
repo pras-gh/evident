@@ -106,6 +106,46 @@ def chunks_without_embeddings(db: Session, *, limit: int = 500,
     return list(db.execute(stmt).scalars())
 
 
+def embedding_plan(db: Session, *, provider: str, model: str,
+                   company_id: int | None = None, ticker: str | None = None,
+                   force: bool = False) -> tuple[dict[str, int], list[int]]:
+    """What an embedding run over this scope has to do: counts, and the ids
+    of the chunks to embed, newest filing first, in reading order within one.
+
+    * eligible — chunks with text (whitespace is not text);
+    * empty — chunks without, never sent;
+    * already — eligible chunks embedded by this provider and model. The
+      column's width and element type are fixed (vector(1024), float), so
+      provider and model are the whole configuration;
+    * the ids — the eligible chunks not already embedded, or with `force`,
+      all of them. A vector from another model is replaced, not kept beside:
+      the column holds one, and search reads only the configured model's.
+    """
+    has_text = func.length(func.btrim(func.coalesce(Chunk.text, ""))) > 0
+    mine = (Chunk.embedding.is_not(None) & (Chunk.embedding_provider == provider)
+            & (Chunk.embedding_model == model))
+    scope = select(Chunk.id).join(Document, Document.id == Chunk.document_id)
+    if company_id is not None:
+        scope = scope.where(Document.company_id == company_id)
+    if ticker:
+        scope = scope.join(Company, Company.id == Document.company_id).where(
+            Company.ticker == ticker.upper())
+    counts = db.execute(
+        select(func.count().filter(has_text), func.count().filter(~has_text),
+               func.count().filter(has_text & mine))
+        .select_from(Chunk).where(Chunk.id.in_(scope))).one()
+    todo = scope.where(has_text) if force else scope.where(has_text, ~mine)
+    ids = list(db.execute(todo.order_by(Document.published_at.desc().nulls_last(),
+                                        Document.id, Chunk.ordinal)).scalars())
+    return {"eligible": counts[0], "empty": counts[1], "already": counts[2]}, ids
+
+
+def chunks_by_id(db: Session, ids: list[int]) -> list[Chunk]:
+    """The chunks, in the order asked for."""
+    rows = {c.id: c for c in db.execute(select(Chunk).where(Chunk.id.in_(ids))).scalars()}
+    return [rows[i] for i in ids if i in rows]
+
+
 def set_embeddings(db: Session, rows: Iterable[tuple[int, list[float]]], *,
                    provider: str, model: str) -> int:
     now = datetime.now(timezone.utc)

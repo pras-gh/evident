@@ -2,9 +2,9 @@
 
     EmbeddingProvider.embed(texts: list[str]) -> list[list[float]]
 
-Four implementations. `VoyageEmbedder` is the first choice, because Voyage
-publishes `voyage-finance-2` as tuned for finance retrieval, which is exactly
-this corpus. `GeminiEmbedder` uses the Gemini key the AI gateway already has.
+Four implementations. `VoyageEmbedder` is the first choice, on
+`voyage-4-large` (`voyage-finance-2`, finance-tuned and 1024-only, by
+`EMBEDDING_MODEL`). `GeminiEmbedder` uses the Gemini key the AI gateway already has.
 `OpenAIEmbedder` is the other alternative. `HashingEmbedder` is for tests and
 is no longer reachable without asking for it by name.
 
@@ -24,10 +24,12 @@ detected instead of silently answered.
 """
 from __future__ import annotations
 
+import collections
 import hashlib
 import logging
 import math
 import os
+import random
 import re
 import time
 from typing import Any, Callable, Sequence
@@ -43,6 +45,37 @@ EMBEDDING_DIM = 1024
 
 class EmbeddingError(RuntimeError):
     pass
+
+
+class EmbeddingAuthError(EmbeddingError):
+    """The provider refused the credentials. Retrying will not help."""
+
+
+class EmbeddingRateLimited(EmbeddingError):
+    """Still rate limited after backing off. A smaller request may fit the
+    per-minute token budget; the same one will not."""
+
+
+class EmbeddingInvalidInput(EmbeddingError):
+    """The provider rejected what was sent — a text over the context length,
+    a request over the token limit. The same request will fail again; a
+    smaller one, or one without the offending text, may not."""
+
+
+class EmbeddingInvalidOutput(EmbeddingError):
+    """A vector came back that cannot be stored or searched (non-finite, or
+    all zeros). Its text is the suspect; the rest of the batch may be fine."""
+
+
+#: List prices, USD per million input tokens, for estimating a run's cost.
+#: Voyage's billing dashboard is the authority; `EMBEDDING_PRICE_PER_MTOK`
+#: overrides. A model not listed has no estimate rather than a guessed one.
+PRICE_PER_MTOK = {"voyage-4-large": 0.12}
+
+
+def price_per_mtok(model: str) -> float | None:
+    raw = os.environ.get("EMBEDDING_PRICE_PER_MTOK")
+    return float(raw) if raw else PRICE_PER_MTOK.get(model)
 
 
 class EmbeddingProvider:
@@ -71,7 +104,11 @@ class EmbeddingProvider:
         return self.embed(texts)
 
     # -- shared plumbing -------------------------------------------------
-    def _check(self, vectors: list[list[float]], expected: int) -> list[list[float]]:
+    def _check(self, vectors: list[list[float]], expected: int, *,
+               usable: bool = False) -> list[list[float]]:
+        """The right count at the right width; with `usable`, also finite and
+        not all zeros — what a real model returns, and what cosine distance
+        needs."""
         if len(vectors) != expected:
             raise EmbeddingError(
                 f"{self.name}: asked for {expected} vectors, got {len(vectors)}")
@@ -81,6 +118,11 @@ class EmbeddingProvider:
                     f"{self.name}/{self.model}: vector {i} has {len(v)} "
                     f"dimensions, expected {self.dim}. The column is fixed "
                     "width; storing this would corrupt the index.")
+            if usable and (not all(math.isfinite(x) for x in v) or not any(v)):
+                raise EmbeddingInvalidOutput(
+                    f"{self.name}/{self.model}: vector {i} is not a usable "
+                    "embedding (non-finite, or all zeros); cosine distance to it "
+                    "is undefined.")
         return vectors
 
     @staticmethod
@@ -121,27 +163,84 @@ class HashingEmbedder(EmbeddingProvider):
         return [v / norm for v in vec] if norm else vec
 
 
+class _Limiter:
+    """Requests and tokens per minute, over a sliding minute. Waits before a
+    request that would go over either; a request bigger than the whole token
+    budget waits for an empty minute and goes (the provider then says no, and
+    the caller makes it smaller)."""
+
+    def __init__(self, rpm: int | None, tpm: int | None, *,
+                 clock: Callable[[], float] = time.monotonic,
+                 sleep: Callable[[float], None] = time.sleep) -> None:
+        self.rpm, self.tpm, self.clock, self.sleep = rpm, tpm, clock, sleep
+        self.sent: collections.deque[tuple[float, int]] = collections.deque()
+
+    def acquire(self, tokens: int) -> None:
+        if not (self.rpm or self.tpm):
+            return
+        while True:
+            now = self.clock()
+            while self.sent and now - self.sent[0][0] >= 60:
+                self.sent.popleft()
+            used = sum(t for _, t in self.sent)
+            over_rpm = self.rpm and len(self.sent) >= self.rpm
+            over_tpm = self.tpm and self.sent and used + tokens > self.tpm
+            if not (over_rpm or over_tpm):
+                self.sent.append((now, tokens))
+                return
+            self.sleep(max(0.05, 60 - (now - self.sent[0][0])))
+
+
 class VoyageEmbedder(EmbeddingProvider):
-    """Voyage AI. Default, on `voyage-finance-2`.
+    """Voyage AI, on `voyage-4-large` at the shared 1024 dimensions, as floats.
 
-    `voyage-finance-2` is published as optimised for finance retrieval and RAG,
-    and it is fixed at 1024 dimensions — which is why 1024 is the width the
-    whole system uses.
+    `voyage-finance-2` (by `EMBEDDING_MODEL`) is 1024-only, finance-tuned, and
+    takes neither an output dimension nor a dtype. The voyage-3.5/4 family
+    takes both, and is pinned to the column's width and to float — the only
+    element type a pgvector `vector` column holds.
 
-    Voyage distinguishes document embeddings from query embeddings, and using
-    the right `input_type` for each is a free retrieval improvement.
+    Documents and queries are embedded with different `input_type`s, which
+    Voyage retrieves measurably better for.
+
+    **Nothing is cut short.** `truncation` is off: a text over the model's
+    context is an error the caller sees (and records), not a vector of its
+    first part.
+
+    **Failures say what to do next** (`EmbeddingAuthError`,
+    `EmbeddingRateLimited`, `EmbeddingInvalidInput`). Rate limits and server
+    errors are retried with exponential backoff and jitter, honouring
+    Retry-After; `VOYAGE_RPM` / `VOYAGE_TPM` pace requests ahead of the limit
+    (an account without a payment method gets 3 requests and 10K tokens a
+    minute). `tokens` and `requests` count what the API reported.
     """
 
     name = "voyage"
     #: The API accepts at most 1,000 texts per request.
     MAX_BATCH = 1000
+    #: Tokens per request, for voyage-4-large and voyage-3-large; the smaller
+    #: models allow more. The backfill packs requests under this.
+    max_request_tokens = 120_000
+    #: Models that are fixed-width and take no output_dimension/output_dtype.
+    FIXED = frozenset({"voyage-finance-2", "voyage-law-2", "voyage-code-2",
+                       "voyage-multilingual-2", "voyage-large-2", "voyage-large-2-instruct",
+                       "voyage-2", "voyage-3", "voyage-3-lite"})
+    RETRY_STATUS = frozenset({429, 500, 502, 503, 504})
 
-    def __init__(self, model: str = "voyage-finance-2",
+    def __init__(self, model: str = "voyage-4-large",
                  dim: int = EMBEDDING_DIM, *, api_key: str | None = None,
-                 client: object | None = None) -> None:
+                 client: object | None = None, rpm: int | None = None,
+                 tpm: int | None = None,
+                 sleep: Callable[[float], None] = time.sleep) -> None:
         self.model, self.dim = model, dim
         self._api_key = api_key or os.environ.get("VOYAGE_API_KEY")
         self._client = client
+        self._sleep = sleep
+        env = lambda k: int(os.environ[k]) if os.environ.get(k) else None  # noqa: E731
+        self._limiter = _Limiter(rpm or env("VOYAGE_RPM"), tpm or env("VOYAGE_TPM"),
+                                 sleep=sleep)
+        self.tokens = 0          # as the API reported them
+        self.requests = 0
+        self.retries = 0
 
     def _get_client(self):
         if self._client is not None:
@@ -157,29 +256,85 @@ class VoyageEmbedder(EmbeddingProvider):
             raise EmbeddingError(
                 "VOYAGE_API_KEY is not set. Set it, or choose another "
                 "provider with EMBEDDING_PROVIDER.")
-        self._client = voyageai.Client(api_key=self._api_key)
+        # retries are ours: the SDK's would hide what was retried, and why
+        self._client = voyageai.Client(api_key=self._api_key, max_retries=0, timeout=120)
         return self._client
 
-    def _embed(self, texts: Sequence[str], input_type: str) -> list[list[float]]:
+    @staticmethod
+    def _status(exc: Exception) -> int | None:
+        status = getattr(exc, "http_status", None) or getattr(exc, "status_code", None)
+        if status:
+            return int(status)
+        return {"AuthenticationError": 401, "RateLimitError": 429,
+                "InvalidRequestError": 400, "MalformedRequestError": 400,
+                "ServiceUnavailableError": 503, "ServerError": 500, "TryAgain": 503,
+                "Timeout": 504, "APIConnectionError": 503}.get(type(exc).__name__)
+
+    @staticmethod
+    def _retry_after(exc: Exception) -> float | None:
+        headers = getattr(exc, "headers", None) or {}
+        try:
+            raw = {k.lower(): v for k, v in dict(headers).items()}.get("retry-after")
+            return float(raw) if raw else None
+        except (TypeError, ValueError):
+            return None
+
+    def _call(self, batch: list[str], input_type: str, *, attempts: int,
+              max_wait: float):
+        kwargs: dict[str, Any] = {"texts": batch, "model": self.model,
+                                  "input_type": input_type, "truncation": False}
+        if self.model not in self.FIXED:
+            kwargs["output_dimension"] = self.dim
+            kwargs["output_dtype"] = "float"
+        estimate = sum(len(t) // 4 + 1 for t in batch)
+        for attempt in range(1, attempts + 1):
+            self._limiter.acquire(estimate)
+            try:
+                response = self._get_client().embed(**kwargs)
+            except EmbeddingError:
+                raise
+            except Exception as exc:  # the SDK's errors, classified by status
+                status = self._status(exc)
+                detail = f"{self.name}/{self.model}: HTTP {status or '?'}: {str(exc)[:300]}"
+                if status in (401, 403):
+                    raise EmbeddingAuthError(detail) from exc
+                if status in (400, 413, 422):
+                    raise EmbeddingInvalidInput(detail) from exc
+                if status not in self.RETRY_STATUS:
+                    raise EmbeddingError(detail) from exc
+                wait = max(self._retry_after(exc) or 0.0,
+                           2.0 ** (attempt - 1) * (1 + random.random() / 4))
+                if attempt == attempts or wait > max_wait:
+                    raise (EmbeddingRateLimited if status == 429 else EmbeddingError)(
+                        f"{detail} (after {attempt} attempt{'s' if attempt > 1 else ''})"
+                    ) from exc
+                self.retries += 1
+                log.warning("%s — retrying in %.1fs (attempt %d of %d)",
+                            detail, wait, attempt + 1, attempts)
+                self._sleep(wait)
+                continue
+            self.requests += 1
+            self.tokens += int(getattr(response, "total_tokens", 0) or 0)
+            return response.embeddings
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    def _embed(self, texts: Sequence[str], input_type: str, *, attempts: int,
+               max_wait: float) -> list[list[float]]:
         if not texts:
             return []
-        client = self._get_client()
         out: list[list[float]] = []
         for batch in self._batched(texts, self.MAX_BATCH):
-            kwargs = {"texts": list(batch), "model": self.model,
-                      "input_type": input_type}
-            # voyage-finance-2 is 1024-only and rejects the parameter; the
-            # general models need it to come back at the shared width.
-            if self.model != "voyage-finance-2":
-                kwargs["output_dimension"] = self.dim
-            out.extend(client.embed(**kwargs).embeddings)
-        return self._check(out, len(texts))
+            out.extend(self._call(list(batch), input_type, attempts=attempts,
+                                  max_wait=max_wait))
+        return self._check(out, len(texts), usable=True)
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
-        return self._embed(texts, "document")
+        # a backfill can wait out a rate limit
+        return self._embed(texts, "document", attempts=7, max_wait=90.0)
 
     def embed_query(self, texts: Sequence[str]) -> list[list[float]]:
-        return self._embed(texts, "query")
+        # someone is waiting for search results: one quick retry at most
+        return self._embed(texts, "query", attempts=2, max_wait=3.0)
 
 
 class OpenAIEmbedder(EmbeddingProvider):

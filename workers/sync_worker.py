@@ -56,7 +56,7 @@ from urllib.error import HTTPError
 from sqlalchemy import func, select, text
 from sqlalchemy.dialects.postgresql import insert
 
-from parallx_db import (FETCH_ACTIVE, Chunk, Company, CompanyFetch, Document, Filing,
+from parallx_db import (FETCH_ACTIVE, Company, CompanyFetch, Document, Filing,
                         SyncRun, session_scope)
 from parallx_db.repositories import upsert_company
 from parallx_db.sec import store_facts, store_filings
@@ -426,16 +426,27 @@ def sweep(url: str | None, universe: list[Tracked], since: datetime) -> SyncRun:
 
 def embed_pass(url: str | None, *, max_chunks: int = EMBED_PASS) -> int:
     """Embeds up to `max_chunks` chunks, newest filing first. Raises
-    `EmbeddingError` when the provider refuses (rate limit, quota); what was
-    embedded before that is kept."""
+    `EmbeddingError` when the provider refuses (rate limit, quota, keys) or
+    every chunk it tried failed; what was embedded before that is kept."""
+    from parallx_retrieval.embed import EmbeddingError
     from workers import embedding_worker
-    return embedding_worker.run(url=url, max_chunks=max_chunks).embedded
+    r = embedding_worker.run(url=url, max_chunks=max_chunks)
+    if r.remaining and not r.embedded and r.failed:
+        raise EmbeddingError(f"{r.failed} chunks failed and none embedded: {r.errors[-1]}")
+    return r.embedded
 
 
 def pending_chunks(url: str | None) -> int:
+    """Chunks the configured model has yet to embed (none, with no model
+    configured: there is nothing to embed them with)."""
+    from parallx_db.repositories import embedding_plan
+    from parallx_retrieval.embed import EmbeddingError, default_provider
+    try:
+        e = default_provider()
+    except EmbeddingError:
+        return 0
     with session_scope(url) as db:
-        return db.execute(select(func.count()).select_from(Chunk)
-                          .where(Chunk.embedding.is_(None))).scalar_one()
+        return len(embedding_plan(db, provider=e.name, model=e.model)[1])
 
 
 # ------------------------------------------------------------------- watch
