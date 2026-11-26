@@ -138,7 +138,8 @@ class OnDemand(_ApiMixin, unittest.IsolatedAsyncioTestCase):
             found = await self.search("nvidia")
         self.assertEqual(found["companies"],
                          [{"name": "NVIDIA CORP", "ticker": "NVDA", "covered": True,
-                           "fetch": None, "fetch_id": None, "fetch_error": None}])
+                           "fetch": None, "fetch_id": None, "fetch_error": None,
+                           "access": "existing"}])
         self.assertTrue(found["hits"], "fetched, embedded, and searchable")
         self.assertTrue(all(h["accession"] == NVDA_10K for h in found["hits"]))
 

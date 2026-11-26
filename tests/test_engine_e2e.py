@@ -293,8 +293,9 @@ class MemoryEngine(unittest.IsolatedAsyncioTestCase):
         import api.deps
         api.deps._factory = None                       # rebind to the test DSN
         from api.main import app
+        from _auth import staff_headers
         return httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
-                                 base_url="http://t")
+                                 base_url="http://t", headers=staff_headers(DSN))
 
     async def test_company_memory_endpoint(self):
         async with await self._client() as c:

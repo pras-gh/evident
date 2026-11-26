@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { MemoryDashboard } from "./MemoryDashboard";
+import { researchGate } from "@/components/billing/ResearchGate";
 import { getCards, getCompany, getCompanyFilings, getCompanyTimeline,
          getFinancials } from "@/lib/api";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 export default async function MemoryPage({
   params,
@@ -14,6 +15,11 @@ export default async function MemoryPage({
 }) {
   const { ticker } = await params;
   const period = (await searchParams).period === "quarterly" ? "quarterly" : "annual";
+  // researching it spends a credit the first time; the gate shows the upgrade,
+  // or the filings on their way, when the page cannot render yet
+  const gate = await researchGate(ticker, `/memory/${ticker}`);
+  if (gate.view) return gate.view;
+  if (!gate.outcome.ok) notFound();
   let data;
   try {
     data = await Promise.all([getCompany(ticker), getCards(ticker), getCompanyTimeline(ticker)]);

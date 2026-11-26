@@ -18,6 +18,8 @@ pypdf>=6.0,<7              # PDF filings; box widths use its font model, verifie
 playwright>=1.49,<2        # the render worker: page images and paragraph boxes. Drives
                            # the installed Chrome; without one, `playwright install chromium`
 Pillow>=10                 # page images and thumbnails as WebP
+PyJWT[crypto]>=2.9         # accounts: verifying Firebase ID tokens against Google's keys
+stripe>=11                 # billing: Checkout, the Customer Portal, webhook signatures
 
 # --- needed only for the feature that uses them. Each is imported lazily and
 # fails with a message naming the package, so the demo and the test suite run

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { asset } from "@/lib/api";
+import { asset } from "@/lib/client-api";
 import type { PageSummary } from "@/lib/types";
 
 /** One page in the rail: its thumbnail, its number, and a dot for each

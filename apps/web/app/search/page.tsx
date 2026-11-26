@@ -3,7 +3,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { AnswerCard, AnswerPending } from "@/components/search/Answer";
 import { SearchView } from "@/components/search/SearchView";
-import { getCompanyTimeline, searchFilings } from "@/lib/api";
+import { getCompanyTimeline, getPlans, getSubscription, searchFilings } from "@/lib/api";
+import { UpgradeModal } from "@/components/billing/UpgradeModal";
 
 // a search is per request; caching a page keyed on its query string would only
 // ever serve a stale index
@@ -45,11 +46,21 @@ export default async function SearchPage({ searchParams }: { searchParams: Searc
   // the company in view, for the header's sections: the one the query named,
   // else the page's filter — unless the query named other companies
   const inView = one ?? (scope?.reason === "named" ? null : ticker);
+  // a named company the plan has no room for: offer the upgrade over what
+  // could be shown, not an error page
+  const paywall = result?.paywall ?? null;
+  const [plans, sub] = paywall ? await Promise.all([getPlans().catch(() => []), getSubscription()])
+                               : [[], null];
   return (
     <>
       <AppHeader ticker={inView} active="search" />
       <SearchView query={query} ticker={ticker} outcome={outcome} company={company}
                   answer={answer} />
+      {paywall && (
+        <UpgradeModal plans={plans} paywall={paywall}
+                      returnTo={`/search?q=${encodeURIComponent(query)}`}
+                      current={sub && sub.source !== "free" ? sub.plan_id : null} />
+      )}
     </>
   );
 }

@@ -132,6 +132,8 @@ class AiApi(_ApiMixin, unittest.IsolatedAsyncioTestCase):
         if who:
             headers["Authorization"] = f"Bearer {self.keys[who]}"
         async with await self._client() as c:
+            if not who and "Authorization" not in headers:
+                c.headers.pop("Authorization", None)     # anonymous, not the suite's staff key
             return await c.request(method, path, headers=headers, **kw)
 
     def rows(self):

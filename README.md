@@ -99,7 +99,9 @@ cd apps/web && npm test
 
 | Page | What it shows | Backed by |
 | --- | --- | --- |
-| `/` | every company on record, by sector, with S&P 500 coverage | `GET /v1/companies`, `GET /v1/sync` |
+| `/` | signed in: your companies, usage and plan; for everyone: every company on record | `GET /v1/me/usage`, `/v1/me/subscription`, `/v1/companies`, `/v1/sync` |
+| `/signin`, `/welcome` | sign in or create an account; first-time onboarding | `POST /v1/auth/session` |
+| `/pricing`, `/account`, `/billing/success` | plans, checkout, the plan and its billing | `GET /v1/plans`, `POST /v1/billing/checkout`, `GET /v1/billing/portal` |
 | `/memory/{ticker}` | financial statements, filings, memory cards, recent changes | `GET /v1/companies/{t}`, `/financials`, `/filings`, `/cards`, `/cards/{kind}`, `/v1/company/{t}/timeline` |
 | `/timeline/{ticker}` | what changed between filings | `GET /v1/company/{t}/timeline` |
 | `/admin/ai-usage` | AI spend, failures and limits — platform admins | `GET /v1/ai-usage/summary` |
@@ -118,6 +120,15 @@ cd apps/web && npm test
 
 `python -m workers.sync_worker status` and `GET /v1/sync` report coverage and
 freshness. See `docs/sync.md`.
+
+## Accounts and plans
+
+People sign in with Firebase Authentication: Google, email and password with
+verification, or a phone number with an SMS code. Every new account gets two
+free company research credits; after those, Iix ($19/month) and IIx
+($39/month) are billed through Stripe. A plan is granted only by a verified
+webhook. The API enforces every limit, transactionally and auditably. See
+`docs/accounts-billing.md`, including the deployment checklist.
 
 ## Layers
 

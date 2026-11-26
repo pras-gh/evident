@@ -110,6 +110,8 @@ class SearchCompanyOut(BaseModel):
     fetch: Literal["queued", "running", "failed", "not_on_edgar", "not_configured"] | None = None
     fetch_id: int | None = None
     fetch_error: str | None = None
+    #: researching it: granted now (a credit spent), held already, or needing an upgrade
+    access: Literal["granted", "existing", "upgrade_required"] | None = None
 
 
 class AskRequest(BaseModel):
@@ -155,6 +157,8 @@ class AskResponse(BaseModel):
     notice: str | None = None
     model: str | None = None
     cost_usd: Decimal | None = None
+    #: the plan's AI research queries are used up: offer the upgrade
+    limit_reached: bool = False
 
 
 class FetchOut(BaseModel):
@@ -200,6 +204,8 @@ class SearchResponse(BaseModel):
     kind: Literal["market", "filings", "general"] | None = None
     #: the query asked to see filings or documents
     wants_filings: bool = False
+    #: a named company needs an upgrade to research: show the plans
+    paywall: dict | None = None
 
 
 # ---------------------------------------------------------------- graph
@@ -771,9 +777,137 @@ class OrganizationOut(BaseModel):
 
 class MeOut(BaseModel):
     user_id: uuid.UUID
-    email: str
+    #: null for an account made with a phone number
+    email: str | None = None
     role: str
     organization: OrganizationOut
+    phone: str | None = None
+    name: str | None = None
+    #: google | password | phone; null for an API key's user
+    auth_provider: str | None = None
+    #: session | api_key
+    via: str = "api_key"
+
+
+class SessionIn(BaseModel):
+    #: the identity provider's ID token (Firebase), verified on the server
+    id_token: str = Field(min_length=10, max_length=8192)
+
+
+class SessionOut(BaseModel):
+    user: MeOut
+    #: first sign-in: show onboarding
+    is_new: bool
+
+
+class CompanyUsageOut(BaseModel):
+    ticker: str | None
+    name: str
+    first_researched_at: datetime
+    last_accessed_at: datetime
+    #: pending while its filings are fetched
+    status: str
+    access_source: str
+
+
+class UsageOut(BaseModel):
+    plan_id: str
+    plan_name: str
+    #: free | subscription | grace | staff
+    source: str
+    companies_used: int
+    #: free: the lifetime credits; paid: the plan's companies; null: no limit
+    companies_limit: int | None
+    companies_left: int | None
+    free_credits_used: int
+    free_credits_total: int
+    ai_queries_used: int
+    ai_queries_limit: int | None
+    ai_queries_left: int | None
+    #: when the AI query count starts again; null for the free allowance
+    period_end: datetime | None = None
+    companies: list[CompanyUsageOut] = []
+
+
+class SubscriptionOut(BaseModel):
+    plan_id: str
+    plan_name: str
+    source: str
+    status: str | None = None
+    billing_interval: str | None = None
+    current_period_end: datetime | None = None
+    cancel_at_period_end: bool = False
+    #: a failed payment keeps the plan until then
+    grace_until: datetime | None = None
+    #: the bank wants the customer (3-D Secure, a mandate)
+    requires_action: bool = False
+    features: dict = {}
+    #: whether the Customer Portal can be opened
+    has_billing_account: bool = False
+
+
+class PlanFeatureOut(BaseModel):
+    label: str
+    #: false: on the roadmap, not yet in the product — shown as such
+    available: bool
+
+
+class PlanOut(BaseModel):
+    id: str
+    name: str
+    audience: str
+    description: str
+    monthly_price: int
+    annual_price: int
+    currency: str = "usd"
+    max_companies: int
+    monthly_ai_queries: int
+    recommended: bool = False
+    features: list[PlanFeatureOut]
+    entitlements: dict
+    #: whether checkout can be started for it (prices configured)
+    purchasable: bool = False
+
+
+class ResearchAccessIn(BaseModel):
+    ticker: str | None = Field(None, max_length=16)
+    cik: str | None = Field(None, max_length=10)
+    idempotency_key: str | None = Field(None, max_length=128)
+
+
+class ResearchAccessOut(BaseModel):
+    #: existing | granted
+    outcome: str
+    #: pending (filings being fetched) | active
+    status: str
+    ticker: str | None
+    name: str
+    #: an on-demand fetch of its filings, when it had none here
+    fetch_id: int | None = None
+    usage: UsageOut
+
+
+class CheckoutIn(BaseModel):
+    plan_id: Literal["investor", "analyst"]
+    interval: Literal["month", "year"]
+    #: billing country, ISO 3166-1 alpha-2
+    country: str = Field(min_length=2, max_length=2)
+    idempotency_key: str | None = Field(None, max_length=128)
+
+
+class CheckoutOut(BaseModel):
+    #: checkout — go to `url`; updated — the plan change was sent, a webhook confirms it
+    mode: Literal["checkout", "updated"]
+    url: str | None = None
+
+
+class BillingLinkOut(BaseModel):
+    url: str
+
+
+class CancelOut(BaseModel):
+    status: str
+    current_period_end: datetime | None = None
 
 
 class UsageTotals(BaseModel):

@@ -31,7 +31,10 @@ export function AnswerPending() {
 
 export function AnswerView({ answer }: { answer: AskResponse }) {
   const notice = answer.notice && (
-    <p className="srch-note" role="status">{answer.notice}</p>
+    <p className="srch-note" role="status">
+      {answer.notice}
+      {answer.limit_reached && <> <a href="/pricing">See plans</a></>}
+    </p>
   );
   if (answer.mode === "none" || !answer.answer) return notice || null;
 

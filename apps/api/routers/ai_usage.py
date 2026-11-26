@@ -1,7 +1,6 @@
 """AI usage: what was spent, by whom, on what — for the admin dashboard and
 for customers looking at their own.
 
-    GET /v1/me
     GET /v1/ai-usage/summary?date_from&date_to&provider&model&task_type&organization_id&user_id
     GET /v1/ai-usage/limits
 
@@ -37,7 +36,7 @@ from parallx_db import Organization
 
 from ..auth import Principal, get_principal, usage_scope
 from ..deps import get_db, get_gateway
-from ..schemas import (LimitStatus, MeOut, OrganizationOut, UsageBreakdownRow,
+from ..schemas import (LimitStatus, OrganizationOut, UsageBreakdownRow,
                        UsageEventOut, UsageFacets, UsageLimitsOut, UsagePoint,
                        UsageSummaryOut, UsageTotals)
 
@@ -45,14 +44,6 @@ router = APIRouter(tags=["ai usage"])
 
 CALLED = ("success", "failed", "fallback")
 ANSWERED = ("success", "fallback", "cached")
-
-
-@router.get("/me", response_model=MeOut, summary="The caller")
-async def me(p: Principal = Depends(get_principal)) -> MeOut:
-    return MeOut(user_id=p.user_id, email=p.email, role=p.role,
-                 organization=OrganizationOut(id=p.organization_id, slug=p.organization_slug,
-                                              name=p.organization_name,
-                                              is_internal=p.is_internal))
 
 
 def _window(date_from: date | None, date_to: date | None) -> tuple[date, date, datetime, datetime]:

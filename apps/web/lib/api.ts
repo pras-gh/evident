@@ -20,37 +20,115 @@ import type {
   Financials,
 } from "./types";
 
-const BASE = process.env.API_URL ?? "http://localhost:8000/v1";
+/**
+ * The API, from server components. Server-only: it reads the session cookie
+ * (next/headers) and forwards it, so the API sees who is asking. Client
+ * components use lib/client-api.ts, which goes through the /api proxy.
+ *
+ * Research is per person, so a gated call is never cached; public data
+ * (the company list, what was just filed, the plans) is, and is fetched
+ * without the cookie so one person's response can never be served to another.
+ */
+import { cache } from "react";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import type { Me, Plan, ResearchAccess, Subscription, Usage } from "./types";
 
-async function get<T>(path: string, revalidate = 60): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { next: { revalidate } });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${path}`);
+const BASE = process.env.API_URL ?? "http://localhost:8000/v1";
+export const SESSION_COOKIE = "parallx_session";
+
+/** An API refusal, with its status and body, for the page to act on. */
+export class ApiFailure extends Error {
+  constructor(public status: number, public body: Record<string, unknown> | null, path: string) {
+    super(`${status} — ${path}`);
+  }
+}
+
+async function auth(): Promise<Record<string, string>> {
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
+  return token ? { cookie: `${SESSION_COOKIE}=${token}` } : {};
+}
+
+/** A session that has expired mid-visit: sign in, and come back here. */
+async function signInAgain(): Promise<never> {
+  const here = (await headers()).get("x-parallx-path") ?? "/";
+  redirect(`/signin?next=${encodeURIComponent(here)}`);
+}
+
+async function get<T>(path: string, revalidate = 60, opts: { public?: boolean } = {}): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, opts.public
+    ? { next: { revalidate } }
+    : { headers: await auth(), cache: "no-store" });
+  if (res.status === 401 && !opts.public) await signInAgain();
+  if (!res.ok) throw new ApiFailure(res.status, await res.json().catch(() => null), path);
   return res.json() as Promise<T>;
 }
 
-export const getCompanies = () => get<CompanyListItem[]>(`/companies`);
-export const getSyncStatus = () => get<SyncStatus>(`/sync`, 30);
+export const getCompanies = () => get<CompanyListItem[]>(`/companies`, 60, { public: true });
+export const getSyncStatus = () => get<SyncStatus>(`/sync`, 30, { public: true });
+export const getPlans = () => get<Plan[]>(`/plans`, 300, { public: true });
 /** What was filed lately: news, not the history a backfill indexes. */
 export const getLatestFilings = (limit = 8, days = 14) =>
-  get<Filing[]>(`/filings/latest?limit=${limit}&days=${days}&forms=10-K,10-Q,8-K`, 30);
+  get<Filing[]>(`/filings/latest?limit=${limit}&days=${days}&forms=10-K,10-Q,8-K`, 30,
+                { public: true });
+
+/** The signed-in person, or null. Once per request however many ask. */
+export const getViewer = cache(async (): Promise<Me | null> => {
+  const h = await auth();
+  if (!h.cookie) return null;
+  const res = await fetch(`${BASE}/me`, { headers: h, cache: "no-store" }).catch(() => null);
+  return res && res.ok ? ((await res.json()) as Me) : null;
+});
+
+export const getUsage = cache(async (): Promise<Usage | null> => {
+  const h = await auth();
+  if (!h.cookie) return null;
+  const res = await fetch(`${BASE}/me/usage`, { headers: h, cache: "no-store" }).catch(() => null);
+  return res && res.ok ? ((await res.json()) as Usage) : null;
+});
+
+export const getSubscription = cache(async (): Promise<Subscription | null> => {
+  const h = await auth();
+  if (!h.cookie) return null;
+  const res = await fetch(`${BASE}/me/subscription`, { headers: h, cache: "no-store" })
+    .catch(() => null);
+  return res && res.ok ? ((await res.json()) as Subscription) : null;
+});
+
+export type AccessOutcome =
+  | { ok: true; access: ResearchAccess }
+  | { ok: false; status: number; body: Record<string, any> | null };
+
+/** Start researching a company — spends a credit the first time, never
+ *  again. The page renders the paywall on 402, and nothing on 404. */
+export async function researchAccess(ticker: string): Promise<AccessOutcome> {
+  const res = await fetch(`${BASE}/research/access`, {
+    method: "POST", cache: "no-store",
+    headers: { ...(await auth()), "content-type": "application/json" },
+    body: JSON.stringify({ ticker }),
+  });
+  if (res.status === 401) await signInAgain();
+  const body = await res.json().catch(() => null);
+  return res.ok ? { ok: true, access: body as ResearchAccess }
+                : { ok: false, status: res.status, body };
+}
 export const getCompanyFilings = (t: string, limit = 12) =>
   get<Filing[]>(`/companies/${t}/filings?limit=${limit}`, 60);
 export const getFinancials = (t: string, period: "annual" | "quarterly" = "annual") =>
   get<Financials>(`/companies/${t}/financials?period=${period}&periods=${period === "annual" ? 5 : 8}`, 300);
 export const getCompany   = (t: string) => get<MemorySummary>(`/companies/${t}`);
 export const getCards     = (t: string) => get<MemoryCard[]>(`/companies/${t}/cards`);
-export const getCard      = (t: string, kind: string) =>
-  get<CardDetail>(`/companies/${t}/cards/${kind}`);
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { ...(await auth()), "content-type": "application/json" },
     body: JSON.stringify(body),
     // resolution depends on what is extracted right now, so never cache it
     cache: "no-store",
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${path}`);
+  if (res.status === 401) await signInAgain();
+  if (!res.ok) throw new ApiFailure(res.status, await res.json().catch(() => null), path);
   return res.json() as Promise<T>;
 }
 
@@ -72,11 +150,7 @@ export const getEvidence = (chunkId: number, paragraphId?: string | null, entity
 export const getDocument = (documentId: number) =>
   get<DocumentDetail>(`/document/${documentId}`, 60);
 
-/** An API path (`/v1/…`) as the browser should fetch it: through the web
- *  app's own origin, which proxies `/api/*` to the API (next.config.mjs). */
-export function asset(apiPath: string): string {
-  return apiPath.replace(/^\/v1\//, "/api/");
-}
+export { asset } from "./client-api";
 
 /** A company's filings, newest first, with what each supports. */
 export const getCompanyDocuments = (t: string) =>
@@ -132,7 +206,7 @@ export async function searchFilings(query: string, ticker?: string,
   try {
     res = await fetch(`${BASE}/search`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { ...(await auth()), "content-type": "application/json" },
       body: JSON.stringify({ query, k, ...(ticker ? { ticker } : {}) }),
       cache: "no-store",
     });
@@ -140,6 +214,7 @@ export async function searchFilings(query: string, ticker?: string,
     return { ok: false, error: "unreachable",
              message: "The API is not reachable. Start it with tools/dev.sh api." };
   }
+  if (res.status === 401) await signInAgain();
   const body = await res.json().catch(() => null);
   if (res.ok) return { ok: true, result: body as SearchResponse };
   if (res.status === 503 && body?.error)
@@ -158,7 +233,7 @@ export async function askQuestion(query: string, kind: string | null | undefined
   try {
     const res = await fetch(`${BASE}/ask`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { ...(await auth()), "content-type": "application/json" },
       body: JSON.stringify({ query, kind: kind ?? null, chunk_ids: chunkIds }),
       cache: "no-store",
     });

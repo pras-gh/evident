@@ -22,7 +22,8 @@ from parallx_db import Company, Document, Entity, EntityMention, Relationship
 from parallx_graph.builder import EntityInput, build_graph
 from parallx_graph.relationships import TypedEdge
 
-from ..deps import get_company, get_db
+from ..deps import get_db
+from ..access import get_company
 from ..schemas import GraphOut, ImportanceExplanation
 
 router = APIRouter(prefix="/company", tags=["graph"])

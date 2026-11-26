@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from parallx_db import (Chunk, Company, Document, Entity, EntityMention,
                         TimelineEvent)
 
-from ..deps import get_company, get_db
+from ..deps import get_db
+from ..access import get_company
 from ..schemas import (CompanyListItem, CompanyMemoryOut, CompanySummaryOut,
                        EntityDetailOut, EntityOut, MentionOut, Provenance,
                        TimelineEventOut)

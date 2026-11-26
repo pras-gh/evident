@@ -16,6 +16,9 @@ import time
 
 import anyio
 from fastapi import APIRouter, Depends
+
+from ..access import accessible_chunks
+from ..viewer import Viewer, get_viewer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -69,27 +72,50 @@ async def _passages(db: AsyncSession, chunk_ids: list[int]):
 
 @router.post("/ask", response_model=AskResponse, summary="Answer a question")
 async def ask(req: AskRequest, db: AsyncSession = Depends(get_db),
-              gw=Depends(get_gateway)) -> AskResponse:
+              gw=Depends(get_gateway), viewer: Viewer = Depends(get_viewer)) -> AskResponse:
     global _web_refused_at
     from parallx_ai.answer import AnswerIncomplete, answer_from_filings, answer_from_web
     from parallx_ai.gateway import AllProvidersFailed
+    from parallx_db.accounts import consume_ai_query, refund_ai_query
 
     ctx = await _context()
     notice: str | None = None
 
-    if req.kind in ("market", "general") or (req.kind is None and not req.chunk_ids):
+    # An AI research query is charged when a model is about to be asked, and
+    # refunded when no answer comes back.
+    async def charge() -> bool:
+        ok, _ = await db.run_sync(lambda s: consume_ai_query(s, viewer.user_id,
+                                                             staff=viewer.is_staff))
+        await db.commit()
+        return ok
+
+    async def refund(reason: str) -> None:
+        await db.run_sync(lambda s: refund_ai_query(s, viewer.user_id, reason=reason))
+        await db.commit()
+
+    limit = AskResponse(mode="none", limit_reached=True,
+                        notice="You've used this period's AI research queries. Upgrade for more, "
+                               "or read the passages below.")
+    allowed = await accessible_chunks(db, viewer, list(req.chunk_ids or []))
+    chunk_ids = [c for c in (req.chunk_ids or []) if c in allowed]
+
+    if req.kind in ("market", "general") or (req.kind is None and not chunk_ids):
         if _web_refused():
             notice = BILLING_NOTICE
+        elif not await charge():
+            return limit
         else:
             try:
                 a = await anyio.to_thread.run_sync(lambda: answer_from_web(req.query, ctx, gw))
             except AllProvidersFailed as exc:
+                await refund("no live answer")
                 if "billing" in str(exc).lower():
                     _web_refused_at = time.monotonic()
                     notice = BILLING_NOTICE
                 else:
                     notice = "Couldn’t get a live answer right now. Try again in a minute."
             except AnswerIncomplete:
+                await refund("incomplete live answer")
                 notice = "The live answer came back incomplete, so it isn’t shown."
             else:
                 return AskResponse(
@@ -98,16 +124,19 @@ async def ask(req: AskRequest, db: AsyncSession = Depends(get_db),
                     search_suggestions=a.search_suggestions,
                     model=f"{a.response.provider}:{a.response.model}", cost_usd=a.cost_usd)
 
-    if not req.chunk_ids:
+    if not chunk_ids:
         return AskResponse(mode="none", notice=notice)
 
-    ordered, passages = await _passages(db, req.chunk_ids)
+    ordered, passages = await _passages(db, chunk_ids)
     if not passages:
         return AskResponse(mode="none", notice=notice)
+    if not await charge():
+        return limit
     try:
         a = await anyio.to_thread.run_sync(
             lambda: answer_from_filings(req.query, passages, ctx, gw))
     except (AllProvidersFailed, AnswerIncomplete):
+        await refund("no answer from filings")
         return AskResponse(mode="none", notice=notice or
                            "Couldn’t write an answer right now. The passages are below.")
     if notice:

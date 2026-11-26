@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { EvidenceViewer } from "@/components/evidence/evidence-viewer";
 import {
+  ApiFailure,
   getCompanyTimeline,
   getDocument,
   getDocumentPages,
@@ -71,7 +72,16 @@ export default async function EvidencePage({ params, searchParams }: {
   let first;
   try {
     first = await getEvidence(cite.chunk_id, cite.paragraph_id, one(sp.entity));
-  } catch {
+  } catch (e) {
+    if (e instanceof ApiFailure && e.status === 403) {
+      return (
+        <main className="gate">
+          <h1>This filing belongs to a company you haven&rsquo;t researched</h1>
+          <p>Research the company to open its filings. Your companies stay open on any plan.</p>
+          <a className="btn-primary" href="/">Back to your companies</a>
+        </main>
+      );
+    }
     notFound();
   }
 

@@ -919,4 +919,167 @@ CREATE INDEX ix_financial_facts_company_id_period_end ON financial_facts (compan
 
 UPDATE alembic_version SET version_num='0017' WHERE alembic_version.version_num = '0016';
 
+
+ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
+
+ALTER TABLE users ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE users ADD COLUMN auth_uid VARCHAR(128);
+
+ALTER TABLE users ADD COLUMN auth_provider VARCHAR(16);
+
+ALTER TABLE users ADD COLUMN email_normalized VARCHAR(255);
+
+ALTER TABLE users ADD COLUMN email_verified BOOLEAN DEFAULT 'false' NOT NULL;
+
+ALTER TABLE users ADD COLUMN phone VARCHAR(20);
+
+ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE users ADD COLUMN billing_customer_id VARCHAR(255);
+
+ALTER TABLE users ADD CONSTRAINT uq_users_auth_uid UNIQUE (auth_uid);
+
+ALTER TABLE users ADD CONSTRAINT uq_users_email_normalized UNIQUE (email_normalized);
+
+ALTER TABLE users ADD CONSTRAINT uq_users_phone UNIQUE (phone);
+
+ALTER TABLE users ADD CONSTRAINT uq_users_billing_customer_id UNIQUE (billing_customer_id);
+
+CREATE TABLE sessions (
+    id UUID NOT NULL, 
+    user_id UUID NOT NULL, 
+    token_hash VARCHAR(64) NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    idle_expires_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    last_seen_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    revoked_at TIMESTAMP WITH TIME ZONE, 
+    user_agent VARCHAR(255), 
+    CONSTRAINT pk_sessions PRIMARY KEY (id), 
+    CONSTRAINT fk_sessions_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
+    CONSTRAINT uq_sessions_token_hash UNIQUE (token_hash)
+);
+
+CREATE INDEX ix_sessions_user_id ON sessions (user_id);
+
+CREATE TABLE plans (
+    id VARCHAR(32) NOT NULL, 
+    name VARCHAR(64) NOT NULL, 
+    audience VARCHAR(128) NOT NULL, 
+    monthly_price INTEGER NOT NULL, 
+    annual_price INTEGER NOT NULL, 
+    max_companies INTEGER NOT NULL, 
+    monthly_ai_queries INTEGER NOT NULL, 
+    entitlements JSONB NOT NULL, 
+    sort INTEGER DEFAULT '0' NOT NULL, 
+    CONSTRAINT pk_plans PRIMARY KEY (id)
+);
+
+INSERT INTO plans (id, name, audience, monthly_price, annual_price, max_companies, monthly_ai_queries, entitlements, sort) VALUES ('free', 'Free', 'Try Parallx on two companies', 0, 0, 2, 10, '{"promise_tracker": "basic", "timelines": "basic", "evidence_viewer": true, "weekly_alerts": false, "daily_monitoring": false, "advanced_comparisons": false, "exports": false, "transcripts": false}'::jsonb, 0);
+
+INSERT INTO plans (id, name, audience, monthly_price, annual_price, max_companies, monthly_ai_queries, entitlements, sort) VALUES ('investor', 'Iix', 'For investors', 1900, 19000, 10, 100, '{"promise_tracker": "full", "timelines": "full", "evidence_viewer": true, "weekly_alerts": true, "daily_monitoring": false, "advanced_comparisons": false, "exports": false, "transcripts": false}'::jsonb, 1);
+
+INSERT INTO plans (id, name, audience, monthly_price, annual_price, max_companies, monthly_ai_queries, entitlements, sort) VALUES ('analyst', 'IIx', 'For analysts', 3900, 39000, 50, 500, '{"promise_tracker": "full", "timelines": "full", "evidence_viewer": true, "weekly_alerts": true, "daily_monitoring": true, "advanced_comparisons": true, "exports": true, "transcripts": "where_licensed"}'::jsonb, 2);
+
+CREATE TABLE subscriptions (
+    id UUID NOT NULL, 
+    user_id UUID NOT NULL, 
+    plan_id VARCHAR(32) NOT NULL, 
+    billing_provider VARCHAR(16) NOT NULL, 
+    provider_customer_id VARCHAR(255) NOT NULL, 
+    provider_subscription_id VARCHAR(255) NOT NULL, 
+    provider_price_id VARCHAR(255), 
+    status VARCHAR(24) NOT NULL, 
+    billing_interval VARCHAR(8) NOT NULL, 
+    current_period_start TIMESTAMP WITH TIME ZONE, 
+    current_period_end TIMESTAMP WITH TIME ZONE, 
+    cancel_at_period_end BOOLEAN DEFAULT 'false' NOT NULL, 
+    canceled_at TIMESTAMP WITH TIME ZONE, 
+    requires_action BOOLEAN DEFAULT 'false' NOT NULL, 
+    last_event_id VARCHAR(255), 
+    last_event_at TIMESTAMP WITH TIME ZONE, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_subscriptions PRIMARY KEY (id), 
+    CONSTRAINT ck_subscriptions_status CHECK (status in ('incomplete','incomplete_expired','trialing','active','past_due','canceled','unpaid','paused')), 
+    CONSTRAINT ck_subscriptions_billing_interval CHECK (billing_interval in ('month','year')), 
+    CONSTRAINT fk_subscriptions_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
+    CONSTRAINT fk_subscriptions_plan_id_plans FOREIGN KEY(plan_id) REFERENCES plans (id), 
+    CONSTRAINT uq_subscriptions_provider_subscription_id UNIQUE (provider_subscription_id)
+);
+
+CREATE INDEX ix_subscriptions_user_id ON subscriptions (user_id);
+
+CREATE TABLE user_company_access (
+    id BIGSERIAL NOT NULL, 
+    user_id UUID NOT NULL, 
+    company_id BIGINT NOT NULL, 
+    first_researched_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    access_source VARCHAR(16) NOT NULL, 
+    status VARCHAR(16) NOT NULL, 
+    CONSTRAINT pk_user_company_access PRIMARY KEY (id), 
+    CONSTRAINT uq_user_company_access_user_id_company_id UNIQUE (user_id, company_id), 
+    CONSTRAINT ck_user_company_access_status CHECK (status in ('pending','active','refunded')), 
+    CONSTRAINT ck_user_company_access_access_source CHECK (access_source in ('free_credit','plan','staff')), 
+    CONSTRAINT fk_user_company_access_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
+    CONSTRAINT fk_user_company_access_company_id_companies FOREIGN KEY(company_id) REFERENCES companies (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_user_company_access_user_id_last_accessed_at ON user_company_access (user_id, last_accessed_at);
+
+CREATE TABLE usage_ledger (
+    id BIGSERIAL NOT NULL, 
+    user_id UUID NOT NULL, 
+    kind VARCHAR(24) NOT NULL, 
+    quantity INTEGER NOT NULL, 
+    company_id BIGINT, 
+    subscription_id UUID, 
+    period_start TIMESTAMP WITH TIME ZONE, 
+    period_end TIMESTAMP WITH TIME ZONE, 
+    idempotency_key VARCHAR(160), 
+    detail JSONB, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_usage_ledger PRIMARY KEY (id), 
+    CONSTRAINT ck_usage_ledger_kind CHECK (kind in ('free_company_credit','paid_company','ai_query','period_reset','refund')), 
+    CONSTRAINT fk_usage_ledger_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE, 
+    CONSTRAINT fk_usage_ledger_company_id_companies FOREIGN KEY(company_id) REFERENCES companies (id) ON DELETE SET NULL, 
+    CONSTRAINT fk_usage_ledger_subscription_id_subscriptions FOREIGN KEY(subscription_id) REFERENCES subscriptions (id) ON DELETE SET NULL, 
+    CONSTRAINT uq_usage_ledger_idempotency_key UNIQUE (idempotency_key)
+);
+
+CREATE INDEX ix_usage_ledger_user_id_kind_created_at ON usage_ledger (user_id, kind, created_at);
+
+CREATE TABLE billing_events (
+    id VARCHAR(255) NOT NULL, 
+    provider VARCHAR(16) NOT NULL, 
+    type VARCHAR(64) NOT NULL, 
+    event_created_at TIMESTAMP WITH TIME ZONE, 
+    processed_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    outcome VARCHAR(16) NOT NULL, 
+    CONSTRAINT pk_billing_events PRIMARY KEY (id)
+);
+
+CREATE TABLE idempotency_keys (
+    id BIGSERIAL NOT NULL, 
+    user_id UUID NOT NULL, 
+    scope VARCHAR(32) NOT NULL, 
+    key VARCHAR(128) NOT NULL, 
+    response JSONB NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    CONSTRAINT pk_idempotency_keys PRIMARY KEY (id), 
+    CONSTRAINT uq_idempotency_keys_user_id_scope_key UNIQUE (user_id, scope, key), 
+    CONSTRAINT fk_idempotency_keys_user_id_users FOREIGN KEY(user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE rate_limits (
+    bucket VARCHAR(200) NOT NULL, 
+    window_start TIMESTAMP WITH TIME ZONE NOT NULL, 
+    count INTEGER DEFAULT '0' NOT NULL, 
+    CONSTRAINT pk_rate_limits PRIMARY KEY (bucket, window_start)
+);
+
+UPDATE alembic_version SET version_num='0018' WHERE alembic_version.version_num = '0017';
+
 COMMIT;

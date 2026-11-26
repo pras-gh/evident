@@ -21,7 +21,8 @@ from parallx_memory.projection import (Cited, CitedEvidence, Filing,
                                        ProjectedCards, project_cards)
 from parallx_parser.anchors import paragraph_page
 
-from ..deps import get_company, get_db
+from ..deps import get_db
+from ..access import get_company
 from ..schemas import (CardChangeOut, CardDeltaOut, CardDetailOut,
                        CardEvidenceOut, CardFactOut, CardRevisionOut,
                        MemoryCardOut)
