@@ -21,7 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from parallx_db import Company, Filing, FinancialFact
 
-from ..deps import get_company, get_db
+from ..deps import get_db
+from ..access import get_company
 from ..schemas import (FilingOut, FinancialCellOut, FinancialColumnOut, FinancialRowOut,
                        FinancialsOut)
 

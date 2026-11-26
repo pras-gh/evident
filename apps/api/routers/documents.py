@@ -24,7 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from parallx_db import Chunk, Company, Document, DocumentPage, store
 from parallx_parser.anchors import chunk_anchor, paragraph_page, split_chunk
 
-from ..deps import get_company, get_db
+from ..deps import get_db
+from ..access import document_access, get_company
 from ..schemas import (BoundingBox, CompanyDocumentsOut, DocumentBlockOut,
                        DocumentDetailOut, DocumentPageOut, DocumentPagesOut,
                        DocumentSummaryOut, PageOut, PageSummaryOut)
@@ -142,7 +143,7 @@ async def company_documents(
     return CompanyDocumentsOut(ticker=company.ticker, company=company.name, documents=out)
 
 
-@router.get("/document/{document_id}", response_model=DocumentDetailOut,
+@router.get("/document/{document_id}", response_model=DocumentDetailOut, dependencies=[Depends(document_access)],
             summary="A filing and its pages, for the viewer")
 async def document_detail(document_id: int,
                           db: AsyncSession = Depends(get_db)) -> DocumentDetailOut:
@@ -180,7 +181,7 @@ _ON_PAGE = text(
     "WHERE split_part(split_part(pid, '#', 1), '_', 1) = :page_s))")
 
 
-@router.get("/document/{document_id}/page/{page}", response_model=PageOut,
+@router.get("/document/{document_id}/page/{page}", response_model=PageOut, dependencies=[Depends(document_access)],
             summary="One page of a filing, with anchors and boxes")
 async def document_page(document_id: int, page: int,
                         db: AsyncSession = Depends(get_db)) -> PageOut:
@@ -228,7 +229,7 @@ def _file(relative: str | None, media_type: str, **kw) -> FileResponse:
     return FileResponse(path, media_type=media_type, headers=IMMUTABLE, **kw)
 
 
-@router.get("/document/{document_id}/page/{page}/image", summary="A page as rendered",
+@router.get("/document/{document_id}/page/{page}/image", summary="A page as rendered", dependencies=[Depends(document_access)],
             response_class=FileResponse)
 async def page_image(document_id: int, page: int,
                      size: str = Query("full", pattern="^(full|thumb)$"),
@@ -240,7 +241,7 @@ async def page_image(document_id: int, page: int,
     return _file(row.thumbnail_path if size == "thumb" else row.image_path, "image/webp")
 
 
-@router.get("/document/{document_id}/pdf", summary="The filing as a PDF",
+@router.get("/document/{document_id}/pdf", summary="The filing as a PDF", dependencies=[Depends(document_access)],
             response_class=FileResponse)
 async def document_pdf(document_id: int, db: AsyncSession = Depends(get_db)) -> FileResponse:
     document, _ = await _document(db, document_id)
@@ -248,7 +249,7 @@ async def document_pdf(document_id: int, db: AsyncSession = Depends(get_db)) -> 
                  filename=f"{document.accession}.pdf", content_disposition_type="inline")
 
 
-@router.get("/documents/{document_id}/pages", response_model=DocumentPagesOut,
+@router.get("/documents/{document_id}/pages", response_model=DocumentPagesOut, dependencies=[Depends(document_access)],
             summary="A filing as a paged reading view")
 async def document_pages(document_id: int,
                          db: AsyncSession = Depends(get_db)) -> DocumentPagesOut:

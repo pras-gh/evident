@@ -68,10 +68,27 @@ class User(Base):
                                           default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True)
+    #: null for an account made with a phone number alone
+    email: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
     name: Mapped[Optional[str]] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(16), default="member", server_default="member")
     created_at: Mapped[created_at]
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    # --- people who sign in (accounts); null for API-key-only users
+    #: the identity provider's id for them (Firebase uid)
+    auth_uid: Mapped[Optional[str]] = mapped_column(String(128), unique=True)
+    #: how they first signed in: google | password | phone
+    auth_provider: Mapped[Optional[str]] = mapped_column(String(16))
+    #: the email as a person, not a spelling: lower case, Gmail's dots and
+    #: anyone's +tags gone. One account — and one set of free credits — each.
+    email_normalized: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
+    email_verified: Mapped[bool] = mapped_column(Boolean, default=False,
+                                                 server_default="false")
+    #: E.164, "+919812345678"
+    phone: Mapped[Optional[str]] = mapped_column(String(20), unique=True)
+    last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    #: the billing provider's customer (Stripe), once they have checked out
+    billing_customer_id: Mapped[Optional[str]] = mapped_column(String(255), unique=True)
 
 
 class ApiKey(Base):

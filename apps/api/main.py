@@ -16,8 +16,10 @@ from sqlalchemy import text
 from parallx_ai.gateway import AllProvidersFailed, UnknownOrganization, UsageLimitExceeded
 from parallx_ai.gateway.logs import configure_logging
 
-from .routers import (ai_usage, analysis, ask, cards, documents, evidence, fetches,
+from .routers import (account, ai_usage, analysis, ask, billing, cards, documents,
+                      evidence, fetches,
                       graph, ingest, memory, search, sec, sync, timeline)
+from .errors import ApiError
 from .routers.search import SearchUnavailable
 
 API_VERSION = "1.0.0"
@@ -39,7 +41,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(account.router, prefix="/v1")
 app.include_router(ai_usage.router, prefix="/v1")
+app.include_router(billing.router, prefix="/v1")
 app.include_router(analysis.router, prefix="/v1")
 app.include_router(ask.router, prefix="/v1")
 app.include_router(cards.router, prefix="/v1")
@@ -91,6 +95,12 @@ async def _ai_unavailable(request: Request, exc: AllProvidersFailed) -> JSONResp
     return JSONResponse(status_code=503, content={
         "error": "ai_unavailable", "request_id": str(exc.request_id),
         "message": "No AI provider could answer right now. Try again shortly."})
+
+
+@app.exception_handler(ApiError)
+async def _api_error(request: Request, exc: ApiError) -> JSONResponse:
+    return JSONResponse(status_code=exc.status, content=exc.body(),
+                        headers={"WWW-Authenticate": "Bearer"} if exc.status == 401 else None)
 
 
 @app.exception_handler(SearchUnavailable)

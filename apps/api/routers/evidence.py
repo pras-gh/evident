@@ -35,6 +35,9 @@ from parallx_graph.taxonomy import DEFAULT_HIGHLIGHT, highlight_color
 from parallx_parser.anchors import paragraph_page
 
 from ..deps import get_db
+from ..access import accessible_chunks
+from ..errors import ApiError
+from ..viewer import Viewer, get_viewer
 from ..schemas import (CitationIn, EvidenceEntityOut, EvidenceOut, HighlightOut,
                        ResolvedCitation, ResolveIn, ResolveOut)
 from .documents import blocks_for
@@ -193,7 +196,12 @@ async def get_evidence(
     entity: str | None = Query(None, description="the entity this is evidence for: "
                                                  "scopes confidence and sets the colour"),
     db: AsyncSession = Depends(get_db),
+    viewer: Viewer = Depends(get_viewer),
 ) -> EvidenceOut:
+    if not await accessible_chunks(db, viewer, [chunk_id]) and \
+            await db.get(Chunk, chunk_id) is not None:
+        raise ApiError(403, "research_required",
+                       "Research this company to open its filings.")
     [result] = await resolve_citations(
         db, [CitationIn(chunk_id=chunk_id, paragraph_id=paragraph_id, entity=entity)])
     if not result.resolved:
@@ -203,5 +211,15 @@ async def get_evidence(
 
 @router.post("/evidence/resolve", response_model=ResolveOut,
              summary="Resolve every citation in an answer (up to 1,000)")
-async def resolve(req: ResolveIn, db: AsyncSession = Depends(get_db)) -> ResolveOut:
-    return ResolveOut(citations=await resolve_citations(db, req.citations))
+async def resolve(req: ResolveIn, db: AsyncSession = Depends(get_db),
+                  viewer: Viewer = Depends(get_viewer)) -> ResolveOut:
+    allowed = await accessible_chunks(db, viewer, list({c.chunk_id for c in req.citations}))
+    results = await resolve_citations(db, [c for c in req.citations if c.chunk_id in allowed])
+    out, it = [], iter(results)
+    for i, c in enumerate(req.citations):
+        if c.chunk_id in allowed:
+            out.append(next(it).model_copy(update={"index": i}))
+        else:
+            out.append(ResolvedCitation(index=i, resolved=False,
+                                        error="research this company to open its filings"))
+    return ResolveOut(citations=out)

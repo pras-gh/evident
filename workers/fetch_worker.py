@@ -55,6 +55,22 @@ def _update(url: str | None, fetch_id: int, **fields) -> None:
             setattr(row, k, v)
 
 
+def _settle(url: str | None, cik: str, *, ok: bool) -> None:
+    """Research waiting on this fetch: kept when it worked, refunded when it
+    did not — a failed research job costs nobody a credit."""
+    from parallx_db.accounts import settle_pending
+    try:
+        with session_scope(url) as db:
+            company_id = db.execute(select(Company.id).where(Company.cik == cik)).scalar()
+            if company_id is not None:
+                n = settle_pending(db, company_id, ok=ok)
+                if n:
+                    log.info("%s %d research access(es) for %s", "kept" if ok else "refunded",
+                             n, cik)
+    except Exception:
+        log.exception("settling research access for %s failed", cik)
+
+
 def run(fetch_id: int, *, url: str | None = None, render: bool = True,
         embed: bool = True) -> str:
     """Carry out one fetch; returns its final status. Never raises for a
@@ -94,10 +110,12 @@ def run(fetch_id: int, *, url: str | None = None, render: bool = True,
     except Exception as exc:
         log.exception("fetch %s (%s) failed", fetch_id, ticker)
         _update(url, fetch_id, status="failed", error=str(exc)[:500], finished_at=_now())
+        _settle(url, cik, ok=False)
         return "failed"
 
     _update(url, fetch_id, status="done", accession=filing.accession,
             form_type=filing.form_type, chunks=filing.chunks, finished_at=_now())
+    _settle(url, cik, ok=True)
     log.info("fetch %s: %s %s %s — %d chunks%s", fetch_id, ticker, filing.form_type,
              filing.accession, filing.chunks, ", searchable" if embed else "")
 

@@ -22,7 +22,8 @@ from parallx_db import Chunk, Company, Document, Entity, EntityMention
 from parallx_graph import timeline as engine
 from parallx_parser.anchors import paragraph_page, split_chunk
 
-from ..deps import get_company, get_db
+from ..deps import get_db
+from ..access import get_company
 from ..schemas import (CompanyTimelineOut, TimelineEntryOut, TimelineEvidenceOut,
                        TimelineFilingOut, TimelineFilingRef, TimelineKind,
                        TimelineThresholds, TimelineTopicOut)

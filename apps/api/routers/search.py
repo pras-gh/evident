@@ -28,6 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from parallx_db import Chunk, Company, Document
 
 from ..deps import get_db, get_gateway
+from ..errors import ApiError
+from ..viewer import Viewer, get_viewer
 from ..schemas import (SearchCompanyOut, SearchHitOut, SearchRequest, SearchResponse,
                        SearchScopeOut)
 
@@ -61,10 +63,12 @@ async def _understand(query: str, gw):
 
 
 async def _fetch_uncovered(db: AsyncSession, mentioned: list[SearchCompanyOut],
-                           on_record) -> None:
+                           on_record, grant=None) -> None:
     """For each named company with no filings here: on record after all under
     another ticker (GOOG for GOOGL) — then covered; on EDGAR — then fetched, or
-    joined to the fetch under way; otherwise marked for the page to explain."""
+    joined to the fetch under way; otherwise marked for the page to explain.
+    `grant(sec)` is asked first, and a company it refuses (no credit left) is
+    not fetched."""
     from parallx_parser import edgar
     from .fetches import request_fetch
 
@@ -91,8 +95,12 @@ async def _fetch_uncovered(db: AsyncSession, mentioned: list[SearchCompanyOut],
             c = by_cik[sec.cik]
             m.covered, m.name, m.ticker = True, c.name, c.ticker
         else:
-            f = await request_fetch(db, cik=sec.cik, ticker=sec.ticker, name=sec.name)
             m.ticker = m.ticker or sec.ticker
+            if grant is not None:
+                m.access = await grant(sec)
+                if m.access == "upgrade_required":
+                    continue
+            f = await request_fetch(db, cik=sec.cik, ticker=sec.ticker, name=sec.name)
             m.fetch, m.fetch_id, m.fetch_error = f.status, f.id, f.error
 
 
@@ -125,7 +133,7 @@ def _mentions(query: str, on_record, intent) -> list[SearchCompanyOut]:
 
 @router.post("/search", response_model=SearchResponse, summary="Semantic search")
 async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
-                 gw=Depends(get_gateway)) -> SearchResponse:
+                 gw=Depends(get_gateway), viewer: Viewer = Depends(get_viewer)) -> SearchResponse:
     """Nearest chunks from the companies the query is about, each carrying the
     citation it came from.
 
@@ -152,16 +160,55 @@ async def search(req: SearchRequest, db: AsyncSession = Depends(get_db),
 
     intent, understood_by = await _understand(req.query, gw)
     mentioned = _mentions(req.query, on_record, intent)
-    await _fetch_uncovered(db, mentioned, on_record)
+
+    # Researching a company spends a credit the first time (account.start_research);
+    # a company the plan has no room for is not searched, nor fetched.
+    from .account import start_research
+    paywall: dict | None = None
+
+    async def research(company: Company, has_docs: bool) -> str:
+        nonlocal paywall
+        try:
+            r = await start_research(db, viewer, company, has_docs=has_docs)
+        except ApiError as exc:
+            if exc.error != "upgrade_required":
+                raise
+            if paywall is None:
+                paywall = {"reason": exc.extra.get("reason"), "message": exc.message,
+                           "usage": exc.extra.get("usage"), "companies": []}
+            paywall["companies"].append(company.name)
+            return "upgrade_required"
+        return r.outcome
+
+    async def grant(sec) -> str:
+        from parallx_db.repositories import upsert_company
+        company = await db.run_sync(lambda s_: upsert_company(
+            s_, cik=sec.cik, name=sec.name, ticker=sec.ticker))
+        return await research(company, False)
+
+    by_ticker = {c.ticker: c for c in (await db.execute(select(Company).where(
+        Company.ticker.in_([m.ticker for m in mentioned if m.covered and m.ticker] +
+                           ([req.ticker.upper()] if req.ticker else []))))).scalars()}
+    for m in mentioned:
+        if m.covered and m.ticker in by_ticker:
+            m.access = await research(by_ticker[m.ticker], True)
+    await _fetch_uncovered(db, mentioned, on_record, grant)
     if mentioned:
-        scope = SearchScopeOut(tickers=[m.ticker for m in mentioned if m.covered],
-                               reason="named")
+        scope = SearchScopeOut(tickers=[m.ticker for m in mentioned if m.covered
+                                        and m.access != "upgrade_required"], reason="named")
     elif req.ticker:
-        scope = SearchScopeOut(tickers=[req.ticker.upper()], reason="filter")
-    else:
+        company = by_ticker.get(req.ticker.upper())
+        ok = company is not None and await research(company, True) != "upgrade_required"
+        scope = SearchScopeOut(tickers=[req.ticker.upper()] if ok else [], reason="filter")
+    elif viewer.is_staff:
         scope = SearchScopeOut(tickers=None, reason="all")
+    else:
+        # naming no company searches the ones this person has researched
+        from parallx_db.accounts import researched_companies
+        mine = await db.run_sync(lambda s_: researched_companies(s_, viewer.user_id, limit=500))
+        scope = SearchScopeOut(tickers=[c.ticker for c, _ in mine if c.ticker], reason="all")
     topic = (intent.topic.strip() or None) if intent else None
-    about = dict(query=req.query, companies=mentioned, scope=scope, topic=topic,
+    about = dict(query=req.query, companies=mentioned, scope=scope, topic=topic, paywall=paywall,
                  understood_by=understood_by,
                  kind=intent.kind if intent else None,
                  wants_filings=bool(intent and intent.wants_filings),
