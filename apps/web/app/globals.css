@@ -1184,3 +1184,35 @@ a.bars-row:hover{background:var(--surface-2)}
 @media (prefers-reduced-motion:reduce){
   .modal-scrim,.modal-box,.welcome{animation:none}
 }
+
+/* ── motion: one set of timings, pages that cross-fade instead of blink ── */
+:root{--ease-out:cubic-bezier(.2,.8,.2,1);--dur-1:140ms;--dur-2:240ms;--dur-3:420ms}
+@view-transition{navigation:auto}
+.apphead{view-transition-name:apphead}
+.auth-card{view-transition-name:auth-card}
+.dash-search,.srch-form{view-transition-name:search-box}
+::view-transition-old(root){animation:var(--dur-2) var(--ease-out) both vt-out}
+::view-transition-new(root){animation:var(--dur-3) var(--ease-out) both vt-in}
+::view-transition-group(*){animation-duration:var(--dur-3);animation-timing-function:var(--ease-out)}
+@keyframes vt-out{to{opacity:0}}
+@keyframes vt-in{from{opacity:0;transform:translateY(6px)}}
+
+/* ── skeletons: the shape of what is coming ── */
+.skel{max-width:1080px;margin:0 auto;padding:28px 24px 64px;display:grid;gap:18px}
+.skel-head{display:flex;gap:14px;align-items:center}
+.skel-stack{flex:1;display:grid;gap:8px}
+.skel-logo{width:44px;height:44px;border-radius:12px}
+.skel-input{height:44px;max-width:720px;border-radius:12px}
+.skel-cards{display:grid;gap:12px}
+.skel-card{display:grid;gap:10px;padding:18px;border:1px solid var(--line);border-radius:14px;
+  background:var(--surface);animation:rise-in var(--dur-3) var(--ease-out) both}
+.skel-bar{height:12px;border-radius:6px;background:linear-gradient(90deg,
+  rgba(255,255,255,.04) 0%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 100%);
+  background-size:200% 100%;animation:skel-shine 1.4s linear infinite}
+.skel-thin{height:8px;opacity:.75}
+@keyframes skel-shine{from{background-position:200% 0}to{background-position:-200% 0}}
+@media (max-width:760px){.skel{padding:20px 16px 48px}}
+@media (prefers-reduced-motion:reduce){
+  @view-transition{navigation:none}
+  .skel-card,.skel-bar{animation:none}
+}
