@@ -4,6 +4,7 @@
 #
 #   tools/dev.sh api     FastAPI on :8000
 #   tools/dev.sh web     Next.js on :3000, pointed at the API
+#   tools/dev.sh sync    the S&P 500 sync: backfill, then new filings every 10 min
 set -e
 cd "$(dirname "$0")/.."
 # Parsed as KEY=value data, not sourced as shell: connection strings carry
@@ -18,12 +19,15 @@ if [ -f .env ]; then
 fi
 
 case "$1" in
-  api)
+  api|sync)
     : "${DATABASE_URL:?set DATABASE_URL in .env — tools/db.sh up creates a database and prints it}"
     [ -x .venv/bin/python ] || { echo "dev: no .venv — run tools/setup.sh" >&2; exit 1; }
     export PYTHONPATH="packages/db:packages/parser:packages/memory:packages/retrieval:packages/graph:packages/ai:apps:.${PYTHONPATH:+:$PYTHONPATH}"
     # Fail here, with the fix, rather than on the first request.
     .venv/bin/python tools/check_db.py || exit 1
+    if [ "$1" = sync ]; then
+      exec .venv/bin/python -m workers.sync_worker watch
+    fi
     exec .venv/bin/uvicorn api.main:app --port "${API_PORT:-8000}" \
       --reload --reload-dir apps --reload-dir packages
     ;;
@@ -33,7 +37,7 @@ case "$1" in
     exec npx next dev --port "${WEB_PORT:-3000}"
     ;;
   *)
-    echo "usage: tools/dev.sh api|web" >&2
+    echo "usage: tools/dev.sh api|web|sync" >&2
     exit 2
     ;;
 esac

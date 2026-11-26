@@ -91,11 +91,19 @@ cd apps/web && npm test
 
 | Page | What it shows | Backed by |
 | --- | --- | --- |
-| `/` | companies with memory | `GET /v1/companies` |
+| `/` | every company on record, by sector, with S&P 500 coverage | `GET /v1/companies`, `GET /v1/sync` |
 | `/memory/{ticker}` | memory cards and recent changes | `GET /v1/companies/{t}`, `/cards`, `/cards/{kind}`, `/v1/company/{t}/timeline` |
 | `/timeline/{ticker}` | what changed between filings | `GET /v1/company/{t}/timeline` |
 | `/admin/ai-usage` | AI spend, failures and limits — platform admins | `GET /v1/ai-usage/summary` |
 | `/evidence/{chunkId}` | the filing's pages, at the cited paragraph | `GET /v1/evidence/{id}`, `POST /v1/evidence/resolve`, `GET /v1/document/{id}` + page images |
+
+## S&P 500 sync
+
+`tools/dev.sh sync` keeps the S&P 500 current. It backfills each company's
+latest annual report, polls EDGAR's latest-filings feed every 10 minutes, and
+fetches new 10-Ks and 10-Qs from tracked companies, aiming for each to be
+searchable within 30 minutes of filing. `python -m workers.sync_worker status`
+and `GET /v1/sync` report coverage and freshness. See `docs/sync.md`.
 
 ## Layers
 
