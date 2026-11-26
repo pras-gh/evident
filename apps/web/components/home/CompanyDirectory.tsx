@@ -14,6 +14,11 @@ function fold(s: string): string {
 /** An id for a sector heading; ids cannot hold spaces. */
 const slug = (sector: string) => `sector-${fold(sector).replace(/ /g, "-")}`;
 
+/** Filings downloaded and still being embedded. A company whose filings
+ * are only indexed (downloaded on demand) is not "indexing": it is waiting
+ * for someone to ask. */
+const indexing = (c: CompanyListItem) => c.document_count > 0 && !c.searchable;
+
 function matches(c: CompanyListItem, q: string): boolean {
   if (!q) return true;
   const ticker = (c.ticker ?? "").toLowerCase();
@@ -91,11 +96,11 @@ export function CompanyDirectory({ companies }: { companies: CompanyListItem[] }
                   <a
                     className="dir-co"
                     href={`/memory/${c.ticker!.toLowerCase()}`}
-                    title={c.searchable ? c.name : `${c.name} — filings fetched, being indexed for search`}
+                    title={indexing(c) ? `${c.name} — filings downloaded, being indexed for search` : c.name}
                   >
                     <span className="dir-tk">{c.ticker}</span>
                     <span className="dir-name">{c.display_name}</span>
-                    {!c.searchable && <span className="dir-indexing" aria-label="indexing" />}
+                    {indexing(c) && <span className="dir-indexing" aria-label="indexing" />}
                   </a>
                 </li>
               ))}

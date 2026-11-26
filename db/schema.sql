@@ -844,4 +844,79 @@ UPDATE organizations SET slug = 'parallx-internal' WHERE slug = 'evident-interna
 
 UPDATE alembic_version SET version_num='0015' WHERE alembic_version.version_num = '0014';
 
+
+ALTER TABLE company_fetches ADD COLUMN source VARCHAR(16) DEFAULT 'search' NOT NULL;
+
+ALTER TABLE company_fetches ADD CONSTRAINT ck_company_fetches_source CHECK (source in ('search','backfill','watch'));
+
+CREATE TABLE sync_runs (
+    id BIGSERIAL NOT NULL, 
+    kind VARCHAR(16) NOT NULL, 
+    started_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    finished_at TIMESTAMP WITH TIME ZONE, 
+    seen INTEGER DEFAULT '0' NOT NULL, 
+    "new" INTEGER DEFAULT '0' NOT NULL, 
+    fetched INTEGER DEFAULT '0' NOT NULL, 
+    failed INTEGER DEFAULT '0' NOT NULL, 
+    error TEXT, 
+    CONSTRAINT pk_sync_runs PRIMARY KEY (id), 
+    CONSTRAINT ck_sync_runs_kind CHECK (kind in ('poll','sweep'))
+);
+
+CREATE INDEX ix_sync_runs_kind_started_at ON sync_runs (kind, started_at);
+
+UPDATE alembic_version SET version_num='0016' WHERE alembic_version.version_num = '0015';
+
+
+ALTER TABLE companies ADD COLUMN filings_indexed_at TIMESTAMP WITH TIME ZONE;
+
+ALTER TABLE companies ADD COLUMN facts_loaded_at TIMESTAMP WITH TIME ZONE;
+
+CREATE TABLE filings (
+    id BIGSERIAL NOT NULL, 
+    company_id BIGINT NOT NULL, 
+    accession VARCHAR(32) NOT NULL, 
+    form_type VARCHAR(16) NOT NULL, 
+    filed_date DATE NOT NULL, 
+    accepted_at TIMESTAMP WITH TIME ZONE NOT NULL, 
+    report_date DATE, 
+    primary_document TEXT, 
+    description TEXT, 
+    items VARCHAR(128), 
+    size INTEGER, 
+    is_xbrl BOOLEAN DEFAULT 'false' NOT NULL, 
+    first_seen_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    alerted_at TIMESTAMP WITH TIME ZONE, 
+    CONSTRAINT pk_filings PRIMARY KEY (id), 
+    CONSTRAINT fk_filings_company_id_companies FOREIGN KEY(company_id) REFERENCES companies (id) ON DELETE CASCADE, 
+    CONSTRAINT uq_filings_accession UNIQUE (accession)
+);
+
+CREATE INDEX ix_filings_company_id_accepted_at ON filings (company_id, accepted_at);
+
+CREATE INDEX ix_filings_accepted_at ON filings (accepted_at);
+
+CREATE TABLE financial_facts (
+    id BIGSERIAL NOT NULL, 
+    company_id BIGINT NOT NULL, 
+    concept VARCHAR(160) NOT NULL, 
+    unit VARCHAR(32) NOT NULL, 
+    period_start DATE, 
+    period_end DATE NOT NULL, 
+    value NUMERIC(28, 6) NOT NULL, 
+    accession VARCHAR(32) NOT NULL, 
+    form VARCHAR(16) NOT NULL, 
+    filed DATE NOT NULL, 
+    fiscal_year SMALLINT, 
+    fiscal_period VARCHAR(4), 
+    frame VARCHAR(16) NOT NULL, 
+    CONSTRAINT pk_financial_facts PRIMARY KEY (id), 
+    CONSTRAINT uq_financial_facts_company_id_concept_unit_frame UNIQUE (company_id, concept, unit, frame), 
+    CONSTRAINT fk_financial_facts_company_id_companies FOREIGN KEY(company_id) REFERENCES companies (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_financial_facts_company_id_period_end ON financial_facts (company_id, period_end);
+
+UPDATE alembic_version SET version_num='0017' WHERE alembic_version.version_num = '0016';
+
 COMMIT;

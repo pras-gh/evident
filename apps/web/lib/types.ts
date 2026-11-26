@@ -113,24 +113,63 @@ export interface SyncRun {
   error: string | null;
 }
 
+/** A filing in the index: what EDGAR lists, whether or not its text is loaded. */
+export interface Filing {
+  ticker: string | null;
+  company: string;
+  cik: string;
+  accession: string;
+  form_type: string;
+  filed_date: string;
+  accepted_at: string;
+  report_date: string | null;
+  items: string | null;
+  /** in words: "results of operations", "for the period ended 2026-10-26" */
+  about: string | null;
+  description: string | null;
+  /** the filing on sec.gov */
+  url: string;
+  /** found as news by a poll */
+  alerted: boolean;
+  minutes_after_filing: number | null;
+  /** its text is in Parallx: searchable, citable to a paragraph */
+  loaded: boolean;
+}
+
 /** GET /v1/sync — the S&P 500 as Parallx holds it. */
 export interface SyncStatus {
   tracked: number;
-  with_annual_report: number;
+  /** filing lists read (Submissions API) */
+  indexed: number;
+  /** statements loaded (Company Facts API) */
+  with_financials: number;
+  /** some filing's text downloaded */
+  loaded: number;
   searchable: number;
   pending_chunks: number;
-  backfill_failures_last_day: number;
   last_poll: SyncRun | null;
   last_sweep: SyncRun | null;
-  latest_filings: {
-    ticker: string | null;
-    name: string;
-    form_type: string | null;
-    accession: string | null;
-    accepted_at: string | null;
-    fetched_at: string | null;
-    minutes_after_filing: number | null;
-  }[];
+  latest_filings: Filing[];
+}
+
+export interface FinancialCell {
+  value: number;
+  concept: string;
+  accession: string;
+  form: string;
+  filed: string;
+  /** a fiscal Q4: the year less its first three quarters */
+  derived: boolean;
+  url: string;
+}
+
+/** GET /v1/companies/{t}/financials */
+export interface Financials {
+  ticker: string | null;
+  period: "annual" | "quarterly";
+  columns: { label: string; period_start: string | null; period_end: string }[];
+  rows: { key: string; label: string; unit: string; cells: (FinancialCell | null)[] }[];
+  loaded_at: string | null;
 }
 
 // ------------------------------------------------------------ evidence viewer

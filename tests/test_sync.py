@@ -593,6 +593,9 @@ class Api(_Edgar, unittest.TestCase):
                           eight_k["loaded"]), ("NVDA", "results of operations", True, False))
         self.assertEqual(eight_k["url"], "https://www.sec.gov/Archives/edgar/data/1045810/"
                                          "000104581026000100/nvda-8k.htm")
+        recent = self.call("/v1/filings/latest?days=14")
+        self.assertEqual([f["accession"] for f in recent], [NEW_10Q, NEW_8K],
+                         "news, not the history a backfill indexed")
         mine = self.call("/v1/companies/NVDA/filings")
         self.assertEqual([f["accession"] for f in mine], [NEW_10Q, NEW_8K, NVDA_10K, NVDA_10Q])
 

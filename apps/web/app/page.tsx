@@ -1,31 +1,28 @@
 import { AppHeader } from "@/components/brand/AppHeader";
 import { CompanyDirectory } from "@/components/home/CompanyDirectory";
+import { JustFiled } from "@/components/home/JustFiled";
 import { redirect } from "next/navigation";
-import { getCompanies, getSyncStatus } from "@/lib/api";
+import { getCompanies, getLatestFilings, getSyncStatus } from "@/lib/api";
+import { ago } from "@/lib/format";
 import type { SyncStatus } from "@/lib/types";
 
 export const revalidate = 60;
 
-function ago(iso: string, now = Date.now()): string {
-  const min = Math.round((now - Date.parse(iso)) / 60000);
-  if (min < 1) return "just now";
-  if (min < 60) return `${min} min ago`;
-  const h = Math.round(min / 60);
-  return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} days ago`;
-}
-
 /** How much of the S&P 500 is here, and how current. Nothing, before a sync. */
 function Coverage({ sync }: { sync: SyncStatus | null }) {
-  if (!sync || (!sync.with_annual_report && !sync.last_poll)) return null;
+  if (!sync || (!sync.indexed && !sync.last_poll)) return null;
   const poll = sync.last_poll;
   return (
     <p className="dir-status">
       <span className="dir-status-k">S&amp;P 500</span>
       <span>
-        <b>{sync.searchable}</b> of {sync.tracked} searchable
+        <b>{sync.indexed}</b> of {sync.tracked} companies
       </span>
-      {sync.with_annual_report > sync.searchable && (
-        <span>{sync.with_annual_report - sync.searchable} indexing</span>
+      <span>{sync.with_financials} with financials</span>
+      {sync.loaded > 0 && (
+        <span title="Companies whose filings' full text is in Parallx: searchable, citable to the paragraph">
+          {sync.loaded} with full filings
+        </span>
       )}
       {poll && (
         <span title={new Date(poll.started_at).toUTCString()}>
@@ -57,7 +54,10 @@ export default async function Home() {
   }
   const withTicker = companies.filter((c) => c.ticker);
   if (withTicker.length === 1) redirect(`/memory/${withTicker[0].ticker!.toLowerCase()}`);
-  const sync = await getSyncStatus().catch(() => null);
+  const [sync, latest] = await Promise.all([
+    getSyncStatus().catch(() => null),
+    getLatestFilings(8).catch(() => []),
+  ]);
 
   return (
     <>
@@ -67,10 +67,11 @@ export default async function Home() {
           <h1 className="ev-title">Companies</h1>
           <Coverage sync={sync} />
         </header>
+        <JustFiled filings={latest} />
         {withTicker.length === 0 ? (
           <p className="tl2-coverage">
-            No companies yet. Start the sync with{" "}
-            <code>python -m workers.sync_worker watch</code>, or search for one by name.
+            No companies yet. Start the sync with <code>tools/dev.sh sync</code>, or search for
+            one by name.
           </p>
         ) : (
           <CompanyDirectory companies={withTicker} />

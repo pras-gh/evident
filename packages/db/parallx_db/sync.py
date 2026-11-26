@@ -6,6 +6,8 @@ function so the two cannot disagree. Sync only: the API runs it with
 """
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session, aliased
 
@@ -24,7 +26,8 @@ def _run(r: SyncRun | None) -> dict | None:
 
 
 def latest_filings(db: Session, *, ciks: list[str] | None = None, company_id: int | None = None,
-                   forms: list[str] | None = None, limit: int = 20) -> list[dict]:
+                   forms: list[str] | None = None, since: datetime | None = None,
+                   limit: int = 20) -> list[dict]:
     """The newest filings in the index, with whether their text is loaded and
     how long after EDGAR accepted them Parallx knew of them."""
     loaded = select(Document.id).where(Document.accession == Filing.accession).exists()
@@ -37,6 +40,8 @@ def latest_filings(db: Session, *, ciks: list[str] | None = None, company_id: in
         stmt = stmt.where(Filing.company_id == company_id)
     if forms:
         stmt = stmt.where(Filing.form_type.in_(forms))
+    if since is not None:
+        stmt = stmt.where(Filing.accepted_at >= since)
     return [{
         "ticker": ticker, "company": name, "cik": cik, "accession": f.accession,
         "form_type": f.form_type, "filed_date": f.filed_date, "accepted_at": f.accepted_at,

@@ -16,6 +16,8 @@ import type {
   SearchOutcome,
   SearchResponse,
   SyncStatus,
+  Filing,
+  Financials,
 } from "./types";
 
 const BASE = process.env.API_URL ?? "http://localhost:8000/v1";
@@ -28,6 +30,13 @@ async function get<T>(path: string, revalidate = 60): Promise<T> {
 
 export const getCompanies = () => get<CompanyListItem[]>(`/companies`);
 export const getSyncStatus = () => get<SyncStatus>(`/sync`, 30);
+/** What was filed lately: news, not the history a backfill indexes. */
+export const getLatestFilings = (limit = 8, days = 14) =>
+  get<Filing[]>(`/filings/latest?limit=${limit}&days=${days}&forms=10-K,10-Q,8-K`, 30);
+export const getCompanyFilings = (t: string, limit = 12) =>
+  get<Filing[]>(`/companies/${t}/filings?limit=${limit}`, 60);
+export const getFinancials = (t: string, period: "annual" | "quarterly" = "annual") =>
+  get<Financials>(`/companies/${t}/financials?period=${period}&periods=${period === "annual" ? 5 : 8}`, 300);
 export const getCompany   = (t: string) => get<MemorySummary>(`/companies/${t}`);
 export const getCards     = (t: string) => get<MemoryCard[]>(`/companies/${t}/cards`);
 export const getCard      = (t: string, kind: string) =>

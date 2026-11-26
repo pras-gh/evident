@@ -10,15 +10,15 @@ import type { CompanyListItem } from "@/lib/types";
 afterEach(cleanup);
 
 const co = (ticker: string, display_name: string, sector: string | null,
-            searchable = true): CompanyListItem => ({
+            searchable = true, document_count = 1): CompanyListItem => ({
   ticker, display_name, name: display_name.toUpperCase(), cik: ticker.padStart(10, "0"),
-  document_count: 1, latest_filing: "2026-02-25", sector, searchable,
+  document_count, latest_filing: "2026-02-25", sector, searchable,
 });
 
 const ALL = [
   co("NVDA", "Nvidia", "Information Technology"),
   co("AAPL", "Apple Inc.", "Information Technology", false),
-  co("MCO", "Moody's Corporation", "Financials"),
+  co("MCO", "Moody's Corporation", "Financials", false, 0),
   co("WCC", "Wesco International", null),
 ];
 
@@ -39,6 +39,9 @@ describe("the company directory", () => {
     expect(within(screen.getByRole("link", { name: /Apple/ })).getByLabelText("indexing"))
       .toBeTruthy();
     expect(within(screen.getByRole("link", { name: /Nvidia/ })).queryByLabelText("indexing"))
+      .toBeNull();
+    // indexed from EDGAR, text not downloaded: waiting to be asked about, not indexing
+    expect(within(screen.getByRole("link", { name: /Moody/ })).queryByLabelText("indexing"))
       .toBeNull();
   });
 

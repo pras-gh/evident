@@ -47,9 +47,14 @@ def _forms(forms: str | None) -> list[str] | None:
             summary="The newest filings, across companies")
 async def latest(limit: int = Query(20, ge=1, le=200),
                  forms: str | None = Query(None, description="e.g. 10-K,10-Q,8-K"),
+                 days: int | None = Query(None, ge=1, le=3650,
+                                          description="accepted within this many days"),
                  db: AsyncSession = Depends(get_db)) -> list[FilingOut]:
+    from datetime import datetime, timedelta, timezone
     from parallx_db.sync import latest_filings
-    rows = await db.run_sync(lambda s: latest_filings(s, forms=_forms(forms), limit=limit))
+    since = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+    rows = await db.run_sync(lambda s: latest_filings(s, forms=_forms(forms), since=since,
+                                                      limit=limit))
     return [filing_out(r) for r in rows]
 
 
