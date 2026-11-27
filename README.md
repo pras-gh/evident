@@ -71,6 +71,9 @@ it. To use another PostgreSQL instead, put its URL in `.env` as
 `DATABASE_URL` — see `.env.example` for every setting — and run
 `cd db && ../.venv/bin/alembic upgrade head`. `tools/dev.sh api` checks the
 database before starting and says what is wrong if it cannot serve from it.
+When `.env` points at the private cluster and it isn't running (it stops when
+whatever started it exits, a restart of the Claude app included), `tools/dev.sh
+api` starts it first; any other database is left alone.
 
 Optional, per feature: `SEC_USER_AGENT` to ingest from EDGAR,
 `GEMINI_API_KEY` / `GROQ_API_KEY` / `ANTHROPIC_API_KEY` for AI features (routed by
