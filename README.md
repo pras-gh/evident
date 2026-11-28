@@ -51,7 +51,7 @@ tools/dev.sh web    # http://localhost:3000       (another)
 `tools/setup.sh` is three steps you can also run alone:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt -c constraints.txt
 tools/db.sh up      # create, start and migrate PostgreSQL on :5434; writes .env
 tools/db.sh seed    # three NVIDIA 10-Ks, keyword-extracted — no API key needed
 ```

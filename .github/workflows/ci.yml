@@ -43,8 +43,11 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: requirements*.txt
-      - run: pip install -r requirements-dev.txt
+          cache-dependency-path: |
+            requirements*.txt
+            constraints.txt
+      # the versions the image runs (constraints.txt), so the tests cover them
+      - run: pip install -r requirements-dev.txt -c constraints.txt
       # the render worker's tests drive a real browser
       - run: python -m playwright install --with-deps chromium
       - name: Migrations, from an empty database
@@ -116,6 +119,12 @@ jobs:
           docker run --rm --network host -e DATABASE_URL=$PG_URL/parallx parallx-backend:ci migrate
           docker run -d --name api --network host -e APP_ENV=development \
             -e DATABASE_URL=$PG_URL/parallx -e FILING_STORE=/tmp/filings parallx-backend:ci api
-          curl -fsS --retry 30 --retry-connrefused --retry-delay 1 localhost:8080/ready
+          # ready within a minute, or the reason is in the logs below
+          for _ in $(seq 60); do
+            curl -fsS localhost:8080/ready && exit 0
+            [ "$(docker inspect -f '{{.State.Running}}' api)" = true ] || break
+            sleep 1
+          done
+          exit 1
       - if: always()
         run: docker logs api || true

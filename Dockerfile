@@ -17,15 +17,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_ROOT_USER_ACTION=ignore \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
-# Dependencies first, so a code change doesn't reinstall them. Chromium is for
-# the render worker (page images and paragraph boxes); a filing it can't
-# render shows as text instead.
-COPY requirements.txt ./
-RUN pip install -r requirements.txt \
+# Dependencies first, so a code change doesn't reinstall them, at the versions
+# the tests passed on (constraints.txt). Chromium is for the render worker
+# (page images and paragraph boxes); a filing it can't render shows as text.
+# Playwright's own driver needs libatomic before it can install anything else.
+COPY requirements.txt constraints.txt ./
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libatomic1 \
+ && pip install -r requirements.txt -c constraints.txt \
  && python -m playwright install --with-deps chromium \
  && rm -rf /var/lib/apt/lists/*
 
