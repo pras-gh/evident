@@ -23,6 +23,15 @@ case "$1" in
     : "${DATABASE_URL:?set DATABASE_URL in .env — tools/db.sh up creates a database and prints it}"
     [ -x .venv/bin/python ] || { echo "dev: no .venv — run tools/setup.sh" >&2; exit 1; }
     export PYTHONPATH="packages/db:packages/parser:packages/memory:packages/retrieval:packages/graph:packages/ai:apps:.${PYTHONPATH:+:$PYTHONPATH}"
+    # The private cluster in .pgdata isn't a server the app restarts: when the
+    # app quits, it stops with everything else, and the API would then refuse
+    # to start. Bring it back first, but only when DATABASE_URL is that
+    # cluster; any other database is left alone.
+    if [ "$DATABASE_URL" = "$(sh tools/db.sh url 2>/dev/null)" ] \
+       && ! sh tools/db.sh status >/dev/null 2>&1; then
+      echo "dev: the local database isn't running; starting it"
+      sh tools/db.sh up >/dev/null || exit 1   # its errors are on stderr
+    fi
     # Fail here, with the fix, rather than on the first request.
     .venv/bin/python tools/check_db.py || exit 1
     if [ "$1" = sync ]; then
