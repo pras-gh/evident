@@ -27,6 +27,7 @@ from .routers import (account, ai_usage, analysis, ask, billing, cards, document
                       graph, ingest, memory, search, sec, sync, timeline)
 from .errors import ApiError
 from .routers.search import SearchUnavailable
+from .security import SecurityHeaders
 
 API_VERSION = "1.0.0"
 
@@ -56,6 +57,8 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+# HSTS only in production, where the API is served over https
+app.add_middleware(SecurityHeaders, hsts=production.is_production())
 
 app.include_router(account.router, prefix="/v1")
 app.include_router(ai_usage.router, prefix="/v1")

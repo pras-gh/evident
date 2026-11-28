@@ -172,5 +172,52 @@ class Ready(unittest.TestCase):
                 self.assertFalse(r.json()[failing])
 
 
+
+class Headers(unittest.TestCase):
+    """Every API response carries the security headers, streamed ones too,
+    without overriding a header the handler chose."""
+
+    def _client(self, *, hsts):
+        from fastapi import FastAPI
+        from fastapi.responses import JSONResponse, StreamingResponse
+        from fastapi.testclient import TestClient
+        from api.security import SecurityHeaders
+        app = FastAPI()
+
+        @app.get("/json")
+        async def json_():
+            return {"ok": True}
+
+        @app.get("/framed")
+        async def framed():
+            return JSONResponse({}, headers={"X-Frame-Options": "DENY"})
+
+        @app.get("/stream")
+        async def stream():
+            return StreamingResponse(iter([b"%PDF-", b"1.7"]), media_type="application/pdf")
+
+        app.add_middleware(SecurityHeaders, hsts=hsts)
+        return TestClient(app)
+
+    def test_added_everywhere_kept_when_set_and_streams_untouched(self):
+        client = self._client(hsts=False)
+        r = client.get("/json")
+        self.assertEqual(r.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(r.headers["x-frame-options"], "SAMEORIGIN")
+        self.assertEqual(r.headers["referrer-policy"], "strict-origin-when-cross-origin")
+        self.assertNotIn("strict-transport-security", r.headers)
+        self.assertEqual(client.get("/framed").headers["x-frame-options"], "DENY")
+        s = client.get("/stream")
+        self.assertEqual((s.content, s.headers["x-content-type-options"]), (b"%PDF-1.7", "nosniff"))
+
+    def test_hsts_when_served_over_https(self):
+        r = self._client(hsts=True).get("/json")
+        self.assertTrue(r.headers["strict-transport-security"].startswith("max-age="))
+
+    def test_the_api_has_them(self):
+        from api import main
+        from api.security import SecurityHeaders
+        self.assertTrue(any(m.cls is SecurityHeaders for m in main.app.user_middleware))
+
 if __name__ == "__main__":
     unittest.main()
