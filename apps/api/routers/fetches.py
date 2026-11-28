@@ -40,16 +40,21 @@ RETRY_AFTER = timedelta(minutes=10)
 
 
 def launch(fetch_id: int) -> None:
-    """Start the worker in its own process, logging to data/fetch-logs/. It
-    outlives an API reload. Replaced in tests."""
-    logs = ROOT / "data" / "fetch-logs"
-    logs.mkdir(parents=True, exist_ok=True)
+    """Start the worker in its own process. It outlives an API reload.
+    Locally it logs to data/fetch-logs/; in production to the API's own
+    output, which is what the host collects (a container's files are gone
+    on the next deploy). Replaced in tests."""
     env = dict(os.environ)
     # the worker imports what the API imports, however the API was started
     env["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
+    command = [sys.executable, "-m", "workers.fetch_worker", str(fetch_id)]
+    if os.environ.get("APP_ENV") == "production":
+        subprocess.Popen(command, cwd=ROOT, env=env, start_new_session=True)
+        return
+    logs = ROOT / "data" / "fetch-logs"
+    logs.mkdir(parents=True, exist_ok=True)
     with open(logs / f"{fetch_id}.log", "ab") as out:
-        subprocess.Popen([sys.executable, "-m", "workers.fetch_worker", str(fetch_id)],
-                         cwd=ROOT, env=env, stdout=out, stderr=subprocess.STDOUT,
+        subprocess.Popen(command, cwd=ROOT, env=env, stdout=out, stderr=subprocess.STDOUT,
                          start_new_session=True)
 
 

@@ -26,12 +26,34 @@ def database_url(url: str | None = None, *, async_: bool = False) -> str:
     return raw
 
 
+def engine_options(**kw) -> dict:
+    """Pool settings, from the environment where a hosted database needs them.
+
+    A managed Postgres behind a connection pooler (Supabase's) caps how many
+    connections a project may hold, and every API process, worker and filing
+    fetch holds its own pool. DB_POOL_SIZE and DB_MAX_OVERFLOW size each one.
+    DB_PREPARED_STATEMENTS=off is for a transaction-mode pooler, which hands
+    each transaction a different server connection, so a statement prepared
+    on one is not there on the next. Arguments win over the environment;
+    unset, SQLAlchemy's own defaults apply.
+    """
+    opts: dict = {"pool_pre_ping": True}
+    if "poolclass" not in kw:           # NullPool and friends take no sizes
+        for name, key in (("DB_POOL_SIZE", "pool_size"), ("DB_MAX_OVERFLOW", "max_overflow")):
+            if os.environ.get(name):
+                opts[key] = int(os.environ[name])
+    if os.environ.get("DB_PREPARED_STATEMENTS", "").strip().lower() in ("off", "0", "false", "no"):
+        opts["connect_args"] = {"prepare_threshold": None}
+    opts.update(kw)
+    return opts
+
+
 def make_engine(url: str | None = None, **kw):
-    return create_engine(database_url(url), pool_pre_ping=True, **kw)
+    return create_engine(database_url(url), **engine_options(**kw))
 
 
 def make_async_engine(url: str | None = None, **kw):
-    return create_async_engine(database_url(url), pool_pre_ping=True, **kw)
+    return create_async_engine(database_url(url), **engine_options(**kw))
 
 
 @contextmanager
