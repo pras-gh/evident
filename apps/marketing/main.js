@@ -5,6 +5,21 @@
   'use strict';
 
   var root = document.documentElement;
+
+  /* ---- the app's address -------------------------------------------------
+     Links into the product name https://app.ll.ax. Served from this machine
+     (python -m http.server, the `landing` preview), they go to the app's dev
+     server instead, so the local landing page opens the local app. */
+  if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {
+    var APP = 'https://app.ll.ax';
+    var LOCAL = 'http://localhost:3000';
+    Array.prototype.forEach.call(document.querySelectorAll('a[href^="' + APP + '"]'), function (a) {
+      a.href = LOCAL + a.getAttribute('href').slice(APP.length);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('form[action^="' + APP + '"]'), function (f) {
+      f.action = LOCAL + f.getAttribute('action').slice(APP.length);
+    });
+  }
   var supports = window.CSS && CSS.supports;
   var hasScrollTL = !!supports && CSS.supports('animation-timeline', 'scroll()');
   var hasViewTL   = !!supports && CSS.supports('animation-timeline', 'view()');
