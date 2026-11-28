@@ -224,7 +224,7 @@ certificates.
    - cancellation at the end of the billing period;
    - subscription updates between the four prices above, with proration.
 3. **Webhook endpoint.** Point it at `https://<api>/v1/billing/webhook`,
-   subscribed to the six event types in the table above. Put its signing
+   subscribed to the seven event types in the table above. Put its signing
    secret in `STRIPE_WEBHOOK_SECRET`.
 4. **Secret key.** Set `STRIPE_SECRET_KEY` (`sk_test_…`).
 5. **Check.** Run `python tools/billing_check.py`. It reads each Price back
@@ -280,10 +280,11 @@ stripe listen --forward-to localhost:8000/v1/billing/webhook   # prints a whsec_
       then `Secure`.
 - [ ] Firebase is set up: providers, authorized domains, SMS region policy.
       Sign in once with each method.
-- [ ] Database migrated to `0018`: `cd db && alembic upgrade head`. This seeds
-      the plans.
+- [ ] Database migrated to `0018`, which seeds the plans. In production the
+      API's pre-deploy command does this on every deploy
+      (`tools/serve.sh migrate`; see [deployment.md](deployment.md)).
 - [ ] Stripe in test mode: prices created, `tools/billing_check.py` passes, the
-      portal configured, the webhook endpoint subscribed to the six events, and
+      portal configured, the webhook endpoint subscribed to the seven events, and
       a test subscription completed end to end with `stripe listen`.
 - [ ] Switch to live: new live Prices, a live webhook endpoint with its own
       secret, `sk_live_…`, then run `tools/billing_check.py` again.
@@ -292,8 +293,8 @@ stripe listen --forward-to localhost:8000/v1/billing/webhook   # prints a whsec_
       until an INR flow is verified.
 - [ ] Replace `/terms` and `/privacy` with counsel-reviewed text. Today they
       describe what the system does, and say they are summaries.
-- [ ] Point the landing page's links (`apps/marketing/index.html`, currently
-      `http://localhost:3000`) at the app's domain.
+- [x] Point the landing page's links (`apps/marketing/index.html`) at the
+      app's domain: they go to `https://app.ll.ax`.
 - [ ] Monitoring: alert on webhook responses other than 200 (Stripe's
       dashboard shows them), and on `billing_events` going quiet while
       subscriptions exist.

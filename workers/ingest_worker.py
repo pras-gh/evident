@@ -132,7 +132,7 @@ def _ingest_one(db, *, company_id: int, cik: str, filing: dict,
     # Keep the bytes, so the filing can be rendered to pages without fetching
     # it again. Also on a skip: it backfills filings ingested before this.
     rel = store.source_path(filing["accession"], filing["primary_document"])
-    if document.source_path != rel or not store.resolve(rel).exists():
+    if document.source_path != rel or not store.exists(rel):
         document.source_path = store.write(rel, raw)
     if not is_new and db.execute(select(Chunk.id).where(
             Chunk.document_id == document.id).limit(1)).first() is not None:

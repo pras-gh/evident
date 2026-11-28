@@ -1,0 +1,30 @@
+# What the backend runs on: the API, the workers, the production image.
+# The packages themselves are not installed: tools/dev.sh, the test command
+# and the Dockerfile put packages/* on PYTHONPATH. Each package's pyproject
+# declares the same dependencies for anyone installing one on its own.
+#
+# Development installs requirements-dev.txt, which includes this file.
+
+# --- required
+sqlalchemy[asyncio]>=2.0     # the API is async; [asyncio] brings greenlet
+alembic>=1.13
+psycopg[binary,pool]>=3.2
+pgvector>=0.3
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+httpx>=0.27                  # the AI providers' HTTP client; the tests' ASGI client
+pypdf>=6.0,<7              # PDF filings; box widths use its font model, verified on 6.x
+playwright>=1.49,<2        # the render worker: page images and paragraph boxes. Drives
+                           # the installed Chrome; without one, `playwright install chromium`
+Pillow>=10                 # page images and thumbnails as WebP
+PyJWT[crypto]>=2.9         # accounts: verifying Firebase ID tokens against Google's keys
+stripe>=11                 # billing: Checkout, the Customer Portal, webhook signatures
+boto3>=1.36                # FILING_STORE=s3://...: filings in Cloudflare R2 (or any S3)
+
+# --- needed only for the feature that uses them. Each is imported lazily and
+# fails with a message naming the package, so the demo and the test suite run
+# without any of them.
+anthropic>=0.40              # live extraction (ANTHROPIC_API_KEY)
+voyageai>=0.3                # EMBEDDING_PROVIDER=voyage — search
+openai>=1.60                 # EMBEDDING_PROVIDER=openai — search

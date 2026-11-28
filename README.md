@@ -51,7 +51,7 @@ tools/dev.sh web    # http://localhost:3000       (another)
 `tools/setup.sh` is three steps you can also run alone:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt -c constraints.txt
 tools/db.sh up      # create, start and migrate PostgreSQL on :5434; writes .env
 tools/db.sh seed    # three NVIDIA 10-Ks, keyword-extracted — no API key needed
 ```
@@ -132,6 +132,16 @@ free company research credits; after those, Iix ($19/month) and IIx
 ($39/month) are billed through Stripe. A plan is granted only by a verified
 webhook. The API enforces every limit, transactionally and auditably. See
 `docs/accounts-billing.md`, including the deployment checklist.
+
+## Production
+
+The app runs on Vercel (`app.ll.ax`, with the landing page at `ll.ax`). The API
+and the S&P 500 sync worker run on Railway from the root `Dockerfile`, in roles
+chosen by `tools/serve.sh`. Postgres with pgvector is on Supabase, and filings,
+PDFs and page images are in Cloudflare R2 (`FILING_STORE=s3://…`). In
+production the API checks its settings as it starts and refuses to run
+without them. `/ready` gates every deploy, and CI runs on every pull request.
+See `docs/deployment.md` for the setup, step by step, and the costs.
 
 ## Layers
 

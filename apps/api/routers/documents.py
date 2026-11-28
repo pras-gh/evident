@@ -17,7 +17,8 @@ from collections import defaultdict
 from collections.abc import Iterable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import FileResponse
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,8 +34,10 @@ from .timeline import filing_url
 
 router = APIRouter(tags=["documents"])
 
-#: Versioned URLs never change content, so they can be cached for good.
-IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+#: Versioned URLs never change content, so they can be cached for good, but
+#: by the reader's browser only: they sit behind an access check, and a shared
+#: cache in front of the API would hand them to anyone who asked.
+IMMUTABLE = {"Cache-Control": "private, max-age=31536000, immutable"}
 
 
 def _box(chunk: Chunk, paragraph_id: str | None) -> BoundingBox | None:
@@ -217,36 +220,58 @@ async def document_page(document_id: int, page: int,
         blocks=blocks)
 
 
-def _file(relative: str | None, media_type: str, **kw) -> FileResponse:
+async def _file(relative: str | None, media_type: str, *, filename: str | None = None,
+                inline: bool = False) -> Response:
+    """A stored file: from disk as a FileResponse, or streamed from the bucket
+    (opened off the event loop: the S3 client blocks)."""
     if not relative:
         raise HTTPException(404, "not rendered — run the render worker")
+    disposition = "inline" if inline else "attachment"
     try:
-        path = store.resolve(relative)
+        if not store.is_remote():
+            path = store.resolve(relative)
+            if not path.is_file():
+                raise FileNotFoundError(relative)
+            return FileResponse(path, media_type=media_type, headers=IMMUTABLE,
+                                filename=filename, content_disposition_type=disposition)
+        stored = await run_in_threadpool(store.open_stored, relative)
     except ValueError:
         raise HTTPException(404, "not found")
-    if not path.is_file():
+    except FileNotFoundError:
         raise HTTPException(404, "the rendered file is missing — render the filing again")
-    return FileResponse(path, media_type=media_type, headers=IMMUTABLE, **kw)
+    headers = {**IMMUTABLE, "Content-Length": str(stored.size)}
+    if filename:
+        headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    return StreamingResponse(_drain(stored), media_type=media_type, headers=headers)
+
+
+def _drain(stored: store.Stored):
+    """The chunks, then the connection back to the pool, even if the reader
+    goes away part-way."""
+    try:
+        yield from stored.chunks
+    finally:
+        stored.close()
 
 
 @router.get("/document/{document_id}/page/{page}/image", summary="A page as rendered", dependencies=[Depends(document_access)],
             response_class=FileResponse)
 async def page_image(document_id: int, page: int,
                      size: str = Query("full", pattern="^(full|thumb)$"),
-                     db: AsyncSession = Depends(get_db)) -> FileResponse:
+                     db: AsyncSession = Depends(get_db)) -> Response:
     row = (await db.execute(select(DocumentPage).where(
         DocumentPage.document_id == document_id, DocumentPage.page == page))).scalar_one_or_none()
     if row is None:
         raise HTTPException(404, f"no rendered page {page} for document {document_id}")
-    return _file(row.thumbnail_path if size == "thumb" else row.image_path, "image/webp")
+    return await _file(row.thumbnail_path if size == "thumb" else row.image_path, "image/webp")
 
 
 @router.get("/document/{document_id}/pdf", summary="The filing as a PDF", dependencies=[Depends(document_access)],
             response_class=FileResponse)
-async def document_pdf(document_id: int, db: AsyncSession = Depends(get_db)) -> FileResponse:
+async def document_pdf(document_id: int, db: AsyncSession = Depends(get_db)) -> Response:
     document, _ = await _document(db, document_id)
-    return _file(document.pdf_path, "application/pdf",
-                 filename=f"{document.accession}.pdf", content_disposition_type="inline")
+    return await _file(document.pdf_path, "application/pdf",
+                       filename=f"{document.accession}.pdf", inline=True)
 
 
 @router.get("/documents/{document_id}/pages", response_model=DocumentPagesOut, dependencies=[Depends(document_access)],

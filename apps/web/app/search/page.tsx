@@ -9,6 +9,9 @@ import { UpgradeModal } from "@/components/billing/UpgradeModal";
 // a search is per request; caching a page keyed on its query string would only
 // ever serve a stale index
 export const dynamic = "force-dynamic";
+// The answer streams in after the results and can take 10–20 seconds; on
+// Vercel the whole response must finish inside the function's time limit.
+export const maxDuration = 60;
 
 type Search = Promise<{ q?: string | string[]; ticker?: string | string[] }>;
 

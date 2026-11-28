@@ -245,7 +245,7 @@ def _webp(png: bytes, *, width: int | None = None) -> bytes:
 def render_html(document: Document, chunks: list[Chunk], browser: Any) -> tuple[RenderResult, dict]:
     """Lay the filing out, measure it, photograph it. Writes files, not rows."""
     result = RenderResult(accession=document.accession, source_format="html")
-    html = store.resolve(document.source_path).read_bytes().decode("utf-8", errors="replace")
+    html = store.read(document.source_path).decode("utf-8", errors="replace")
     paragraphs = _paragraphs(chunks)
     result.paragraphs = len(paragraphs)
     styled = _is_styled(html)
@@ -323,7 +323,7 @@ def _box_json(b: dict, page_height_px: float) -> dict:
 
 
 def render_document(db, document: Document, browser: Any) -> RenderResult:
-    if not document.source_path or not store.resolve(document.source_path).exists():
+    if not document.source_path or not store.exists(document.source_path):
         return RenderResult(accession=document.accession, source_format=document.source_format,
                             error="no stored source — re-ingest the filing to keep its bytes")
     chunks = list(db.execute(select(Chunk).where(Chunk.document_id == document.id)
@@ -357,7 +357,7 @@ def _render_pdf(db, document: Document, chunks: list[Chunk], now: datetime) -> R
     """A PDF filing: its boxes came from parsing, its PDF is itself. Page
     sizes are recorded; page images await a rasteriser."""
     from pypdf import PdfReader
-    reader = PdfReader(str(store.resolve(document.source_path)))
+    reader = PdfReader(io.BytesIO(store.read(document.source_path)))
     counts: dict[int, int] = {}
     boxed = 0
     for c in chunks:

@@ -1,0 +1,18 @@
+# The backend image needs config/, db/, packages/, apps/api/, workers/ and
+# tools/. Everything else stays out, secrets above all.
+.git
+.github
+.claude
+.venv
+.pgdata
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+**/node_modules
+apps/web
+apps/marketing
+data
+docs
+tests
+*.md

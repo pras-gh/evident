@@ -16,7 +16,7 @@ if [ ! -x .venv/bin/python ]; then
   "$PYTHON_BIN" -m venv .venv
 fi
 echo "setup: installing Python dependencies"
-.venv/bin/pip install -q --disable-pip-version-check -r requirements-dev.txt
+.venv/bin/pip install -q --disable-pip-version-check -r requirements-dev.txt -c constraints.txt
 
 echo "setup: installing web dependencies"
 (cd apps/web && npm install --silent --no-audit --no-fund)
