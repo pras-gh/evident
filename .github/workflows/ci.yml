@@ -1,0 +1,121 @@
+# Every push to main and every pull request: the backend's tests against a
+# real Postgres with pgvector, the migrations from an empty database (what
+# Supabase sees on the first deploy), the web app's checks and production
+# build, and the backend image, built and actually serving.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PG_URL: postgresql+psycopg://parallx:parallx@localhost:5432
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: parallx
+          POSTGRES_PASSWORD: parallx
+          POSTGRES_DB: parallx_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U parallx" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://parallx:parallx@localhost:5432/parallx_test
+      PYTHONPATH: packages/db:packages/parser:packages/memory:packages/retrieval:packages/graph:packages/ai:apps:.:tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+      - run: pip install -r requirements-dev.txt
+      # the render worker's tests drive a real browser
+      - run: python -m playwright install --with-deps chromium
+      - name: Migrations, from an empty database
+        run: |
+          PGPASSWORD=parallx psql -h localhost -U parallx -d parallx_test -c "create database parallx_migrate"
+          cd db && DATABASE_URL=$PG_URL/parallx_migrate python -m alembic upgrade head
+          cd .. && DATABASE_URL=$PG_URL/parallx_migrate python tools/check_db.py
+      - run: python -m unittest discover -s tests
+
+  web:
+    name: Web checks and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npm run build
+
+  image:
+    name: Backend image
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: parallx
+          POSTGRES_PASSWORD: parallx
+          POSTGRES_DB: parallx
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U parallx" --health-interval 5s
+          --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: parallx-backend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Its browser launches (the render worker's)
+        run: |
+          docker run --rm --entrypoint python parallx-backend:ci -c "
+          from playwright.sync_api import sync_playwright
+          with sync_playwright() as p:
+              b = p.chromium.launch(); print('chromium', b.version); b.close()"
+      - name: It refuses an incomplete production config, and says why
+        run: |
+          if out=$(docker run --rm parallx-backend:ci api 2>&1); then
+            echo "the API started in production with nothing configured" >&2; exit 1
+          fi
+          echo "$out" | grep -q "setting(s) to fix before the API can start" \
+            || { echo "$out" >&2; echo "it failed, but not with the settings check" >&2; exit 1; }
+      - name: It migrates, and the API it serves is ready
+        run: |
+          docker run --rm --network host -e DATABASE_URL=$PG_URL/parallx parallx-backend:ci migrate
+          docker run -d --name api --network host -e APP_ENV=development \
+            -e DATABASE_URL=$PG_URL/parallx -e FILING_STORE=/tmp/filings parallx-backend:ci api
+          curl -fsS --retry 30 --retry-connrefused --retry-delay 1 localhost:8080/ready
+      - if: always()
+        run: docker logs api || true
