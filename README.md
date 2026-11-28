@@ -133,6 +133,16 @@ free company research credits; after those, Iix ($19/month) and IIx
 webhook. The API enforces every limit, transactionally and auditably. See
 `docs/accounts-billing.md`, including the deployment checklist.
 
+## Production
+
+The app runs on Vercel (`app.ll.ax`, with the landing page at `ll.ax`). The API
+and the S&P 500 sync worker run on Railway from the root `Dockerfile`, in roles
+chosen by `tools/serve.sh`. Postgres with pgvector is on Supabase, and filings,
+PDFs and page images are in Cloudflare R2 (`FILING_STORE=s3://…`). In
+production the API checks its settings as it starts and refuses to run
+without them. `/ready` gates every deploy, and CI runs on every pull request.
+See `docs/deployment.md` for the setup, step by step, and the costs.
+
 ## Layers
 
 | Layer | Stores | Answers |
